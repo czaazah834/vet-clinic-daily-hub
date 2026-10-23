@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { authRouter } from "./routes/auth.js";
 import { clinicRouter } from "./routes/clinic.js";
+import { geo as geoRouter, check as checkRouter, checkEmail } from "./geo.js";
 import { query } from "./db.js";
 
 dotenv.config();
@@ -39,7 +40,34 @@ app.get("/api/health", async (req, res) => {
   });
 });
 
+// CSRF Endpoint
+app.get("/api/csrf", (req, res) => {
+  res.json({ csrf: "pc-csrf-" + Math.random().toString(36).slice(2) });
+});
+
+// Check Email (public domain + MX check + database uniqueness)
+app.post("/api/check/email", async (req, res) => {
+  const r = await checkEmail(req.body?.email);
+  if (r.ok) {
+    try {
+      const u = await query("SELECT 1 FROM users WHERE LOWER(email) = LOWER($1)", [r.email]);
+      if (u.rows && u.rows.length > 0) {
+        return res.json({ ok: false, domain: r.domain, error: "This email is already registered." });
+      }
+      const o = await query("SELECT 1 FROM owners WHERE LOWER(email) = LOWER($1)", [r.email]);
+      if (o.rows && o.rows.length > 0) {
+        return res.json({ ok: false, domain: r.domain, error: "This email is already registered." });
+      }
+    } catch (err) {
+      console.warn("DB check email warning:", err.message);
+    }
+  }
+  res.json(r);
+});
+
 // Mount Routes
+app.use("/api/geo", geoRouter);
+app.use("/api/check", checkRouter);
 app.use("/api/auth", authRouter);
 app.use("/api", authRouter);
 app.use("/api", clinicRouter);

@@ -39,7 +39,7 @@ function Combo({ label, text, setText, load, pick, disabled, ph, err, ok, bad, o
   const run = async (q) => {
     if (disabled) return;
     const m = ++seq.current, r = await load(q);
-    if (m === seq.current) { setIt(r); setK(-1); setOpen(true); }
+    if (m === seq.current) { setIt(Array.isArray(r) ? r : []); setK(-1); setOpen(true); }
   };
   const choose = (o) => { setText(o.n || o.t); setOpen(false); pick(o); };
   return (
@@ -291,7 +291,7 @@ export default function Register({ onDone, onBack, go, limited }) {
     setZl((z) => ({ ...z, busy: true }));
     api(`geo/zips?country=PH&state=${encodeURIComponent(f.state)}&city=${encodeURIComponent(f.city)}`).then((r) => {
       if (!on) return;
-      const zips = r.d?.zips || [];
+      const zips = Array.isArray(r.d?.zips) ? r.d.zips : [];
       setZl({ zips, exact: r.d?.exact !== false, busy: false });
       setF((p) => (zips.some((z) => z.zip === p.zip_code) ? p : { ...p, zip_code: zips.length === 1 ? zips[0].zip : "" }));
       setAx((a) => ({ ...a, zip_code: "" }));
@@ -325,9 +325,12 @@ export default function Register({ onDone, onBack, go, limited }) {
     setCp(false);
     setTx((t) => ({ ...t, state: "", city: "" }));
     setF((p) => ({ ...p, state: "", city: "" }));
-    const c = (await api("geo/countries/" + o.v)).d;
+    const cRes = await api("geo/countries/" + o.v);
+    const c = cRes.d && cRes.d.code ? cRes.d : null;
+    if (!c) return;
     setCUR(c);
-    const s = (await api("geo/states?country=" + o.v)).d || [];
+    const sRes = await api("geo/states?country=" + o.v);
+    const s = Array.isArray(sRes.d) ? sRes.d : [];
     setST(s);
     if (!s.length) {
       setF((p) => ({ ...p, state: c.name }));
@@ -418,13 +421,15 @@ export default function Register({ onDone, onBack, go, limited }) {
           ok={!!f.country}
           bad={touched.country && !f.country}
           onTouch={() => touch("country")}
-          load={async (q) =>
-            ((await api("geo/countries?q=" + encodeURIComponent(q))).d || []).map((c) => ({
+          load={async (q) => {
+            const res = await api("geo/countries?q=" + encodeURIComponent(q));
+            const list = Array.isArray(res.d) ? res.d : [];
+            return list.map((c) => ({
               v: c.code,
               t: `${c.flag ? c.flag + " " : ""}${c.name} (${c.dial})`,
               n: c.name,
-            }))
-          }
+            }));
+          }}
           pick={(o) => pickCountry(o)}
         />
       );
@@ -446,9 +451,10 @@ export default function Register({ onDone, onBack, go, limited }) {
                 const fld = fold(s);
                 return fld.startsWith(x) ? 0 : fld.includes(x) ? 1 : 9;
               };
-            return ST.filter((s) => !x || rk(s.name) < 9)
+            const list = Array.isArray(ST) ? ST : [];
+            return list.filter((s) => !x || rk(s.name) < 9)
               .sort((a, b) => rk(a.name) - rk(b.name) || a.name.localeCompare(b.name))
-              .map((s) => ({ v: s.name, t: s.name }));
+              .map((s) => ({ v: s.name, t: s.name, n: s.name }));
           }}
           pick={(o) => {
             setF((p) => ({ ...p, state: o ? o.v : "", city: "" }));
@@ -470,17 +476,14 @@ export default function Register({ onDone, onBack, go, limited }) {
           ok={cls("city") === "ok"}
           bad={cls("city") === "bad"}
           onTouch={() => touch("city")}
-          load={async (q) =>
-            CUR
-              ? (
-                  (
-                    await api(
-                      `geo/cities?country=${CUR.code}&state=${encodeURIComponent(ST.length ? f.state : "")}&q=${encodeURIComponent(q)}`
-                    )
-                  ).d || []
-                ).map((c) => ({ v: c, t: c }))
-              : []
-          }
+          load={async (q) => {
+            if (!CUR) return [];
+            const res = await api(
+              `geo/cities?country=${CUR.code}&state=${encodeURIComponent(ST.length ? f.state : "")}&q=${encodeURIComponent(q)}`
+            );
+            const list = Array.isArray(res.d) ? res.d : [];
+            return list.map((c) => ({ v: c, t: c, n: c }));
+          }}
           pick={(o, typed) => {
             setCp(!!o);
             setF((p) => ({ ...p, city: o ? o.v : (typed || "").trim() }));
