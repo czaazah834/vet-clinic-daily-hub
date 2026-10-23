@@ -9,9 +9,12 @@
   "preview": "vite preview"
  },
  "dependencies": {
+  "country-state-city": "^3.2.1",
+  "free-email-domains": "^1.15.12",
+  "libphonenumber-js": "^1.13.15",
+  "lucide-react": "0.469.0",
   "react": "^18.3.1",
-  "react-dom": "^18.3.1",
-  "lucide-react": "0.469.0"
+  "react-dom": "^18.3.1"
  },
  "devDependencies": {
   "@vitejs/plugin-react": "^4.3.1",

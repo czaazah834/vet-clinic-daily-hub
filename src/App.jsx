@@ -53,7 +53,7 @@ export default function App() {
   if (me) return <Portal cfg={CFG[me.role]} me={me} db={db} setDb={setDb} onLogout={() => logout()} />;
   const screen =
     view === "login" ? <Login role={role} notice={notice} bad={bad} onLogin={onLogin} onBack={() => go("landing")} go={go} />
-    : view === "register" ? <Register onDone={email => { setFlow({ email }); setView("checkemail"); }} onBack={() => go("landing")} go={go} />
+    : view === "register" ? <Register onDone={email => { setFlow({ email }); setView("checkemail"); }} onBack={() => go("landing")} go={go} limited={() => toLogin("Registration limit reached. To prevent bot spam, each IP address can make at most 5 registration attempts per hour. Please try again later, or log in if you already have an account.", true)} />
     : view === "checkemail" ? <CheckEmail email={flow.email} go={go} />
     : view === "otp" ? <Otp onDone={u => u ? setMe(u) : toLogin("Mobile number verified. Please log in to continue.")} onBack={async () => { try { await auth.logout(); } catch { /* nothing to sign out */ } go("login"); }} />
     : view === "unlock" ? <Unlock token={flow.token} onDone={(msg, isBad) => toLogin(msg, isBad)} />
