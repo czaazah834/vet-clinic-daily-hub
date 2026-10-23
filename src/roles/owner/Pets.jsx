@@ -246,7 +246,7 @@ export function validatePet(v, taken = []) {
   return e;
 }
 
-export const myRequests = (db, me) => (db.petRequests || []).filter(r => r.ownerId === me.ownerId);
+export const myRequests = (db, me) => (db.petRequests || []).filter(r => (r.ownerId === me.ownerId || r.ownerId === me.id) && r.status !== "Approved");
 
 export const addBlock = (db, me) => {
   const have = scope(db, me, "pets").length, reqs = myRequests(db, me);
@@ -355,53 +355,52 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
     };
 
     try {
-      // Direct call to backend database
-      const res = await api.post("/api/owner/pets", { ...data, ownerId: me.ownerId });
-      if (res && res.pet) {
+      // 1. Submit pending request to PostgreSQL Neon DB
+      const res = await api.post("/api/pet-requests", { ...data, ownerId: me.ownerId });
+      if (res && res.request) {
+        const reqObj = {
+          id: res.request.id,
+          ownerId: me.ownerId,
+          requestedAt: TODAY,
+          status: "Pending",
+          declineReason: "",
+          ...data
+        };
         setDb(p => ({
           ...p,
-          pets: [...(p.pets || []).filter(x => x.id !== res.pet.id), res.pet],
-          vacc: [...(p.vacc || []), ...(res.vaccs || [])],
-          vaccs: [...(p.vaccs || []), ...(res.vaccs || [])],
-          petRequests: [...(p.petRequests || []).filter(r => r.name.toLowerCase() !== data.name.toLowerCase()), {
-            id: uid(),
-            ownerId: me.ownerId,
-            requestedAt: TODAY,
-            status: "Approved",
-            declineReason: "",
-            ...data
-          }],
-          log: addLog(p, me, `Registered patient ${data.name} (${canonicalSpecies}) in clinical database`),
+          petRequests: editing
+            ? (p.petRequests || []).map(r => r.id === editing.id ? reqObj : r)
+            : [...(p.petRequests || []).filter(r => r.id !== reqObj.id), reqObj],
+          log: addLog(p, me, `Submitted online registration request for ${data.name} (${canonicalSpecies}) - Pending Vet Assistant Review`)
         }));
-        say(`${data.name} was successfully registered and saved to your account!`);
+        say(`${data.name}'s registration was submitted to the clinic! The front desk will review and issue their vaccination card.`);
         onClose();
         return;
       }
     } catch (err) {
-      console.warn("Backend registration fallback:", err);
+      console.warn("Backend registration request fallback:", err);
     }
 
     // Graceful fallback if offline
-    const localId = uid();
-    const localCard = "VACC-" + new Date().getFullYear() + "-" + Math.floor(1000 + Math.random() * 9000);
-    const localPet = {
-      id: "p_" + localId,
+    const localId = "req_" + uid();
+    const localReq = {
+      id: localId,
       ownerId: me.ownerId,
-      vaccinationCardId: localCard,
-      ...data,
-      weights: [{ date: data.birth || TODAY, kg: data.weight }]
+      requestedAt: TODAY,
+      status: "Pending",
+      declineReason: "",
+      ...data
     };
 
     setDb(p => ({
       ...p,
-      pets: [...(p.pets || []).filter(x => x.id !== localPet.id), localPet],
       petRequests: editing
-        ? (p.petRequests || []).map(r => r.id === editing.id ? { ...r, ...data, status: "Approved", declineReason: "" } : r)
-        : [...(p.petRequests || []), { id: localId, ownerId: me.ownerId, requestedAt: TODAY, status: "Approved", declineReason: "", ...data }],
-      log: addLog(p, me, `Registered patient ${data.name} (${canonicalSpecies})`),
+        ? (p.petRequests || []).map(r => r.id === editing.id ? { ...r, ...data, status: "Pending", declineReason: "" } : r)
+        : [...(p.petRequests || []), localReq],
+      log: addLog(p, me, `Submitted registration request for ${data.name} (${canonicalSpecies})`),
     }));
 
-    say(editing ? "Pet details updated" : `${data.name} was successfully added!`);
+    say(editing ? "Request updated" : `${data.name}'s request was submitted! Waiting for clinic front desk approval.`);
     onClose();
   };
 
@@ -735,10 +734,18 @@ export function RequestList({ db, setDb, me, say, onEdit }) {
   const [ask, setAsk] = useState("");
   const list = myRequests(db, me);
   if (!list.length) return null;
-  const withdraw = r => {
+  const withdraw = async r => {
     if (ask !== r.id) return setAsk(r.id);
-    setDb(p => ({ ...p, petRequests: (p.petRequests || []).filter(x => !(x.id === r.id && x.ownerId === me.ownerId)), log: addLog(p, me, `Owner withdrew the pet request for ${r.name}`) }));
-    setAsk(""); say("Request removed");
+    try {
+      await fetch(`/api/pet-requests/${r.id}`, { method: "DELETE" });
+    } catch (_) {}
+    setDb(p => ({
+      ...p,
+      petRequests: (p.petRequests || []).filter(x => x.id !== r.id),
+      log: addLog(p, me, `Owner withdrew the pet request for ${r.name}`)
+    }));
+    setAsk("");
+    say("Request removed");
   };
   return (
     <section className="op-reqs" aria-label="Pet requests">

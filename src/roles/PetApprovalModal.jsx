@@ -23,43 +23,106 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
     me.name
   );
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     setSubmitting(true);
-    const newPetId = "p" + uid();
+    let assignedCardId = cardId;
+    let newPet = null;
+    let newVaccRecords = [];
 
-    const newPet = {
-      id: newPetId,
-      ownerId: request.ownerId,
-      name: request.name.trim(),
-      species: request.species,
-      speciesOther: request.speciesOther || "",
-      breed: request.breed ? request.breed.trim() : (request.species === "Dog" ? "Aspin" : request.species === "Cat" ? "Puspin" : "Mixed"),
-      sex: request.sex,
-      birth: request.birth,
-      weight: request.weight != null ? +request.weight : null,
-      neutered: request.neutered || "Not sure",
-      color: request.color || "",
-      notes: request.notes || "",
-      allergies: [],
-      vaccinationCardId: cardId,
-      registeredAt: TODAY,
-      approvedBy: me.name,
-      weights: request.weight ? [{ date: TODAY, kg: +request.weight, by: "registration" }] : [],
-    };
+    try {
+      const res = await fetch(`/api/pet-requests/${request.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorName: me.name,
+          actorRole: me.role || "Vet Assistant"
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        assignedCardId = data.cardId || assignedCardId;
+        const rawPet = data.pet;
+        if (rawPet) {
+          newPet = {
+            id: rawPet.id,
+            ownerId: rawPet.owner_id,
+            name: rawPet.name,
+            species: rawPet.species,
+            speciesOther: rawPet.species_other || "",
+            breed: rawPet.breed,
+            sex: rawPet.sex,
+            birth: rawPet.birth ? String(rawPet.birth).slice(0, 10) : "",
+            weight: parseFloat(rawPet.weight),
+            color: rawPet.color || "",
+            neutered: rawPet.neutered || "Not sure",
+            allergies: rawPet.allergies || [],
+            vaccinationCardId: rawPet.vaccination_card_id || assignedCardId,
+            notes: rawPet.notes || "",
+            registeredAt: TODAY,
+            approvedBy: me.name,
+            weights: [{ date: TODAY, kg: parseFloat(rawPet.weight) }]
+          };
+        }
+        if (data.vaccs && data.vaccs.length) {
+          newVaccRecords = data.vaccs.map(v => ({
+            id: v.id,
+            petId: v.pet_id || v.petId,
+            cardId: v.card_id || v.cardId || assignedCardId,
+            vaccine: v.vaccine,
+            brand: v.brand || "",
+            batch: v.batch || "",
+            date: v.date ? String(v.date).slice(0, 10) : TODAY,
+            nextDue: v.next_due ? String(v.next_due).slice(0, 10) : (v.nextDue || null),
+            doseNo: v.dose_no || v.doseNo,
+            doseOf: v.dose_of || v.doseOf,
+            done: Boolean(v.done),
+            automated: Boolean(v.automated),
+            protocolType: v.protocol_type || v.protocolType || "",
+            notes: v.notes || "",
+            vetId: v.vet_id || v.vetId || "",
+            recordedBy: v.recorded_by || v.recordedBy || me.name
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn("Backend approval fallback:", err);
+    }
 
-    const newVaccRecords = generateAutomatedVaccineSchedule(newPet, newPetId, me.name);
+    if (!newPet) {
+      const newPetId = "p" + uid();
+      newPet = {
+        id: newPetId,
+        ownerId: request.ownerId,
+        name: request.name.trim(),
+        species: request.species,
+        speciesOther: request.speciesOther || "",
+        breed: request.breed ? request.breed.trim() : (request.species === "Dog" ? "Aspin" : request.species === "Cat" ? "Puspin" : "Mixed"),
+        sex: request.sex,
+        birth: request.birth,
+        weight: request.weight != null ? +request.weight : null,
+        neutered: request.neutered || "Not sure",
+        color: request.color || "",
+        notes: request.notes || "",
+        allergies: [],
+        vaccinationCardId: assignedCardId,
+        registeredAt: TODAY,
+        approvedBy: me.name,
+        weights: request.weight ? [{ date: TODAY, kg: +request.weight, by: "registration" }] : [],
+      };
+      newVaccRecords = generateAutomatedVaccineSchedule(newPet, newPet.id, me.name);
+    }
 
     setDb(p => {
       // 1. Add pet
-      const nextPets = [...p.pets, newPet];
+      const nextPets = [...(p.pets || []).filter(x => x.id !== newPet.id), newPet];
 
       // 2. Add automated vaccination records
-      const nextVacc = [...newVaccRecords, ...p.vacc];
+      const nextVacc = [...(newVaccRecords || []), ...(p.vacc || p.vaccs || [])];
 
       // 3. Update request status to Approved
       const nextReqs = (p.petRequests || []).map(r =>
         r.id === request.id
-          ? { ...r, status: "Approved", approvedAt: TODAY, approvedBy: me.name, petId: newPetId, cardId }
+          ? { ...r, status: "Approved", approvedAt: TODAY, approvedBy: me.name, petId: newPet.id, cardId: assignedCardId }
           : r
       );
 
@@ -67,13 +130,14 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
       const nextLog = addLog(
         p,
         me,
-        `Front Desk Assistant ${me.name} approved online pet registration for "${newPet.name}" (${owner.name}). Issued Digital Vaccination Card #${cardId} with ${newVaccRecords.length} automated scheduled vaccine protocols.`
+        `Front Desk Assistant ${me.name} approved online pet registration for "${newPet.name}" (${owner.name}). Issued Digital Vaccination Card #${assignedCardId} with ${newVaccRecords.length} automated scheduled vaccine protocols.`
       );
 
       return {
         ...p,
         pets: nextPets,
         vacc: nextVacc,
+        vaccs: nextVacc,
         petRequests: nextReqs,
         log: nextLog,
       };
@@ -88,21 +152,35 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
         type: "pet_approved",
         subject: `${newPet.name}'s Digital Vaccination Card is Ready!`,
         sentAt: new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }),
-        body: `Hello ${owner.name}! PawCare Front Desk has approved your pet ${newPet.name}. Your pet's official Digital Vaccination Card #${cardId} has been generated with automated booster schedules. You can now book appointments and view vaccination history in your Pet Owner Portal.`,
+        body: `Hello ${owner.name}! PawCare Front Desk has approved your pet ${newPet.name}. Your pet's official Digital Vaccination Card #${assignedCardId} has been generated with automated booster schedules. You can now book appointments and view vaccination history in your Pet Owner Portal.`,
       });
     } catch {
       // safe fallback
     }
 
     setSubmitting(false);
-    onProcessed && onProcessed("approved", newPet, cardId);
+    onProcessed && onProcessed("approved", newPet, assignedCardId);
   };
 
-  const handleDecline = (e) => {
+  const handleDecline = async (e) => {
     e.preventDefault();
     if (!declineReason.trim()) return;
 
     setSubmitting(true);
+    try {
+      await fetch(`/api/pet-requests/${request.id}/decline`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: declineReason.trim(),
+          actorName: me.name,
+          actorRole: me.role || "Vet Assistant"
+        })
+      });
+    } catch (err) {
+      console.warn("Backend decline fallback:", err);
+    }
+
     setDb(p => ({
       ...p,
       petRequests: (p.petRequests || []).map(r =>

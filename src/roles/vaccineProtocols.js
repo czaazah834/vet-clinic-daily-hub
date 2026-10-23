@@ -196,8 +196,15 @@ export function generateCardId() {
  * @returns {Array<Object>} List of initialized vaccine records for db.vacc
  */
 export function generateAutomatedVaccineSchedule(petData, newPetId, approvedBy = "Front Desk") {
-  const species = petData.species || "Dog";
-  const protocols = CLINICAL_PROTOCOLS[species] || CLINICAL_PROTOCOLS.Other;
+  const rawSp = String(petData.species || "").toLowerCase();
+  let key = "Other";
+  if (rawSp.includes("dog") || rawSp.includes("canine")) key = "Dog";
+  else if (rawSp.includes("cat") || rawSp.includes("feline")) key = "Cat";
+  else if (rawSp.includes("rabbit") || rawSp.includes("lagomorph")) key = "Rabbit";
+  else if (rawSp.includes("rodent") || rawSp.includes("hamster") || rawSp.includes("guinea")) key = "Rodent";
+  else if (rawSp.includes("bird") || rawSp.includes("avian")) key = "Avian";
+
+  const protocols = CLINICAL_PROTOCOLS[key] || CLINICAL_PROTOCOLS.Dog;
   const age = calculateAge(petData.birth);
   const cardId = petData.vaccinationCardId || generateCardId();
 

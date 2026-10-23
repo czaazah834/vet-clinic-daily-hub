@@ -78,6 +78,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
               return (
                 <div
                   key={r.id}
+                  onClick={() => setActiveReq(r)}
                   style={{
                     padding: "14px 16px",
                     borderRadius: "10px",
@@ -87,8 +88,11 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
                     justifyContent: "space-between",
                     alignItems: "center",
                     flexWrap: "wrap",
-                    gap: "12px"
+                    gap: "12px",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease"
                   }}
+                  title="Click to review registration and issue vaccination card"
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                     <span style={{ fontSize: "28px", color: "var(--navy)" }}><I e={r.species || "paw"} size={28} /></span>
