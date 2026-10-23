@@ -625,6 +625,31 @@ const routes = {
 };
 
 /* Signed-in owner endpoints */
+routes["POST /api/owner/pets"] = async (d) => {
+  const db = store.get();
+  const petId = "p_" + rnd().slice(0, 7);
+  const cardId = "VACC-" + new Date().getFullYear() + "-" + Math.floor(1000 + Math.random() * 9000);
+  const newPet = {
+    id: petId,
+    ownerId: d.ownerId || (db.owners && db.owners[0] ? db.owners[0].id : "o1"),
+    name: d.name,
+    species: d.species,
+    speciesOther: d.speciesOther || "",
+    breed: d.breed || "Mixed Breed",
+    sex: d.sex || "Male",
+    birth: d.birth,
+    weight: +d.weight || 5.0,
+    color: d.color || "",
+    neutered: d.neutered || "Not sure",
+    allergies: [],
+    vaccinationCardId: cardId,
+    notes: d.notes || "",
+    photo: "",
+    dentalOcclusion: d.dentalOcclusion || "",
+    weights: [{ date: d.birth || "2026-01-01", kg: +d.weight || 5.0 }]
+  };
+  return { success: true, pet: newPet, cardId, vaccs: [] };
+};
 routes["POST /api/owner/contact"] = async (d) => {
   const u = authed("owner"),
     db = store.get(),

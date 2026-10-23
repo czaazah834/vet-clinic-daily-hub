@@ -49,10 +49,22 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
     if (!scope(db, me, "pets").some(p => p.id === v.petId)) { say("You can only book for your own pets"); return onClose(); }
     if (editing) { const cur = db.appts.find(a => a.id === editing.id); if (!cur || !OPEN.includes(cur.status)) { say("This visit can no longer be changed"); return onClose(); } }
     const reason = makeReason(v.service, v.reasonSel, v.reasonOther.trim()), notes = (v.notes || "").trim();
+    const apptId = uid();
     setDb(p => {
       const data = { petId: v.petId, vetId: v.vetId, date: v.date, time: v.time, service: v.service, reason, notes };
-      return { ...p, appts: editing ? p.appts.map(a => a.id === editing.id ? { ...a, ...data, status: moved ? "Scheduled" : a.status } : a) : [...p.appts, { id: uid(), ...data, status: "Scheduled" }], log: addLog(p, me, `${editing ? "Rescheduled/updated" : "Booked"} ${S.label.toLowerCase()} visit for ${petName(p, v.petId)} on ${v.date} ${v.time}`) };
+      return { ...p, appts: editing ? p.appts.map(a => a.id === editing.id ? { ...a, ...data, status: moved ? "Scheduled" : a.status } : a) : [...p.appts, { id: apptId, ...data, status: "Scheduled" }], log: addLog(p, me, `${editing ? "Rescheduled/updated" : "Booked"} ${S.label.toLowerCase()} visit for ${petName(p, v.petId)} on ${v.date} ${v.time}`) };
     });
+    // Sync to PostgreSQL backend
+    api.post("/api/appointments", {
+      id: apptId,
+      petId: v.petId,
+      vetId: v.vetId,
+      date: v.date,
+      time: v.time,
+      reason,
+      actorName: me.name,
+      actorRole: "owner"
+    }).catch(() => {});
     say(editing ? (moved ? "Updated. The clinic will re-confirm your new time" : "Appointment updated") : "Booked! The clinic will confirm your visit"); onClose();
   };
   return (
@@ -86,6 +98,7 @@ function CancelDialog({ a, db, setDb, me, say, onClose }) {
     if (!cur || !mine || !OPEN.includes(cur.status)) { say("This visit can no longer be cancelled"); return onClose(); }
     const why = f.v.why === "Other" ? f.v.other.trim() : f.v.why;
     setDb(p => ({ ...p, appts: p.appts.map(x => x.id === a.id ? { ...x, status: "Cancelled", cancelReason: why } : x), log: addLog(p, me, `${petName(p, a.petId)}: ${a.status} → Cancelled (${why})`) }));
+    api.patch(`/api/appointments/${a.id}/status`, { status: "Cancelled", cancelReason: why, actorName: me.name, actorRole: "owner" }).catch(() => {});
     say("Appointment cancelled"); onClose();
   };
   return (
@@ -185,35 +198,41 @@ export default function OwnerAppts({ db, setDb, me, say }) {
         <label className="ow-lbl" htmlFor="ap-svc">Service</label>
         <select id="ap-svc" value={svc} onChange={e => setSvc(e.target.value)} style={{ width: "100%" }}><option value="">All services</option>{Object.entries(SERVICES).map(([k, x]) => <option key={k} value={k}>{x.label}</option>)}</select>
       </div>
-      <button className="btn" onClick={() => setModal({ book: true })} disabled={!pets.length} title={pets.length ? "" : "No pets on your account yet"}>+ Book a visit</button>
+      <button className="btn" onClick={() => setModal({ book: true })} disabled={!pets.length} title={pets.length ? "" : "Add your pet first from My Pets"}>+ Book a visit</button>
     </div>
     {waiting > 0 && <div className="ow-banner wa"><span>{waiting} visit(s) waiting for the clinic to confirm. You can still edit or cancel them.</span></div>}
-    {!pets.length && <div className="empty">No pets linked to your account yet. Ask the front desk to register your pet.</div>}
+    
     <style>{`.ap-split{display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);gap:16px;align-items:start}
 @media(max-width:980px){.ap-split{grid-template-columns:1fr}}
 .ap-split .ow-cal{padding:12px}.ap-split .ow-day{min-height:50px;align-items:center;padding:4px}
 .ap-split .ow-day .ow-hol,.ap-split .ow-ev span,.ap-split .ow-more{display:none}
 .ap-split .ow-evs{display:flex;flex-wrap:wrap;gap:2px;justify-content:center}`}</style>
-    {pets.length > 0 && <div className="ap-split">
-    <MiniCalendar ev={ev} day={day} setDay={setDay} />
-    <div style={{ minWidth: 0 }}>
-    {day && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
-      <h3 style={{ margin: 0, flex: "1 1 auto" }}>{dayNice}{day === TODAY ? " (today)" : ""}</h3>
-      {day >= TODAY && !hol && <button className="btn sm" onClick={() => setModal({ book: true, start: { petId: pet || "", reason: "", date: day } })}>+ Book on this day</button>}
-      <button className="btn ghost sm" onClick={() => setDay("")}>Show all</button>
-    </div>}
-    {hol && <p className="ow-note">Holiday: {hol}. The clinic is closed, so visits can’t be booked on this day.</p>}
-    {list.length > 0 && <p className="ow-hint">Double-click a visit to see its details. On a phone, tap it.</p>}
-    {(list.length ? <div className="tw"><table><thead><tr><th>Date</th><th>Time</th><th>Pet</th><th>Veterinarian</th><th>Reason</th><th>Status</th><th /></tr></thead><tbody>{list.map(a => {
-      const p = db.pets.find(x => x.id === a.petId) || {}, open = OPEN.includes(a.status) && a.date >= TODAY;
-      return <tr key={a.id} className="vh-r" tabIndex={0} style={{ cursor: "pointer" }} title="Double-click to see details" onDoubleClick={() => setModal({ view: a })} onClick={() => { if (isTouch()) setModal({ view: a }); }} onMouseDown={e => { if (e.detail > 1) e.preventDefault(); }} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModal({ view: a }); } }}><td>{a.date}</td><td>{fmt12(a.time)}{a.service && SERVICES[a.service] && <small className="ow-sub">to {fmt12(addMin(a.time, durOf(a)))}</small>}</td><td><span className="who"><span className="av"><I e={ICON[p.species]} size={16} /></span>{p.name}</span></td><td>{(VETS.find(v => v[0] === a.vetId) || [])[1] || "—"}</td>
-        <td>{a.reason}{a.service && SERVICES[a.service] && <small className="ow-sub">{SERVICES[a.service].label} · {durText(durOf(a))}</small>}{a.notes && <small className="ow-sub">Note: {a.notes}</small>}{a.cancelReason && <small className="ow-sub">Cancelled: {a.cancelReason}</small>}</td>
-        <td><Badge v={a.status} /><small className="ow-sub">{STATUS_NOTE[a.status]}</small></td>
-        <td className="act">{open && <><button className="btn ghost sm" onClick={e => { e.stopPropagation(); setModal({ book: true, editing: a }); }}>Edit</button> <button className="btn danger sm" onClick={e => { e.stopPropagation(); setModal({ cancel: a }); }}>Cancel</button></>}</td></tr>;
-    })}</tbody></table></div> : <div className="empty"><div><I e="📅" size={34} /></div>{day ? "No visits on this day." : "No visits to show here."}</div>)}
-    {dayVacc.length > 0 && <div className="ow-dayp" style={{ marginTop: 12 }}><h3>Vaccines on this day</h3>{dayVacc.map((x, i) => <div className="ow-evrow" key={i}><span className={`ow-ev ${KIND[x.kind][1]}`}><i className="ow-dot" />{KIND[x.kind][0]}</span><div><b>{x.text}</b>{x.sub && <small>{x.sub}</small>}</div>{(x.kind === "due" || x.kind === "over") && <button className="btn sm" onClick={() => setModal({ book: true, start: { petId: x.vacc.petId, reason: x.vacc.vaccine === "Deworming" ? "Deworming" : "Vaccination" } })}>Book a visit</button>}</div>)}</div>}
+    
+    <div className="ap-split">
+      <MiniCalendar ev={ev} day={day} setDay={setDay} />
+      <div style={{ minWidth: 0 }}>
+        {!pets.length && (
+          <div className="ow-note info" style={{ marginBottom: 12 }}>
+            💡 <b>Notice:</b> You haven’t added a pet yet. Please go to <b>My Pets</b> to add your pet, or you can view the clinic calendar and schedules below.
+          </div>
+        )}
+        {day && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
+          <h3 style={{ margin: 0, flex: "1 1 auto" }}>{dayNice}{day === TODAY ? " (today)" : ""}</h3>
+          {day >= TODAY && !hol && <button className="btn sm" disabled={!pets.length} onClick={() => setModal({ book: true, start: { petId: pet || "", reason: "", date: day } })}>+ Book on this day</button>}
+          <button className="btn ghost sm" onClick={() => setDay("")}>Show all</button>
+        </div>}
+        {hol && <p className="ow-note">Holiday: {hol}. The clinic is closed, so visits can’t be booked on this day.</p>}
+        {list.length > 0 && <p className="ow-hint">Click any visit to view full clinical details. Open visits can be rescheduled or cancelled.</p>}
+        {(list.length ? <div className="tw"><table><thead><tr><th>Date</th><th>Time</th><th>Pet</th><th>Veterinarian</th><th>Reason</th><th>Status</th><th /></tr></thead><tbody>{list.map(a => {
+          const p = db.pets.find(x => x.id === a.petId) || {}, open = OPEN.includes(a.status) && a.date >= TODAY;
+          return <tr key={a.id} className="vh-r" tabIndex={0} style={{ cursor: "pointer" }} title="Click to see details" onClick={() => setModal({ view: a })} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModal({ view: a }); } }}><td>{a.date}</td><td>{fmt12(a.time)}{a.service && SERVICES[a.service] && <small className="ow-sub">to {fmt12(addMin(a.time, durOf(a)))}</small>}</td><td><span className="who"><span className="av"><I e={ICON[p.species]} size={16} /></span>{p.name}</span></td><td>{(VETS.find(v => v[0] === a.vetId) || [])[1] || "—"}</td>
+            <td>{a.reason}{a.service && SERVICES[a.service] && <small className="ow-sub">{SERVICES[a.service].label} · {durText(durOf(a))}</small>}{a.notes && <small className="ow-sub">Note: {a.notes}</small>}{a.cancelReason && <small className="ow-sub">Cancelled: {a.cancelReason}</small>}</td>
+            <td><Badge v={a.status} /><small className="ow-sub">{STATUS_NOTE[a.status]}</small></td>
+            <td className="act">{open && <><button className="btn ghost sm" onClick={e => { e.stopPropagation(); setModal({ book: true, editing: a }); }}>Edit</button> <button className="btn danger sm" onClick={e => { e.stopPropagation(); setModal({ cancel: a }); }}>Cancel</button></>}</td></tr>;
+        })}</tbody></table></div> : <div className="empty"><div><I e="📅" size={34} /></div>{day ? "No visits on this day." : "No visits to show here."}</div>)}
+        {dayVacc.length > 0 && <div className="ow-dayp" style={{ marginTop: 12 }}><h3>Vaccines on this day</h3>{dayVacc.map((x, i) => <div className="ow-evrow" key={i}><span className={`ow-ev ${KIND[x.kind][1]}`}><i className="ow-dot" />{KIND[x.kind][0]}</span><div><b>{x.text}</b>{x.sub && <small>{x.sub}</small>}</div>{(x.kind === "due" || x.kind === "over") && <button className="btn sm" disabled={!pets.length} onClick={() => setModal({ book: true, start: { petId: x.vacc.petId, reason: x.vacc.vaccine === "Deworming" ? "Deworming" : "Vaccination" } })}>Book a visit</button>}</div>)}</div>}
+      </div>
     </div>
-    </div>}
     {modal && modal.book && <BookForm db={db} setDb={setDb} me={me} say={say} editing={modal.editing} start={modal.start} onClose={() => setModal(null)} />}
     {modal && modal.view && <ApptDetails a={modal.view} db={db} note={STATUS_NOTE[modal.view.status]} onClose={() => setModal(null)} onEdit={() => setModal({ book: true, editing: modal.view })} onCancel={() => setModal({ cancel: modal.view })} />}
     {modal && modal.cancel && <CancelDialog a={modal.cancel} db={db} setDb={setDb} me={me} say={say} onClose={() => setModal(null)} />}

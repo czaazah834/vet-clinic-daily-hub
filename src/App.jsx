@@ -37,16 +37,35 @@ export default function App() {
       .then(r => r.json())
       .then(res => {
         if (res.success && res.data) {
-          setDb(p => ({
-            ...p,
-            owners: res.data.owners?.length ? res.data.owners : p.owners,
-            pets: res.data.pets?.length ? res.data.pets : p.pets,
-            appts: res.data.appts?.length ? res.data.appts : p.appts,
-            vaccs: res.data.vaccs?.length ? res.data.vaccs : p.vaccs,
-            consults: res.data.consults?.length ? res.data.consults : p.consults,
-            petRequests: res.data.petRequests?.length ? res.data.petRequests : p.petRequests,
-            log: res.data.log?.length ? res.data.log : p.log
-          }));
+          setDb(p => {
+            const remotePets = res.data.pets || [];
+            const mergedPets = [
+              ...remotePets,
+              ...(p.pets || []).filter(localP => !remotePets.some(r => r.id === localP.id))
+            ];
+            const remoteVaccs = res.data.vaccs || [];
+            const mergedVaccs = [
+              ...remoteVaccs,
+              ...(p.vacc || p.vaccs || []).filter(localV => !remoteVaccs.some(r => r.id === localV.id))
+            ];
+            const remoteAppts = res.data.appts || [];
+            const mergedAppts = [
+              ...remoteAppts,
+              ...(p.appts || []).filter(localA => !remoteAppts.some(r => r.id === localA.id))
+            ];
+            return {
+              ...p,
+              owners: res.data.owners?.length ? res.data.owners : p.owners,
+              pets: mergedPets.length ? mergedPets : p.pets,
+              appts: mergedAppts.length ? mergedAppts : p.appts,
+              vacc: mergedVaccs.length ? mergedVaccs : (p.vacc || []),
+              vaccs: mergedVaccs.length ? mergedVaccs : (p.vaccs || []),
+              records: res.data.consults?.length ? res.data.consults : (p.records || []),
+              consults: res.data.consults?.length ? res.data.consults : (p.consults || []),
+              petRequests: res.data.petRequests !== undefined ? res.data.petRequests : (p.petRequests || []),
+              log: res.data.log?.length ? res.data.log : p.log
+            };
+          });
         }
       })
       .catch(() => {});

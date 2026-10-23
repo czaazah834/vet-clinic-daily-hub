@@ -66,7 +66,7 @@ clinicRouter.get("/state", async (req, res) => {
       speciesOther: p.species_other || "",
       breed: p.breed,
       sex: p.sex,
-      birth: p.birth ? String(p.birth).slice(0, 10) : "",
+      birth: p.birth ? new Date(p.birth).toISOString().slice(0, 10) : "",
       weight: parseFloat(p.weight),
       color: p.color || "",
       neutered: p.neutered || "Not sure",
@@ -307,6 +307,332 @@ clinicRouter.post("/owners", async (req, res) => {
 });
 
 /* 3. PETS CRUD & WEIGHT LOGGING */
+clinicRouter.post("/owner/pets", async (req, res) => {
+  const {
+    ownerId, name, species, speciesOther, breed, sex,
+    birth, weight, color, neutered, dentalOcclusion, notes, photo
+  } = req.body;
+
+  let effectiveOwnerId = ownerId;
+  const token = req.cookies?.pawcare_session || (req.headers.authorization || "").replace("Bearer ", "");
+  if (!effectiveOwnerId && token) {
+    try {
+      const sRes = await query(
+        `SELECT u.owner_id FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
+        [token]
+      );
+      if (sRes.rows.length && sRes.rows[0].owner_id) {
+        effectiveOwnerId = sRes.rows[0].owner_id;
+      }
+    } catch (_) {}
+  }
+
+  if (!effectiveOwnerId) {
+    try {
+      const oRes = await query(`SELECT id FROM owners ORDER BY created_at DESC LIMIT 1`);
+      if (oRes.rows.length) effectiveOwnerId = oRes.rows[0].id;
+    } catch (_) {}
+  }
+
+  const petId = "p_" + Math.random().toString(36).slice(2, 8);
+  const cardId = "VACC-" + new Date().getFullYear() + "-" + Math.floor(1000 + Math.random() * 9000);
+  const today = new Date().toISOString().slice(0, 10);
+  const addDays = (dStr, days) => {
+    const d = new Date(dStr);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const sp = (species || "Canine").toLowerCase();
+  const isDog = sp.includes("dog") || sp.includes("canine");
+  const isCat = sp.includes("cat") || sp.includes("feline");
+  const isRabbit = sp.includes("rabbit") || sp.includes("lagomorph");
+  const isRodent = sp.includes("rodent") || sp.includes("hamster") || sp.includes("guinea");
+  const isAvian = sp.includes("bird") || sp.includes("avian");
+
+  try {
+    const { pet, vaccs } = await withTransaction(async (client) => {
+      // 1. Insert Pet into PostgreSQL Masterlist
+      const insPet = await client.query(
+        `INSERT INTO pets (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, vaccination_card_id, notes, photo)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         RETURNING *`,
+        [
+          petId,
+          effectiveOwnerId,
+          name,
+          species || "Canine (Dog)",
+          speciesOther || "",
+          breed || "Mixed Breed",
+          sex || "Male",
+          birth || today,
+          parseFloat(weight) || 5.0,
+          color || "",
+          neutered || "Not sure",
+          cardId,
+          notes || "",
+          photo || ""
+        ]
+      );
+
+      // 2. Insert Initial Weight
+      await client.query(
+        `INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1, $2, $3, $4)`,
+        [petId, birth || today, parseFloat(weight) || 5.0, "owner"]
+      );
+
+      // 3. Seed Core Vaccination Protocols based on VCMS v2.0
+      const seeded = [];
+      if (isDog) {
+        // DHPP 5-in-1
+        const v1 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "DHPP (5-in-1 Core)",
+          brand: "Nobivac DHPP",
+          batch: "AUTO-DHPP-01",
+          date: today,
+          next_due: addDays(today, 21),
+          dose_no: 1,
+          dose_of: 3,
+          done: false,
+          automated: true,
+          protocol_type: "Core Canine Protocol",
+          recorded_by: "System Automation"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(v1)
+        );
+        seeded.push(v1);
+
+        // Anti-Rabies (Mandatory Core RA 9482)
+        const v2 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "Anti-Rabies (1-Year Core)",
+          brand: "Defensor 3",
+          batch: "AUTO-RAB-01",
+          date: today,
+          next_due: addDays(today, 30),
+          dose_no: 1,
+          dose_of: 1,
+          done: false,
+          automated: true,
+          protocol_type: "Core Rabies Protocol",
+          recorded_by: "System Automation"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(v2)
+        );
+        seeded.push(v2);
+
+        // Broad-Spectrum Deworming
+        const v3 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "Broad-Spectrum Deworming",
+          brand: "Canex Multi-Spectrum",
+          batch: "AUTO-DEW-01",
+          date: today,
+          next_due: addDays(today, 14),
+          dose_no: 1,
+          dose_of: 4,
+          done: false,
+          automated: true,
+          protocol_type: "Parasiticide Protocol",
+          recorded_by: "System Automation"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(v3)
+        );
+        seeded.push(v3);
+      } else if (isCat) {
+        // FVRCP 4-in-1
+        const v1 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "FVRCP (4-in-1 Core)",
+          brand: "Fel-O-Vax 4",
+          batch: "AUTO-FVR-01",
+          date: today,
+          next_due: addDays(today, 28),
+          dose_no: 1,
+          dose_of: 3,
+          done: false,
+          automated: true,
+          protocol_type: "Core Feline Protocol",
+          recorded_by: "System Automation"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(v1)
+        );
+        seeded.push(v1);
+
+        // Feline Rabies
+        const v2 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "Anti-Rabies (Feline Formulation)",
+          brand: "Defensor 3",
+          batch: "AUTO-RABF-01",
+          date: today,
+          next_due: addDays(today, 30),
+          dose_no: 1,
+          dose_of: 1,
+          done: false,
+          automated: true,
+          protocol_type: "Core Rabies Protocol",
+          recorded_by: "System Automation"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(v2)
+        );
+        seeded.push(v2);
+      } else if (isRabbit) {
+        const v1 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "RHDV1 / RHDV2 Core Vaccine",
+          brand: "Filavac VHD",
+          batch: "AUTO-RHD-01",
+          date: today,
+          next_due: addDays(today, 30),
+          dose_no: 1,
+          dose_of: 1,
+          done: false,
+          automated: true,
+          protocol_type: "Core Lagomorph Protocol",
+          recorded_by: "System Automation"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(v1)
+        );
+        seeded.push(v1);
+      } else if (isRodent) {
+        const v1 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "Dental & Occlusion Clinical Exam",
+          brand: "VCMS Protocol",
+          batch: "AUTO-DEN-01",
+          date: today,
+          next_due: addDays(today, 180),
+          dose_no: 1,
+          dose_of: 2,
+          done: false,
+          automated: true,
+          protocol_type: "Rodent Dental Protocol",
+          recorded_by: "System Automation"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(v1)
+        );
+        seeded.push(v1);
+      } else if (isAvian) {
+        const v1 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "Diagnostic Fecal Float Screening",
+          brand: "Microscopic Screen",
+          batch: "AUTO-FLT-01",
+          date: today,
+          next_due: addDays(today, 180),
+          dose_no: 1,
+          dose_of: 1,
+          done: false,
+          automated: true,
+          protocol_type: "Avian Diagnostic Protocol",
+          recorded_by: "System Automation"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(v1)
+        );
+        seeded.push(v1);
+      }
+
+      // 4. Record in pet_requests with Approved status for audit and front desk visibility
+      const reqId = "req_" + Math.random().toString(36).slice(2, 8);
+      await client.query(
+        `INSERT INTO pet_requests (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, notes, status, approved_at, approved_by, pet_id, card_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'Approved', CURRENT_DATE, 'Owner Instant Online Registration', $13, $14)`,
+        [reqId, effectiveOwnerId, name, species, speciesOther || "", breed || "", sex, birth || today, parseFloat(weight) || 5.0, color || "", neutered || "", notes || "", petId, cardId]
+      );
+
+      return { pet: insPet.rows[0], vaccs: seeded };
+    });
+
+    await recordAudit("Owner", "owner", `Registered new patient ${name} (${species}) with digital card ${cardId}`);
+
+    res.json({
+      success: true,
+      pet: {
+        id: pet.id,
+        ownerId: pet.owner_id,
+        name: pet.name,
+        species: pet.species,
+        speciesOther: pet.species_other || "",
+        breed: pet.breed,
+        sex: pet.sex,
+        birth: pet.birth ? new Date(pet.birth).toISOString().slice(0, 10) : "",
+        weight: parseFloat(pet.weight),
+        color: pet.color || "",
+        neutered: pet.neutered || "Not sure",
+        allergies: pet.allergies || [],
+        vaccinationCardId: cardId,
+        notes: pet.notes || "",
+        photo: pet.photo || "",
+        dentalOcclusion: dentalOcclusion || "",
+        weights: [{ date: pet.birth ? String(pet.birth).slice(0, 10) : today, kg: parseFloat(pet.weight) }]
+      },
+      cardId,
+      vaccs: vaccs.map(v => ({
+        id: v.id,
+        petId: v.pet_id,
+        cardId: v.card_id,
+        vaccine: v.vaccine,
+        brand: v.brand,
+        batch: v.batch,
+        date: v.date,
+        nextDue: v.next_due,
+        doseNo: v.dose_no,
+        doseOf: v.dose_of,
+        done: v.done,
+        automated: v.automated,
+        protocolType: v.protocol_type,
+        notes: "",
+        recordedBy: v.recorded_by
+      }))
+    });
+  } catch (err) {
+    console.error("Owner pet registration error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 clinicRouter.post("/pets", async (req, res) => {
   const {
     id, ownerId, name, species, speciesOther, breed, sex,
