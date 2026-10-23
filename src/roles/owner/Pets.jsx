@@ -172,7 +172,7 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
   const over = V.filter(v => !v.done && v.nextDue && dueState(v.nextDue) === "Overdue").length;
   const soon = V.filter(v => !v.done && v.nextDue && dueState(v.nextDue) === "Due soon").length;
   const next = A.filter(a => ["Scheduled", "Confirmed", "Checked-in"].includes(a.status) && a.date >= TODAY).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
-  const rows = [["Kind", kind(p)], ["Breed", p.breed], ["Sex", p.sex], ["Age", p.birth ? petAge(p.birth) : ""], ["Birth date", p.birth], ["Weight", p.weight != null ? `${p.weight} kg` : ""], ["Spayed or neutered", p.neutered], ["Color", p.color]].filter(([, x]) => x);
+  const rows = [["Kind", kind(p)], ["Digital Card ID", p.vaccinationCardId], ["Breed", p.breed], ["Sex", p.sex], ["Age", p.birth ? petAge(p.birth) : ""], ["Birth date", p.birth], ["Weight", p.weight != null ? `${p.weight} kg` : ""], ["Spayed or neutered", p.neutered], ["Color", p.color]].filter(([, x]) => x);
   return (
     <Modal title={p.name} onClose={onClose}>
       <dl className="op-dl">{rows.map(([k, x]) => <div key={k}><dt>{k}</dt><dd>{x}</dd></div>)}</dl>

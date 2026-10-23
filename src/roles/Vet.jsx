@@ -1,4 +1,18 @@
 import { useState } from "react";
+import {
+  Stethoscope,
+  Clock,
+  Activity,
+  CheckCircle2,
+  Syringe,
+  Thermometer,
+  Scale,
+  AlertTriangle,
+  User,
+  Calendar,
+  FileText,
+  ChartColumn,
+} from "lucide-react";
 import { I, M, Stats, Hero, TODAY, plus, moveAppt, petName, ownerName, ICON, Badge, dueState } from "../lib.jsx";
 import SoapConsultationModal from "./SoapConsultationModal.jsx";
 import ClinicCalendar from "./ClinicCalendar.jsx";
@@ -32,7 +46,7 @@ function Dash({ db, setDb, me, go, say }) {
       <Hero
         title={`Clinical Desk · ${me.name}`}
         text={`You have ${waiting.length} checked-in patient(s) waiting in your queue today.`}
-        emoji="🩺🐶"
+        icons={["stethoscope", "dog"]}
       >
         <div className="row" style={{ flexWrap: "wrap", gap: "10px" }}>
           {waiting.length > 0 && (
@@ -51,11 +65,11 @@ function Dash({ db, setDb, me, go, say }) {
 
       <Stats
         items={[
-          ["🩺", queue.length, "Total Patients Today"],
-          ["⏳", waiting.length, "Waiting in Queue"],
-          ["🔬", inConsult.length, "In Consultation"],
-          ["✅", completed.length, "Completed Today"],
-          ["💉", due.length, "Vaccines Due Soon"],
+          ["stethoscope", queue.length, "Total Patients Today"],
+          ["clock", waiting.length, "Waiting in Queue"],
+          ["file", inConsult.length, "In Consultation"],
+          ["check", completed.length, "Completed Today"],
+          ["syringe", due.length, "Vaccines Due Soon"],
         ]}
       />
 
@@ -113,7 +127,7 @@ function Dash({ db, setDb, me, go, say }) {
                         <span style={{ fontWeight: "400", color: "#64748b", fontSize: "13px" }}>({p.breed || p.species} &bull; Owner: {o.name})</span>
                         {hasAllergy && (
                           <span style={{ fontSize: "11px", background: "#fef2f2", color: "#dc2626", padding: "2px 6px", borderRadius: "4px", fontWeight: "700" }}>
-                            ⚠ ALLERGIC: {p.allergies.join(", ")}
+                            ALLERGIC: {p.allergies.join(", ")}
                           </span>
                         )}
                         {iv?.triageLevel && iv.triageLevel !== "Routine" && (
@@ -123,9 +137,12 @@ function Dash({ db, setDb, me, go, say }) {
                             color: iv.triageLevel === "Emergency" ? "#991b1b" : "#92400e",
                             padding: "2px 7px",
                             borderRadius: "4px",
-                            fontWeight: "700"
+                            fontWeight: "700",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "3px"
                           }}>
-                            🚨 TRIAGE: {iv.triageLevel.toUpperCase()}
+                            <AlertTriangle size={12} /> TRIAGE: {iv.triageLevel.toUpperCase()}
                           </span>
                         )}
                       </div>
@@ -151,9 +168,12 @@ function Dash({ db, setDb, me, go, say }) {
                               : iv.tempAnalysis?.status === "high-fever" || iv.tempAnalysis?.status === "hypothermia"
                               ? "#991b1b"
                               : "#b45309",
-                            border: "1px solid rgba(0,0,0,0.06)"
+                            border: "1px solid rgba(0,0,0,0.06)",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px"
                           }}>
-                            🌡️ {iv.temp}°C &bull; {iv.tempAnalysis?.label || "Normal"}
+                            <Thermometer size={12} /> {iv.temp}°C &bull; {iv.tempAnalysis?.label || "Normal"}
                           </span>
 
                           {/* Weight badge */}
@@ -163,10 +183,13 @@ function Dash({ db, setDb, me, go, say }) {
                             fontWeight: 600,
                             background: iv.weightAnalysis?.status === "ideal" ? "#ecfdf5" : "#fffbeb",
                             color: iv.weightAnalysis?.status === "ideal" ? "#047857" : "#b45309",
-                            border: "1px solid rgba(0,0,0,0.06)"
+                            border: "1px solid rgba(0,0,0,0.06)",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px"
                           }}>
-                            ⚖️ {iv.weight} kg &bull; {iv.weightAnalysis?.label || "Normal"}
-                            {iv.weightDelta && ` (${iv.weightDelta})`}
+                            <Scale size={12} /> {iv.weight} kg &bull; {iv.weightAnalysis?.label || "Normal"}
+                            {iv.weightAnalysis?.trend && ` (${iv.weightAnalysis.trend})`}
                           </span>
 
                           {iv.triageNotes && (
@@ -236,12 +259,12 @@ export const vet = {
   portal: "Veterinarian Clinical Desk",
   Dash,
   menu: [
-    { k: "home", l: "Clinical Queue", i: "🩺", dash: 1, sub: "Live patient queue, SOAP consultation notes and EMR records." },
-    { k: "cal", l: "Doctor Schedule", i: "📅", Page: ClinicCalendar, sub: "Clinic appointment calendar and timetable." },
-    M("pets", "Patient EMR", "🐾", "pets", "Digital medical records, breed history, weight, and allergies."),
-    M("records", "SOAP Consultations", "📋", "records", "Record diagnoses, treatments, and prescriptions."),
-    M("vacc", "Vaccination Station", "💉", "vacc", "Administer vaccines and track calculated booster dates."),
-    M("owners", "Client Contacts", "👤", "owners", "Read-only access to pet owner contact information."),
-    { k: "reports", l: "Clinical Reports", i: "📊", rep: 1, sub: "Filter and print clinic consultation summaries." },
+    { k: "home", l: "Clinical Queue", i: "stethoscope", dash: 1, sub: "Live patient queue, SOAP consultation notes and EMR records." },
+    { k: "cal", l: "Doctor Schedule", i: "calendar", Page: ClinicCalendar, sub: "Clinic appointment calendar and timetable." },
+    M("pets", "Patient EMR", "paw", "pets", "Digital medical records, breed history, weight, and allergies."),
+    M("records", "SOAP Consultations", "file", "records", "Record diagnoses, treatments, and prescriptions."),
+    M("vacc", "Vaccination Station", "syringe", "vacc", "Administer vaccines and track calculated booster dates."),
+    M("owners", "Client Contacts", "user", "owners", "Read-only access to pet owner contact information."),
+    { k: "reports", l: "Clinical Reports", i: "chart", rep: 1, sub: "Filter and print clinic consultation summaries." },
   ],
 };

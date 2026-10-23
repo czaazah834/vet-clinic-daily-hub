@@ -157,7 +157,7 @@ function Dash({ db, setDb, me, go, say }) {
       <Hero
         title={`Administrator Console · ${me.name}`}
         text="Full clinic oversight: system-wide analytics, staff account provisioning, clinical workflows and security audit logs."
-        emoji="🏥🐾"
+        icons={["hospital", "shield"]}
       >
         <div className="row" style={{ flexWrap: "wrap", gap: "10px" }}>
           <button className="btn gold" onClick={() => setShowStaffModal(true)}>
@@ -177,12 +177,12 @@ function Dash({ db, setDb, me, go, say }) {
 
       <Stats
         items={[
-          ["👤", db.owners.length, "Registered Owners"],
-          ["🐾", db.pets.length, "Animal Patients"],
-          ["🔐", db.users.length, "User Accounts"],
-          ["📅", db.appts.filter(a => a.date === TODAY).length, "Today's Appointments"],
-          ["⚠️", db.vacc.filter(v => v.nextDue && !v.done && v.nextDue < TODAY).length, "Overdue Vaccines"],
-          ["📋", db.records.length, "Consultations on File"],
+          ["user", db.owners.length, "Registered Owners"],
+          ["paw", db.pets.length, "Animal Patients"],
+          ["shield", db.users.length, "User Accounts"],
+          ["calendar", db.appts.filter(a => a.date === TODAY).length, "Today's Appointments"],
+          ["alert", db.vacc.filter(v => v.nextDue && !v.done && v.nextDue < TODAY).length, "Overdue Vaccines"],
+          ["file", db.records.length, "Consultations on File"],
         ]}
       />
 
@@ -262,14 +262,14 @@ export const admin = {
   portal: "Clinic Administrator Console",
   Dash,
   menu: [
-    { k: "home", l: "Clinic Overview", i: "🏥", dash: 1, sub: "Clinic-wide analytics, audit trail, and staff provisioning." },
-    { k: "cal", l: "Master Calendar", i: "📅", Page: ClinicCalendar, sub: "Full clinic interactive schedule calendar." },
-    M("users", "Staff & User Accounts", "🔐", "users", "RBAC control: create and manage staff logins."),
-    M("owners", "Owners Masterlist", "👤", "owners", "Complete owner contact records."),
-    M("pets", "Patients Masterlist", "🐾", "pets", "All registered patient profiles."),
-    M("appts", "Appointments", "🗓️", "appts", "System-wide appointment bookings and tracking."),
-    M("vacc", "Vaccinations Hub", "💉", "vacc", "Vaccination records and compliance tracking."),
-    M("records", "Consultations", "📋", "records", "Electronic medical records and consultation history."),
-    { k: "reports", l: "Reports & Audits", i: "📊", rep: 1, sub: "Filter, audit, and print clinic summaries." },
+    { k: "home", l: "Clinic Overview", i: "hospital", dash: 1, sub: "Clinic-wide analytics, audit trail, and staff provisioning." },
+    { k: "cal", l: "Master Calendar", i: "calendar", Page: ClinicCalendar, sub: "Full clinic interactive schedule calendar." },
+    M("users", "Staff & User Accounts", "shield", "users", "RBAC control: create and manage staff logins."),
+    M("owners", "Owners Masterlist", "user", "owners", "Complete owner contact records."),
+    M("pets", "Patients Masterlist", "paw", "pets", "All registered patient profiles."),
+    M("appts", "Appointments", "calendar", "appts", "System-wide appointment bookings and tracking."),
+    M("vacc", "Vaccinations Hub", "syringe", "vacc", "Vaccination records and compliance tracking."),
+    M("records", "Consultations", "file", "records", "Electronic medical records and consultation history."),
+    { k: "reports", l: "Reports & Audits", i: "chart", rep: 1, sub: "Filter, audit, and print clinic summaries." },
   ],
 };

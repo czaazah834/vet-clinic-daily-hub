@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { TODAY, uid, INTERVAL, petName, ownerName, addLog, ICON } from "../lib.jsx";
+import { Stethoscope, Activity, AlertTriangle, X } from "lucide-react";
+import { TODAY, uid, INTERVAL, petName, ownerName, addLog, ICON, I } from "../lib.jsx";
 
 export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClose, onSaved }) {
   const [tab, setTab] = useState("soap"); // 'soap' | 'emr'
@@ -144,20 +145,20 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px", marginBottom: "14px" }}>
           <div>
             <h3 style={{ margin: "0 0 4px", fontSize: "20px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <span>{ICON[pet.species] || "🐾"}</span>
+              <span style={{ color: "var(--navy)" }}><I e={pet.species || "paw"} size={22} /></span>
               <span>SOAP Consultation &amp; EMR: <b>{pet.name}</b></span>
             </h3>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
               <b>Owner:</b> {owner.name} ({owner.phone}) &bull; <b>Breed:</b> {pet.breed || pet.species} &bull; <b>Sex:</b> {pet.sex}
             </p>
           </div>
-          <button className="btn ghost sm" onClick={onClose}>✕</button>
+          <button className="btn ghost sm" onClick={onClose}><X size={16} /></button>
         </div>
 
         {/* Allergy Alert Banner if any */}
         {(pet.allergies && pet.allergies.length > 0) ? (
           <div style={{ background: "#fef2f2", border: "1px solid #fecaca", padding: "10px 14px", borderRadius: "10px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "20px" }}>⚠️</span>
+            <AlertTriangle size={20} color="#dc2626" />
             <div>
               <b style={{ color: "#991b1b", fontSize: "13.5px" }}>CLINICAL ALLERGY ALERT:</b>
               <span style={{ color: "#b91c1c", fontSize: "13px", marginLeft: "6px" }}>{pet.allergies.join(", ")}</span>
@@ -233,7 +234,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                 fontSize: "13px"
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                  <b style={{ color: "var(--navy)" }}>🛎️ Front Desk Intake Vitals</b>
+                  <b style={{ color: "var(--navy)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Activity size={16} /> Front Desk Intake Vitals
+                  </b>
                   {iv.triageLevel && (
                     <span style={{
                       fontWeight: 700,
@@ -250,7 +253,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                 <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", color: "#334155" }}>
                   <span><b>Temperature:</b> {iv.temp}°C ({iv.tempAnalysis?.label || "Normal"})</span>
                   <span><b>Weight:</b> {iv.weight} kg ({iv.weightAnalysis?.label || "Ideal"})</span>
-                  {iv.weightDelta && <span><b>Change:</b> {iv.weightDelta}</span>}
+                  {iv.weightAnalysis?.trend && <span><b>Change:</b> {iv.weightAnalysis.trend}</span>}
                   {iv.recordedAt && <span style={{ color: "#64748b" }}>Logged at: {iv.recordedAt}</span>}
                 </div>
                 {iv.triageNotes && (

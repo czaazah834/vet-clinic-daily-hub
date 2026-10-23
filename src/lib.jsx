@@ -1,7 +1,80 @@
 import { useState } from "react";
-import { House, User, PawPrint, CalendarDays, Syringe, ClipboardList, ChartColumn, ShieldCheck, Hospital, Stethoscope, ConciergeBell, Dog, Cat, Rabbit, Bird, TriangleAlert, CircleCheck, CalendarClock, Phone } from "lucide-react";
-const MAP = { "🏠": House, "👤": User, "🐾": PawPrint, "📅": CalendarDays, "💉": Syringe, "📋": ClipboardList, "📊": ChartColumn, "🔐": ShieldCheck, "🏥": Hospital, "🩺": Stethoscope, "🛎": ConciergeBell, "🐶": Dog, "🐱": Cat, "🐰": Rabbit, "🐦": Bird, "⚠": TriangleAlert, "✅": CircleCheck, "🗓": CalendarClock, "📞": Phone };
-export function I({ e, size = 20 }) { const C = MAP[String(e || "").replace(/\uFE0F/g, "")] || PawPrint; return <C size={size} strokeWidth={2} aria-hidden="true" />; }
+import {
+  House,
+  User,
+  PawPrint,
+  CalendarDays,
+  Syringe,
+  ClipboardList,
+  ChartColumn,
+  ShieldCheck,
+  Hospital,
+  Stethoscope,
+  ConciergeBell,
+  Dog,
+  Cat,
+  Rabbit,
+  Bird,
+  TriangleAlert,
+  CircleCheck,
+  CalendarClock,
+  Phone,
+  Thermometer,
+  Scale,
+  Clock,
+  Sparkles,
+  Flame,
+} from "lucide-react";
+
+const MAP = {
+  // Lucide icon components directly supported
+  home: House,
+  user: User,
+  paw: PawPrint,
+  calendar: CalendarDays,
+  cal: CalendarDays,
+  syringe: Syringe,
+  vacc: Syringe,
+  file: ClipboardList,
+  records: ClipboardList,
+  chart: ChartColumn,
+  reports: ChartColumn,
+  shield: ShieldCheck,
+  admin: ShieldCheck,
+  hospital: Hospital,
+  clinic: Hospital,
+  stethoscope: Stethoscope,
+  vet: Stethoscope,
+  bell: ConciergeBell,
+  assistant: ConciergeBell,
+  dog: Dog,
+  cat: Cat,
+  rabbit: Rabbit,
+  bird: Bird,
+  alert: TriangleAlert,
+  check: CircleCheck,
+  clock: Clock,
+  phone: Phone,
+  thermometer: Thermometer,
+  scale: Scale,
+  sparkles: Sparkles,
+  flame: Flame,
+  // Emoji string keys backward compatibility (maps to real Lucide SVG)
+  "🏠": House, "👤": User, "🐾": PawPrint, "📅": CalendarDays, "💉": Syringe,
+  "📋": ClipboardList, "📊": ChartColumn, "🔐": ShieldCheck, "🏥": Hospital,
+  "🩺": Stethoscope, "🛎": ConciergeBell, "🐶": Dog, "🐱": Cat, "🐰": Rabbit,
+  "🐦": Bird, "⚠": TriangleAlert, "✅": CircleCheck, "🗓": CalendarClock, "📞": Phone,
+};
+
+export function I({ e, size = 20, color }) {
+  if (typeof e === "function") {
+    const Component = e;
+    return <Component size={size} color={color} strokeWidth={2} aria-hidden="true" />;
+  }
+  const cleanKey = String(e || "").replace(/\uFE0F/g, "").toLowerCase();
+  const C = MAP[cleanKey] || MAP[String(e || "").replace(/\uFE0F/g, "")] || PawPrint;
+  return <C size={size} color={color} strokeWidth={2} aria-hidden="true" />;
+}
 /* ---------- helpers & mock data (in memory only, no backend) ---------- */
 export const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 export const plus = n => { const d = new Date(); d.setDate(d.getDate() + n); return ymd(d); };
@@ -16,6 +89,24 @@ export const SEED = {
   appts: [{ id: "a1", petId: "p1", vetId: "v1", date: TODAY, time: "09:00", reason: "Annual check-up", status: "Confirmed", billingStatus: "Unbilled", amount: 650 }, { id: "a2", petId: "p3", vetId: "v1", date: TODAY, time: "10:30", reason: "Rabies booster", status: "Scheduled", billingStatus: "Unbilled", amount: 500 }, { id: "a3", petId: "p2", vetId: "v2", date: plus(2), time: "14:00", reason: "Deworming", status: "Scheduled", billingStatus: "Unbilled", amount: 350 }],
   vacc: [{ id: "v1", petId: "p1", vaccine: "Anti-rabies", brand: "Defensor 3", batch: "DEF-2025-09", date: plus(-350), nextDue: plus(15), notes: "" }, { id: "v2", petId: "p3", vaccine: "5-in-1", brand: "Vanguard Plus 5", batch: "VAN-2025-11", date: plus(-380), nextDue: plus(-15), notes: "" }],
   records: [{ id: "r1", petId: "p1", vetId: "v1", date: plus(-30), symptoms: "Excessive itching and ear scratching for 3 days", objective: "Temp: 38.6°C, Wt: 14.5 kg. Mild ventral erythema.", diagnosis: "Mild skin allergy", treatment: "Medicated hypoallergenic shampoo twice weekly", prescription: "Cetirizine 5 mg daily for 7 days" }],
+  petRequests: [
+    {
+      id: "req1",
+      ownerId: "o1",
+      name: "Luna",
+      species: "Dog",
+      breed: "Golden Retriever",
+      sex: "Female",
+      birth: plus(-90), // ~3-month-old puppy
+      weight: 8.5,
+      neutered: "No",
+      color: "Golden Cream",
+      notes: "Newly adopted puppy. Needs initial vaccine schedule and digital card.",
+      requestedAt: TODAY,
+      status: "Pending",
+      declineReason: "",
+    },
+  ],
 };
 
 /* ---------- validation ---------- */
@@ -145,7 +236,17 @@ export const M=(k,l,i,ent,sub)=>({k,l,i,ent,sub:sub||E[ent].sub});
 export const setAppt=(setDb,id,status)=>setDb(p=>({...p,appts:p.appts.map(a=>a.id===id?{...a,status}:a)}));
 export const by=(arr,k)=>arr.reduce((m,x)=>(m[x[k]]=(m[x[k]]||0)+1,m),{});
 export function Stats({items}){return <div className="stats">{items.map(([i,n,l])=><div className="stat" key={l}><span className="si"><I e={i} size={22} /></span><b>{n}</b><span>{l}</span></div>)}</div>}
-export function Hero({title,text,children,emoji}){return <div className="hero"><div><h2>{title}</h2><p>{text}</p>{children}</div><div className="pets" aria-hidden="true">{Array.from(emoji.replace(/\uFE0F/g,"")).map((c,k)=><I key={k} e={c} size={40} />)}</div></div>}
+export function Hero({title,text,children,emoji,icons}){
+  const list = icons || (emoji ? Array.from(String(emoji).replace(/\uFE0F/g,"")) : ["dog", "cat"]);
+  return (
+    <div className="hero">
+      <div><h2>{title}</h2><p>{text}</p>{children}</div>
+      <div className="pets" aria-hidden="true" style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+        {list.map((c,k)=><I key={k} e={c} size={36} />)}
+      </div>
+    </div>
+  );
+}
 
 SEED.log = [];
 export const INTERVAL = { "Anti-rabies": 365, "5-in-1": 365, "Kennel cough": 365, "Feline 4-in-1": 365, "Deworming": 90 };

@@ -1,15 +1,33 @@
 import { useState } from "react";
-import { M, Stats, Hero, TODAY, plus, moveAppt, petName, ownerName, Badge, dueState, ICON } from "../lib.jsx";
+import {
+  Calendar,
+  Clock,
+  User,
+  Stethoscope,
+  Syringe,
+  AlertTriangle,
+  PawPrint,
+  ConciergeBell,
+  Thermometer,
+  Scale,
+  Sparkles,
+} from "lucide-react";
+import { M, Stats, Hero, TODAY, plus, moveAppt, petName, ownerName, Badge, dueState, ICON, I } from "../lib.jsx";
 import InClinicRegistration from "./InClinicRegistration.jsx";
 import BillingModal from "./BillingModal.jsx";
 import ClinicCalendar from "./ClinicCalendar.jsx";
 import CheckInModal from "./CheckInModal.jsx";
+import PetApprovalModal from "./PetApprovalModal.jsx";
+import PetRequestsPage from "./PetRequestsPage.jsx";
+import AssistantVaccinationManager from "./AssistantVaccinationManager.jsx";
 
 function Dash({ db, setDb, me, go, say }) {
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [billingAppt, setBillingAppt] = useState(null);
   const [checkInAppt, setCheckInAppt] = useState(null);
+  const [reviewReq, setReviewReq] = useState(null);
 
+  const pendingReqs = (db.petRequests || []).filter(r => r.status === "Pending");
   const q = db.appts.filter(a => a.date === TODAY && a.status !== "Cancelled").sort((a, b) => a.time.localeCompare(b.time));
   const waiting = q.filter(a => a.status === "Checked-in");
   const inConsult = q.filter(a => a.status === "In consultation");
@@ -21,11 +39,19 @@ function Dash({ db, setDb, me, go, say }) {
       <Hero
         title="Front Desk &amp; Clinic Operations"
         text="Register walk-in owners and patients, manage arrival check-ins, oversee appointments and handle billing."
-        emoji="🛎️🐱"
+        icons={["bell", "cat"]}
       >
         <div className="row" style={{ flexWrap: "wrap", gap: "10px" }}>
           <button className="btn gold" onClick={() => setShowWalkIn(true)}>
             + Register Walk-in (Owner &amp; Pet)
+          </button>
+          <button
+            className={`btn ${pendingReqs.length ? "gold" : "ghost"}`}
+            onClick={() => go("pet-requests")}
+            style={{ display: "flex", alignItems: "center", gap: "6px" }}
+          >
+            <PawPrint size={16} />
+            <b>Online Pet Requests ({pendingReqs.length})</b>
           </button>
           <button className="btn" onClick={() => go("appts")}>
             + Book Appointment
@@ -33,18 +59,102 @@ function Dash({ db, setDb, me, go, say }) {
           <button className="btn ghost" onClick={() => go("cal")}>
             Interactive Calendar
           </button>
+          <button className="btn ghost" onClick={() => go("vacc")}>
+            Vaccination Cards
+          </button>
         </div>
       </Hero>
 
       <Stats
         items={[
-          ["📅", q.length, "Total Visits Today"],
-          ["🛎️", waiting.length, "Checked-in (In Queue)"],
-          ["🩺", inConsult.length, "In Consultation"],
-          ["✅", completed.length, "Completed Visits"],
-          ["📞", calls.length, "Vaccine Reminders Due"],
+          ["calendar", q.length, "Total Visits Today"],
+          ["bell", waiting.length, "Checked-in (In Queue)"],
+          ["stethoscope", inConsult.length, "In Consultation"],
+          ["paw", pendingReqs.length, "Online Pet Requests"],
+          ["phone", calls.length, "Vaccine Reminders Due"],
         ]}
       />
+
+      {/* Pending Online Pet Registrations Banner */}
+      {pendingReqs.length > 0 && (
+        <section className="card" style={{ marginTop: "16px", border: "2px solid #86efac", background: "#f0fdf4" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ background: "#dcfce7", padding: "8px", borderRadius: "10px", color: "#166534" }}>
+                <Sparkles size={24} />
+              </div>
+              <div>
+                <h3 style={{ margin: "0 0 2px", color: "#166534", fontSize: "17px" }}>
+                  Pending Online Pet Registrations ({pendingReqs.length})
+                </h3>
+                <span style={{ fontSize: "12.5px", color: "#15803d" }}>
+                  Owners registered new pets online. Front desk approval will automatically issue their digital vaccination card and calculate booster schedules.
+                </span>
+              </div>
+            </div>
+            <button
+              className="btn gold sm"
+              onClick={() => setReviewReq(pendingReqs[0])}
+              style={{ fontWeight: 700 }}
+            >
+              Review &amp; Issue Cards ({pendingReqs.length})
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gap: "8px" }}>
+            {pendingReqs.map(r => {
+              const o = db.owners.find(x => x.id === r.ownerId) || {};
+              return (
+                <div
+                  key={r.id}
+                  style={{
+                    background: "#fff",
+                    padding: "12px 16px",
+                    borderRadius: "10px",
+                    border: "1px solid #bbf7d0",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "10px"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <span style={{ fontSize: "24px" }}><I e={r.species || "paw"} size={24} /></span>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <b style={{ fontSize: "15px", color: "var(--navy)" }}>{r.name}</b>
+                        <span style={{ fontSize: "12px", background: "#f1f5f9", padding: "2px 8px", borderRadius: "6px", color: "#475569" }}>
+                          {r.species} &bull; {r.breed || "Mixed"} &bull; {r.sex}
+                        </span>
+                        {r.weight && (
+                          <span style={{ fontSize: "12px", color: "#64748b" }}>
+                            {r.weight} kg
+                          </span>
+                        )}
+                      </div>
+                      <small style={{ color: "#64748b", display: "block", marginTop: "2px" }}>
+                        Owner: <b>{o.name || "Owner"}</b> ({o.phone || o.email || "No contact"}) &bull; Requested on: <b>{r.requestedAt || TODAY}</b>
+                        {r.notes ? ` &bull; "${r.notes}"` : ""}
+                      </small>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      className="btn sm gold"
+                      onClick={() => setReviewReq(r)}
+                      title="Review details, automated vaccine protocol, and issue digital vaccination card"
+                    >
+                      Review &amp; Issue Vaccine Card
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="two" style={{ marginTop: "16px" }}>
         {/* Today's Queue & Arrival Check-in */}
@@ -76,9 +186,12 @@ function Dash({ db, setDb, me, go, say }) {
                               fontWeight: 700,
                               fontSize: "11px",
                               padding: "2px 6px",
-                              borderRadius: "4px"
+                              borderRadius: "4px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "3px"
                             }}>
-                              🚨 {iv.triageLevel}
+                              <AlertTriangle size={12} /> {iv.triageLevel}
                             </span>
                           )}
                         </div>
@@ -92,9 +205,12 @@ function Dash({ db, setDb, me, go, say }) {
                               padding: "2px 6px",
                               borderRadius: "4px",
                               fontWeight: 600,
-                              border: "1px solid rgba(0,0,0,0.06)"
+                              border: "1px solid rgba(0,0,0,0.06)",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px"
                             }}>
-                              🌡️ {iv.temp}°C · {iv.tempAnalysis?.label || "Normal"}
+                              <Thermometer size={12} /> {iv.temp}°C · {iv.tempAnalysis?.label || "Normal"}
                             </span>
                             <span style={{
                               background: iv.weightAnalysis?.status === "ideal" ? "#ecfdf5" : "#fffbeb",
@@ -102,13 +218,16 @@ function Dash({ db, setDb, me, go, say }) {
                               padding: "2px 6px",
                               borderRadius: "4px",
                               fontWeight: 600,
-                              border: "1px solid rgba(0,0,0,0.06)"
+                              border: "1px solid rgba(0,0,0,0.06)",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px"
                             }}>
-                              ⚖️ {iv.weight} kg · {iv.weightAnalysis?.label || "Normal"}
+                              <Scale size={12} /> {iv.weight} kg · {iv.weightAnalysis?.label || "Normal"}
                             </span>
-                            {iv.weightDelta && (
+                            {iv.weightAnalysis?.trend && (
                               <span style={{ background: "#f8fafc", color: "#475569", padding: "2px 6px", borderRadius: "4px" }}>
-                                {iv.weightDelta}
+                                {iv.weightAnalysis.trend}
                               </span>
                             )}
                           </div>
@@ -244,6 +363,24 @@ function Dash({ db, setDb, me, go, say }) {
           }}
         />
       )}
+
+      {reviewReq && (
+        <PetApprovalModal
+          request={reviewReq}
+          db={db}
+          setDb={setDb}
+          me={me}
+          onClose={() => setReviewReq(null)}
+          onProcessed={(action, newPet, cardId) => {
+            setReviewReq(null);
+            if (action === "approved") {
+              say(`Pet approved! Digital Vaccination Card #${cardId} automatically created.`);
+            } else {
+              say("Pet registration request declined.");
+            }
+          }}
+        />
+      )}
     </>
   );
 }
@@ -252,12 +389,13 @@ export const assistant = {
   portal: "Front Desk & Operations",
   Dash,
   menu: [
-    { k: "home", l: "Front Desk", i: "🛎️", dash: 1, sub: "Today’s arrival queue, walk-in registration, and reminders." },
-    { k: "cal", l: "Clinic Calendar", i: "📅", Page: ClinicCalendar, sub: "Interactive appointment scheduling and slot management." },
-    M("owners", "Client Masterlist", "👤", "owners", "Registered pet owners and primary contact details."),
-    M("pets", "Patient Masterlist", "🐾", "pets", "All animal patients and profiles."),
-    M("appts", "Appointments", "🗓️", "appts", "Review, schedule, confirm, and update clinic appointments."),
-    M("vacc", "Vaccination Hub", "💉", "vacc", "Vaccination compliance and reminder schedules."),
-    M("records", "Consultations", "📋", "records", "Read-only view of veterinary consultation notes."),
+    { k: "home", l: "Front Desk", i: "bell", dash: 1, sub: "Today’s arrival queue, walk-in registration, and reminders." },
+    { k: "pet-requests", l: "Online Pet Requests", i: "paw", Page: PetRequestsPage, sub: "Review and approve online pet registrations with automated vaccination cards." },
+    { k: "cal", l: "Clinic Calendar", i: "calendar", Page: ClinicCalendar, sub: "Interactive appointment scheduling and slot management." },
+    M("owners", "Client Masterlist", "user", "owners", "Registered pet owners and primary contact details."),
+    M("pets", "Patient Masterlist", "paw", "pets", "All animal patients and profiles."),
+    M("appts", "Appointments", "calendar", "appts", "Review, schedule, confirm, and update clinic appointments."),
+    { k: "vacc", l: "Vaccination Cards", i: "syringe", Page: AssistantVaccinationManager, sub: "Manage official pet vaccination cards, log doctor-administered shots, and track boosters." },
+    M("records", "Consultations", "file", "records", "Read-only view of veterinary consultation notes."),
   ],
 };

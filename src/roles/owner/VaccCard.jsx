@@ -28,6 +28,7 @@ const doseLabel = v => v.doseNo ? (v.doseOf ? `Dose ${v.doseNo} of ${v.doseOf}` 
 
 /* What is still missing on a record, so the card can tell the owner to ask the clinic. */
 const completeness = v => {
+  if (v.automated && !v.done) return []; // Scheduled automated protocol, not an incomplete past administration
   const miss = [];
   if (!v.vetId && !v.vetName) miss.push("vet");
   if (!String(v.batch || "").trim()) miss.push("batch");
@@ -108,8 +109,8 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
       {p && <section className="ow-vc" aria-label={`${p.name}’s vaccination card`}>
         <div className="vc-only-print vc-letter">
           <div className="vc-lh"><b>{CLINIC.name}</b>{[CLINIC.address, CLINIC.phone, CLINIC.email].filter(Boolean).map(x => <span key={x}>{x}</span>)}</div>
-          <h2>Pet Vaccination Card</h2>
-          <dl className="vc-id">{[["Pet", p.name], ["Kind", p.species], ["Breed", p.breed], ["Sex", p.sex], ["Birth date", p.birth ? fmtDate(p.birth) : ""], ["Weight", p.weight != null ? `${p.weight} kg` : ""], ["Color", p.color], ["Spayed / neutered", p.neutered], ["Microchip / tag", p.microchip], ["Allergies", (p.allergies || []).join(", ")], ["Owner", o.name || me.name], ["Phone", o.phone], ["Address", o.address]].filter(([, x]) => x).map(([k, x]) => <div key={k}><dt>{k}</dt><dd>{x}</dd></div>)}</dl>
+          <h2>Pet Vaccination Card {p.vaccinationCardId ? `(${p.vaccinationCardId})` : ""}</h2>
+          <dl className="vc-id">{[["Card ID", p.vaccinationCardId], ["Pet", p.name], ["Kind", p.species], ["Breed", p.breed], ["Sex", p.sex], ["Birth date", p.birth ? fmtDate(p.birth) : ""], ["Weight", p.weight != null ? `${p.weight} kg` : ""], ["Color", p.color], ["Spayed / neutered", p.neutered], ["Microchip / tag", p.microchip], ["Allergies", (p.allergies || []).join(", ")], ["Owner", o.name || me.name], ["Phone", o.phone], ["Address", o.address]].filter(([, x]) => x).map(([k, x]) => <div key={k}><dt>{k}</dt><dd>{x}</dd></div>)}</dl>
         </div>
         <div className="ow-vch">
           <div className="vc-ava">
@@ -117,7 +118,14 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
             <button type="button" className="vc-cam vc-noprint" onClick={() => setPic(x => !x)} aria-expanded={pic} aria-label={`Change ${p.name}’s picture`} title="Change picture"><Icon n="camera" size={14} /></button>
           </div>
           <div>
-            <h3>{p.name}</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <h3 style={{ margin: 0 }}>{p.name}</h3>
+              {p.vaccinationCardId && (
+                <span style={{ fontSize: "11.5px", background: "#e0f2fe", color: "#0369a1", padding: "2px 8px", borderRadius: "6px", fontWeight: "700", border: "1px solid #bae6fd" }}>
+                  💳 Card #{p.vaccinationCardId}
+                </span>
+              )}
+            </div>
             <p>{p.breed || p.species} · {p.sex} · {p.weight} kg{p.birth ? ` · ${petAge(p.birth)}` : ""}</p>
             <p>Owner: {o.name || me.name}</p>
             {(p.allergies || []).length > 0 && <p className="vc-allergy"><Icon n="alert" size={14} /> Allergic to {p.allergies.join(", ")}</p>}
@@ -155,7 +163,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
               const s = stateOf(v), t = tone(s);
               return <tr key={v.id} className={`vc-r ${t}`} tabIndex={0} style={{ cursor: "pointer" }} title="Double-click to see details" onDoubleClick={() => setDet(v)} onClick={() => { if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) setDet(v); }} onMouseDown={e => { if (e.detail > 1) e.preventDefault(); }} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDet(v); } }}>
                 <td data-label="Vaccine"><span>{v.vaccine}{doseLabel(v) && <em className="vc-dose">{doseLabel(v)}</em>}{(v.brand || v.batch) && <small className="vc-rel">{[v.brand, v.batch && `Lot ${v.batch}`].filter(Boolean).join(" · ")}</small>}</span></td>
-                <td data-label="Date given"><span>{fmtDate(v.date)}{vetOf(v) && <small className="vc-rel">{vetOf(v)}</small>}</span></td>
+                <td data-label="Date given"><span>{v.done ? fmtDate(v.date) : v.automated ? <i style={{ color: "#0369a1", fontSize: "12px" }}>Card Initialized</i> : fmtDate(v.date)}{vetOf(v) && <small className="vc-rel">{vetOf(v)}</small>}</span></td>
                 <td data-label="Next dose"><span>{v.nextDue ? fmtDate(v.nextDue) : "—"}{v.nextDue && !v.done && <small className={`vc-rel ${t}`}>{rel(v.nextDue)}</small>}{v.validUntil && v.validUntil !== v.nextDue && <small className="vc-rel">Valid until {fmtDate(v.validUntil)}</small>}</span></td>
                 <td data-label="Status"><span>{s === "No next dose" ? "—" : <Badge v={s} />}{v.done && <small className="vc-rel">Replaced by a newer dose</small>}</span></td>
                 <td data-label="Notes">{v.notes || "—"}</td>

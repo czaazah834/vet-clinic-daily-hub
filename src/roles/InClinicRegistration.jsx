@@ -2,6 +2,7 @@ import { useState } from "react";
 import { uid, TODAY, plus, addLog, ICON } from "../lib.jsx";
 import { outbox } from "../devOutbox.js";
 import { clean, normEmail, normPhone } from "../validate.js";
+import { generateCardId, generateAutomatedVaccineSchedule } from "./vaccineProtocols.js";
 
 const rndToken = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, "0")).join("");
 
@@ -94,6 +95,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       address: clean(f.address),
     };
 
+    const cardId = generateCardId();
     const pet = {
       id: petId,
       ownerId: ownerId,
@@ -104,9 +106,13 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       birth: f.birth,
       weight: +f.weight,
       allergies: [],
+      vaccinationCardId: cardId,
+      registeredAt: TODAY,
       notes: "Registered in-clinic by front desk.",
       weights: [{ date: TODAY, kg: +f.weight, by: "clinic" }],
     };
+
+    const newVaccRecords = generateAutomatedVaccineSchedule(pet, petId, me.name);
 
     const user = {
       id: userId,
@@ -157,6 +163,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       const nextPets = [...p.pets, pet];
       const nextUsers = [...p.users, user];
       const nextAppts = newAppt ? [...p.appts, newAppt] : p.appts;
+      const nextVacc = [...newVaccRecords, ...p.vacc];
 
       return {
         ...p,
@@ -164,10 +171,11 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
         pets: nextPets,
         users: nextUsers,
         appts: nextAppts,
+        vacc: nextVacc,
         log: addLog(
           p,
           me,
-          `Walk-in registration: Owner ${owner.name} and pet ${pet.name} registered. Portal activation sent via SMS/Email.${
+          `Walk-in registration: Owner ${owner.name} and pet ${pet.name} registered. Issued Digital Vaccination Card #${cardId}. Portal activation sent via SMS/Email.${
             newAppt ? ` Added to today's doctor queue (${newAppt.status}).` : ""
           }`
         ),
