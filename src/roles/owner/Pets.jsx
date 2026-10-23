@@ -409,6 +409,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
   const showCustomBreedField = v.species.includes("Other") || breedChoice.startsWith("Other");
   const showCustomColorField = colorChoice.startsWith("Other");
   const petCalculatedAge = v.birth && !f.errs.birth ? petAge(v.birth) : "";
+  const petAgeDetails = v.birth && !f.errs.birth ? computeAgeDetails(v.birth) : null;
   const isOlderThanSixMonths = v.birth && !f.errs.birth && petCalculatedAge && !petCalculatedAge.includes("mo") && !petCalculatedAge.includes("under");
   const [showSchedule, setShowSchedule] = useState(false);
   const [activeWorkflowTab, setActiveWorkflowTab] = useState("all");
@@ -507,9 +508,16 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
 
           <div>
             <Field id="pd" label="Birth date (yesterday or earlier)" req type="date" min={OLDEST} maxDate={YESTERDAY} value={v.birth} onChange={x => f.set("birth", x)} onBlur={() => f.blur("birth")} error={f.show("birth")} valid={f.ok("birth")} hint="Birth date cannot be today or in the future" />
-            {petCalculatedAge && (
-              <div style={{ marginTop: -8, marginBottom: 10, fontSize: "0.85rem", color: "#0b3a5b", fontWeight: 600 }}>
-                🐾 Calculated Age: {petCalculatedAge}
+            {petCalculatedAge && petAgeDetails && (
+              <div style={{ marginTop: -8, marginBottom: 10, fontSize: "0.83rem" }}>
+                <div style={{ color: "#0b3a5b", fontWeight: 700 }}>
+                  🐾 Age: {petCalculatedAge} · <span style={{ color: petAgeDetails.isAdult ? "#059669" : "#2563eb" }}>{petAgeDetails.lifeStageLabel}</span>
+                </div>
+                {petAgeDetails.isAdult && (
+                  <div style={{ marginTop: 4, background: "#ecfdf5", border: "1px solid #a7f3d0", padding: "6px 10px", borderRadius: "6px", color: "#065f46", fontSize: "0.78rem", lineHeight: 1.4 }}>
+                    ✨ <b>Automated Adult Maintenance:</b> Because this pet is 1+ years old, juvenile puppy shots are archived as completed foundation. The system auto-calculates Annual Core Boosters (DHPP/Rabies), Quarterly Deworming (every 90 days), and Monthly Flea/Tick prevention!
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -772,9 +780,11 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
   const next = A.filter(a => ["Scheduled", "Confirmed", "Checked-in"].includes(a.status) && a.date >= TODAY).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
   
   const normSpecies = normalizeSpecies(p.species);
+  const petAgeDetails = p.birth ? computeAgeDetails(p.birth) : null;
   const rows = [
     ["Species", formatSpeciesLabel(p.species)],
     ["Digital Card ID", p.vaccinationCardId],
+    ["Life Stage Protocol", petAgeDetails ? petAgeDetails.lifeStageLabel : "Standard"],
     ["Breed", p.breed],
     ["Sex", p.sex],
     ["Age", p.birth ? petAge(p.birth) : ""],
@@ -792,6 +802,24 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
   return (
     <Modal title={p.name} onClose={onClose}>
       <dl className="op-dl">{rows.map(([k, x]) => <div key={k}><dt>{k}</dt><dd>{x}</dd></div>)}</dl>
+
+      {petAgeDetails?.isAdult && (
+        <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", color: "#166534" }}>
+          <div style={{ fontWeight: 800, fontSize: "0.86rem", display: "flex", alignItems: "center", gap: "6px" }}>
+            <span>🐕</span> <span>Lifelong Adult Maintenance Schedule Active</span>
+          </div>
+          <div style={{ marginTop: "4px", fontSize: "0.8rem", color: "#15803d", lineHeight: 1.45 }}>
+            Patient is on adult routine maintenance ({petAgeDetails.years} yr{petAgeDetails.years > 1 ? "s" : ""}):
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "4px 8px", marginTop: "6px" }}>
+              <div><b>• Annual Core Boosters:</b> DHPP & Rabies</div>
+              <div><b>• Adult Deworming:</b> Every 3 months (90 days)</div>
+              <div><b>• Flea/Tick/Heartworm:</b> Monthly (every 30 days)</div>
+              <div><b>• Wellness:</b> Comprehensive Annual Exam</div>
+              {petAgeDetails.isSenior && <div><b>• Senior Canine:</b> Semi-annual Blood Chemistry</div>}
+            </div>
+          </div>
+        </div>
+      )}
       {(p.allergies || []).length > 0 && <div className="op-sec"><h4>Allergies</h4><ul className="ow-tags">{p.allergies.map(a => <li className="ow-tag" key={a}>{a}</li>)}</ul></div>}
       {p.notes && <div className="op-sec"><h4>Care notes</h4><p>{p.notes}</p></div>}
       

@@ -45,8 +45,32 @@ export function formatSpeciesLabel(species) {
   }
 }
 
+export function getNextBirthdayAnniversary(birthDate) {
+  if (!birthDate) return addDays(TODAY, 365);
+  const b = new Date(birthDate + "T00:00:00");
+  const now = new Date(TODAY + "T00:00:00");
+  let nextAnniv = new Date(now.getFullYear(), b.getMonth(), b.getDate());
+  if (nextAnniv < now) {
+    nextAnniv = new Date(now.getFullYear() + 1, b.getMonth(), b.getDate());
+  }
+  return nextAnniv.toISOString().slice(0, 10);
+}
+
 export function computeAgeDetails(birthDate) {
-  if (!birthDate) return { days: 0, weeks: 0, months: 0, years: 0, formatted: "" };
+  if (!birthDate) {
+    return {
+      days: 0,
+      weeks: 0,
+      months: 0,
+      years: 0,
+      formatted: "",
+      isPuppy: false,
+      isAdult: false,
+      isSenior: false,
+      lifeStage: "Juvenile",
+      lifeStageLabel: "Unknown"
+    };
+  }
   const b = new Date(birthDate + "T00:00:00");
   const now = new Date(TODAY + "T00:00:00");
   const diffTime = Math.max(0, now - b);
@@ -58,13 +82,38 @@ export function computeAgeDetails(birthDate) {
   months = Math.max(0, months);
   const years = Math.floor(months / 12);
 
+  const isPuppy = months < 12; // < 1 year
+  const isSenior = years >= 7; // >= 7 years
+  const isAdult = months >= 12; // >= 1 year (Adult Dog Maintenance)
+
+  let lifeStage = "Puppy";
+  let lifeStageLabel = "Puppy (Birth to 12 Months)";
+  if (isSenior) {
+    lifeStage = "Senior";
+    lifeStageLabel = "Senior Canine (7+ Years)";
+  } else if (isAdult) {
+    lifeStage = "Adult";
+    lifeStageLabel = "Adult Maintenance (1 to 6 Years)";
+  }
+
   let formatted = "";
   if (diffWeeks < 1) formatted = `${diffDays} day${diffDays === 1 ? "" : "s"} old`;
   else if (diffWeeks < 8) formatted = `${diffWeeks} week${diffWeeks === 1 ? "" : "s"} old`;
   else if (months < 12) formatted = `${months} month${months === 1 ? "" : "s"} old (${diffWeeks} wks)`;
   else formatted = `${years} yr${years > 1 ? "s" : ""}${months % 12 ? ` ${months % 12} mo` : ""}`;
 
-  return { days: diffDays, weeks: diffWeeks, months, years, formatted };
+  return {
+    days: diffDays,
+    weeks: diffWeeks,
+    months,
+    years,
+    formatted,
+    isPuppy,
+    isAdult,
+    isSenior,
+    lifeStage,
+    lifeStageLabel
+  };
 }
 
 /**
@@ -100,354 +149,620 @@ export function getPreventiveSchedule(birthDate, rawSpecies = "Canine", complete
   let rawItems = [];
 
   if (species === "Canine") {
-    rawItems = [
-      // --- PARASITICIDE LOOP (Deworming & Ectoparasites) ---
-      {
-        id: "dog-deworm-14d",
-        workflow: "Parasiticide",
-        ageLabel: "2 Weeks Old (Day 14)",
-        daysOffset: 14,
-        category: "deworm",
-        className: "Deworming",
-        care: "Puppy Deworming Dose 1",
-        target: "Intestinal Parasites (Roundworms / Toxocara canis)",
-        protocol: "Single oral suspension dose (Every 14 Days spacing)",
-        constraints: "Independent Parasiticide loop trigger at Patient_Age == 14 Days.",
-        isCore: false
-      },
-      {
-        id: "dog-deworm-28d",
-        workflow: "Parasiticide",
-        ageLabel: "4 Weeks Old (Day 28)",
-        daysOffset: 28,
-        category: "deworm",
-        className: "Deworming",
-        care: "Puppy Deworming Dose 2",
-        target: "Intestinal Parasites",
-        protocol: "Single oral suspension dose",
-        constraints: "Every 14 days interval.",
-        isCore: false
-      },
-      {
-        id: "dog-deworm-42d",
-        workflow: "Parasiticide",
-        ageLabel: "6 Weeks Old (Day 42)",
-        daysOffset: 42,
-        category: "deworm",
-        className: "Deworming",
-        care: "Puppy Deworming Dose 3",
-        target: "Intestinal Parasites",
-        protocol: "Oral preventative dose concurrent with first DHPP consult",
-        constraints: "Every 14 days interval.",
-        isCore: false
-      },
-      {
-        id: "dog-deworm-56d",
-        workflow: "Parasiticide",
-        ageLabel: "8 Weeks Old (Day 56)",
-        daysOffset: 56,
-        category: "deworm",
-        className: "Deworming",
-        care: "Puppy Deworming Dose 4",
-        target: "Intestinal Parasites",
-        protocol: "Oral preventative dose concurrent with Flea/Tick initiation",
-        constraints: "Every 14 days interval.",
-        isCore: false
-      },
-      {
-        id: "dog-deworm-70d",
-        workflow: "Parasiticide",
-        ageLabel: "10 Weeks Old (Day 70)",
-        daysOffset: 70,
-        category: "deworm",
-        className: "Deworming",
-        care: "Puppy Deworming Dose 5",
-        target: "Intestinal Parasites",
-        protocol: "Oral dose following 14-day cycle",
-        constraints: "Every 14 days interval.",
-        isCore: false
-      },
-      {
-        id: "dog-deworm-84d",
-        workflow: "Parasiticide",
-        ageLabel: "12 Weeks Old (Day 84)",
-        daysOffset: 84,
-        category: "deworm",
-        className: "Deworming",
-        care: "Puppy Deworming Dose 6 (Pre-Switch)",
-        target: "Intestinal Parasites",
-        protocol: "Final 14-day cycle dose before switching frequency",
-        constraints: "Final bi-weekly dose before automatic Day 90 monthly switch.",
-        isCore: false
-      },
-      {
-        id: "dog-deworm-90d",
-        workflow: "Parasiticide",
-        ageLabel: "3 Months Old (Day 90)",
-        daysOffset: 90,
-        category: "deworm",
-        className: "Deworming",
-        care: "Deworming (Frequency Switch to Every 30 Days)",
-        target: "Broad-spectrum internal parasites",
-        protocol: "Monthly preventative deworming tablet/chew",
-        constraints: "VCMS Rule: Switch frequency to every 30 days automatically at Day 90.",
-        isCore: false
-      },
-      {
-        id: "dog-parasite-56d",
-        workflow: "Parasiticide",
-        ageLabel: "8 Weeks Old (Day 56)",
-        daysOffset: 56,
-        category: "parasite",
-        className: "Flea/Tick/Heart",
-        care: "Flea, Tick & Heartworm Prevention Initiation",
-        target: "Ectoparasites + Dirofilaria immitis microfilariae",
-        protocol: "Oral chewable (NexGard Spectra / Simparica Trio) or topical",
-        constraints: "Start condition: Patient_Age >= 56 Days. Must verify minimum weight bracket (>= 1.25 - 2.0 kg).",
-        isCore: false
-      },
-      {
-        id: "dog-parasite-monthly",
-        workflow: "Parasiticide",
-        ageLabel: "Monthly Routine (Age >= 56 Days)",
-        daysOffset: 120,
-        category: "parasite",
-        className: "Flea/Tick/Heart",
-        care: "Monthly Flea/Tick & Heartworm Maintenance",
-        target: "Ticks, Fleas, Heartworm & Intestinal Worms",
-        protocol: "Administer strictly every 30 days based on digital weight-in",
-        constraints: "If Age >= 210 Days and gap > 45 days, lock & enforce Heartworm Antigen Test.",
-        isCore: false,
-        isRecurring: true
-      },
+    if (age.isAdult) {
+      // =========================================================================
+      // LIFELONG ADULT CANINE MAINTENANCE SCHEDULE (1 YEAR AND BEYOND)
+      // Transition out of juvenile series into lifelong adult maintenance routine:
+      // • Core Vaccines (DHPP & Rabies): Annual / 1-3 years
+      // • Adult Deworming: Every 3 Months (Quarterly / 90 Days)
+      // • Tick & Flea & Heartworm: Every Month (30 Days)
+      // • Comprehensive Wellness: Annual
+      // • Senior Care: Semi-Annual (if Age >= 7 Years)
+      // =========================================================================
+      const nextAnniv = getNextBirthdayAnniversary(birthDate);
 
-      // --- IMMUNIZATION LOOP (Core Vaccines) ---
-      {
-        id: "dog-dhpp-1",
-        workflow: "Immunization",
-        ageLabel: "6 Weeks Old (Day 42)",
-        daysOffset: 42,
-        category: "vaccine",
-        className: "DHPP / 5-in-1",
-        care: "Core Vaccine DHPP (Dose 1)",
-        target: "Distemper, Adenovirus, Parvovirus, Parainfluenza",
-        protocol: "Initial puppy core vaccination",
-        vaccineName: "DHPP 5-in-1 Dose 1",
-        constraints: "Start Condition: Patient_Age >= 42 Days. Spacing: Every 21-28 Days.",
-        isCore: true
-      },
-      {
-        id: "dog-dhpp-2",
-        workflow: "Immunization",
-        ageLabel: "10 Weeks Old (Day 70)",
-        daysOffset: 70,
-        category: "vaccine",
-        className: "DHPP / 5-in-1",
-        care: "Core Vaccine DHPP (Dose 2)",
-        target: "Distemper, Adenovirus, Parvovirus, Parainfluenza",
-        protocol: "Regular booster spacing (21–28 days after Dose 1)",
-        vaccineName: "DHPP 5-in-1 Dose 2",
-        constraints: "Spacing: Every 21-28 Days. Maximum 3-4 puppy doses total.",
-        isCore: true
-      },
-      {
-        id: "dog-dhpp-3",
-        workflow: "Immunization",
-        ageLabel: "14 - 16 Weeks Old (Day 105)",
-        daysOffset: 105,
-        category: "vaccine",
-        className: "DHPP / 5-in-1",
-        care: "Core Vaccine DHPP (Dose 3 - Final Puppy Dose)",
-        target: "Distemper, Adenovirus, Parvovirus, Parainfluenza",
-        protocol: "Final puppy immunization shot; completes juvenile core series",
-        vaccineName: "DHPP 5-in-1 Dose 3",
-        constraints: "Completes puppy cycle. Transition to annual booster loop.",
-        isCore: true
-      },
-      {
-        id: "dog-rabies-1",
-        workflow: "Immunization",
-        ageLabel: "12 - 16 Weeks Old (Day 84+)",
-        daysOffset: 84,
-        category: "vaccine",
-        className: "Rabies",
-        care: "Core Vaccine: Rabies (Mandatory by Law - RA 9482)",
-        target: "Rabies Virus Prophylaxis",
-        protocol: "Single subcutaneous injection; annual compliance tracking",
-        vaccineName: "Rabies Dose 1",
-        constraints: "Start Condition: Patient_Age >= 84 Days (12 weeks). Hard block if Age < 12 weeks. Multi-year option after Year 1.",
-        isCore: true
-      },
-      {
-        id: "dog-booster-1y",
-        workflow: "Immunization",
-        ageLabel: "1 Year Old (Day 365)",
-        daysOffset: 365,
-        category: "vaccine",
-        className: "DHPP / Rabies Booster",
-        care: "First Adult Core Boosters (DHPP + Rabies)",
-        target: "Adult immunization renewal",
-        protocol: "Exactly 1 year after final puppy shots",
-        vaccineName: "Annual DHPP & Rabies Booster",
-        constraints: "Mandatory 1-year booster. Transition to 1-3 year adult cycle thereafter.",
-        isCore: true
-      },
-      {
-        id: "dog-adult-deworm-quarterly",
-        workflow: "Parasiticide",
-        ageLabel: "Adult Maintenance",
-        daysOffset: 455, // 1 year + 90 days
-        category: "deworm",
-        className: "Adult Deworming",
-        care: "Adult Deworming (Quarterly / Every 3 Months)",
-        target: "Broad-spectrum deworming tablet 4 times a year",
-        protocol: "Administer every 90 days for soil/grass parasite clearance",
-        constraints: "Lifelong adult parasiticide protocol.",
-        isCore: false,
-        isRecurring: true
+      // Inspect completed records to calculate accurate dynamic next-due dates
+      const lastDeworm = completedVaccs.find(v => v.done && v.vaccine?.toLowerCase().includes("deworm"));
+      const lastParasite = completedVaccs.find(v => v.done && (v.vaccine?.toLowerCase().includes("flea") || v.vaccine?.toLowerCase().includes("parasite") || v.vaccine?.toLowerCase().includes("nexgard") || v.vaccine?.toLowerCase().includes("simparica")));
+      const lastDHPP = completedVaccs.find(v => v.done && v.vaccine?.toLowerCase().includes("dhpp"));
+      const lastRabies = completedVaccs.find(v => v.done && v.vaccine?.toLowerCase().includes("rabies"));
+
+      const dewormTarget = lastDeworm?.date ? addDays(lastDeworm.date, 90) : addDays(TODAY, 14);
+      const parasiteTarget = lastParasite?.date ? addDays(lastParasite.date, 30) : addDays(TODAY, 7);
+      const dhppTarget = lastDHPP?.date ? addDays(lastDHPP.date, 365) : nextAnniv;
+      const rabiesTarget = lastRabies?.date ? addDays(lastRabies.date, 365) : nextAnniv;
+
+      rawItems = [
+        {
+          id: "dog-adult-dhpp-annual",
+          workflow: "Immunization",
+          ageLabel: "Adult Annual Booster (Every 1 - 3 Yrs)",
+          category: "vaccine",
+          className: "DHPP / 5-in-1",
+          care: "Annual Core Booster: DHPP 5-in-1",
+          target: "Distemper, Adenovirus, Parvovirus, Parainfluenza",
+          protocol: "Administer on birth anniversary; repeat every 1 to 3 years per VCMS v2.0 & WSAVA guidelines",
+          vaccineName: "DHPP 5-in-1 Core Booster",
+          constraints: "Adult Maintenance Protocol: Mandatory 1-year puppy booster, then 1-3 year adult cycle.",
+          isCore: true,
+          isRecurring: true,
+          targetDateOverride: dhppTarget,
+          lifeStage: "Adult"
+        },
+        {
+          id: "dog-adult-rabies-annual",
+          workflow: "Immunization",
+          ageLabel: "Adult Annual Booster (Mandatory)",
+          category: "vaccine",
+          className: "Rabies",
+          care: "Annual Core Vaccine: Rabies (RA 9482 Compliance)",
+          target: "Rabies Virus Prophylaxis",
+          protocol: "Annual subcutaneous immunization required by Philippine law (Anti-Rabies Act RA 9482)",
+          vaccineName: "Rabies Annual Booster",
+          constraints: "Mandatory annual legal layout tracking. Multi-year option after Year 1.",
+          isCore: true,
+          isRecurring: true,
+          targetDateOverride: rabiesTarget,
+          lifeStage: "Adult"
+        },
+        {
+          id: "dog-adult-deworm-quarterly",
+          workflow: "Parasiticide",
+          ageLabel: "Every 3 Months (Quarterly)",
+          category: "deworm",
+          className: "Adult Deworming",
+          care: "Adult Deworming (Quarterly / Every 3 Months)",
+          target: "Roundworms, Hookworms, Whipworms, Tapeworms",
+          protocol: "Give a broad-spectrum deworming tablet (Canex / Drontal) 4 times a year for soil and grass parasite clearance",
+          constraints: "Lifelong adult parasiticide protocol: Administer strictly every 90 days.",
+          isCore: false,
+          isRecurring: true,
+          targetDateOverride: dewormTarget,
+          lifeStage: "Adult"
+        },
+        {
+          id: "dog-adult-parasite-monthly",
+          workflow: "Parasiticide",
+          ageLabel: "Every Month (30 Days)",
+          category: "parasite",
+          className: "Flea/Tick/Heart",
+          care: "Monthly Flea, Tick & Heartworm Prevention",
+          target: "Ticks, Fleas, Heartworm & Intestinal Worms",
+          protocol: "Administer chewable (NexGard Spectra / Simparica Trio) every 30 days based on digital weight-in",
+          constraints: "Safety Rule: If Age >= 210 Days and gap > 45 days, lock & enforce Heartworm Antigen Test.",
+          isCore: false,
+          isRecurring: true,
+          targetDateOverride: parasiteTarget,
+          lifeStage: "Adult"
+        },
+        {
+          id: "dog-adult-wellness-annual",
+          workflow: "Physical Exam",
+          ageLabel: "Annual Comprehensive",
+          category: "exam",
+          className: "Wellness Exam",
+          care: "Annual Adult Canine Wellness & Dental Check",
+          target: "Cardiopulmonary auscultation, Body Condition Score (BCS) & Dental Calculus Grade",
+          protocol: "Comprehensive physical veterinary inspection and dental assessment",
+          constraints: "Annual wellness check.",
+          isCore: true,
+          isRecurring: true,
+          targetDateOverride: nextAnniv,
+          lifeStage: "Adult"
+        }
+      ];
+
+      if (age.isSenior) {
+        rawItems.push({
+          id: "dog-senior-panel",
+          workflow: "Diagnostic",
+          ageLabel: "Senior Care (Every 6 Months)",
+          category: "diagnostic",
+          className: "Geriatric Panel",
+          care: "Senior Canine Chemistry & Mobility Evaluation",
+          target: "Renal & Hepatic function, blood glucose, osteoarthritis mobility screening",
+          protocol: "Bi-annual geriatric blood profile and orthopedic joint mobility check",
+          constraints: "Senior protocol for patients 7 years and older.",
+          isCore: true,
+          isRecurring: true,
+          targetDateOverride: addDays(TODAY, 30),
+          lifeStage: "Senior"
+        });
       }
-    ];
+
+      // Juvenile puppy foundation records (Kept for medical history without false overdue alarms)
+      const juvenilePuppyItems = [
+        { id: "dog-deworm-14d", workflow: "Parasiticide", ageLabel: "2 Weeks Old", category: "deworm", className: "Deworming", care: "Puppy Deworming Dose 1", daysOffset: 14 },
+        { id: "dog-deworm-28d", workflow: "Parasiticide", ageLabel: "4 Weeks Old", category: "deworm", className: "Deworming", care: "Puppy Deworming Dose 2", daysOffset: 28 },
+        { id: "dog-dhpp-1", workflow: "Immunization", ageLabel: "6 Weeks Old", category: "vaccine", className: "DHPP / 5-in-1", care: "Puppy DHPP Dose 1", daysOffset: 42 },
+        { id: "dog-dhpp-2", workflow: "Immunization", ageLabel: "10 Weeks Old", category: "vaccine", className: "DHPP / 5-in-1", care: "Puppy DHPP Dose 2", daysOffset: 70 },
+        { id: "dog-dhpp-3", workflow: "Immunization", ageLabel: "14-16 Weeks Old", category: "vaccine", className: "DHPP / 5-in-1", care: "Puppy DHPP Dose 3", daysOffset: 105 },
+        { id: "dog-rabies-1", workflow: "Immunization", ageLabel: "12-16 Weeks Old", category: "vaccine", className: "Rabies", care: "First Rabies Shot", daysOffset: 84 }
+      ];
+
+      juvenilePuppyItems.forEach(item => {
+        rawItems.push({
+          ...item,
+          protocol: "Completed during puppyhood (Juvenile Foundation Series)",
+          target: "Juvenile core immunization & deworming",
+          constraints: "Puppy series completed. Patient is currently on Adult Maintenance.",
+          isCore: false,
+          targetDateOverride: addDays(birthDate, item.daysOffset),
+          isJuvenileCompleted: true
+        });
+      });
+    } else {
+      // Puppy schedule (< 12 months)
+      rawItems = [
+        // --- PARASITICIDE LOOP (Deworming & Ectoparasites) ---
+        {
+          id: "dog-deworm-14d",
+          workflow: "Parasiticide",
+          ageLabel: "2 Weeks Old (Day 14)",
+          daysOffset: 14,
+          category: "deworm",
+          className: "Deworming",
+          care: "Puppy Deworming Dose 1",
+          target: "Intestinal Parasites (Roundworms / Toxocara canis)",
+          protocol: "Single oral suspension dose (Every 14 Days spacing)",
+          constraints: "Independent Parasiticide loop trigger at Patient_Age == 14 Days.",
+          isCore: false
+        },
+        {
+          id: "dog-deworm-28d",
+          workflow: "Parasiticide",
+          ageLabel: "4 Weeks Old (Day 28)",
+          daysOffset: 28,
+          category: "deworm",
+          className: "Deworming",
+          care: "Puppy Deworming Dose 2",
+          target: "Intestinal Parasites",
+          protocol: "Single oral suspension dose",
+          constraints: "Every 14 days interval.",
+          isCore: false
+        },
+        {
+          id: "dog-deworm-42d",
+          workflow: "Parasiticide",
+          ageLabel: "6 Weeks Old (Day 42)",
+          daysOffset: 42,
+          category: "deworm",
+          className: "Deworming",
+          care: "Puppy Deworming Dose 3",
+          target: "Intestinal Parasites",
+          protocol: "Oral preventative dose concurrent with first DHPP consult",
+          constraints: "Every 14 days interval.",
+          isCore: false
+        },
+        {
+          id: "dog-deworm-56d",
+          workflow: "Parasiticide",
+          ageLabel: "8 Weeks Old (Day 56)",
+          daysOffset: 56,
+          category: "deworm",
+          className: "Deworming",
+          care: "Puppy Deworming Dose 4",
+          target: "Intestinal Parasites",
+          protocol: "Oral preventative dose concurrent with Flea/Tick initiation",
+          constraints: "Every 14 days interval.",
+          isCore: false
+        },
+        {
+          id: "dog-deworm-70d",
+          workflow: "Parasiticide",
+          ageLabel: "10 Weeks Old (Day 70)",
+          daysOffset: 70,
+          category: "deworm",
+          className: "Deworming",
+          care: "Puppy Deworming Dose 5",
+          target: "Intestinal Parasites",
+          protocol: "Oral dose following 14-day cycle",
+          constraints: "Every 14 days interval.",
+          isCore: false
+        },
+        {
+          id: "dog-deworm-84d",
+          workflow: "Parasiticide",
+          ageLabel: "12 Weeks Old (Day 84)",
+          daysOffset: 84,
+          category: "deworm",
+          className: "Deworming",
+          care: "Puppy Deworming Dose 6 (Pre-Switch)",
+          target: "Intestinal Parasites",
+          protocol: "Final 14-day cycle dose before switching frequency",
+          constraints: "Final bi-weekly dose before automatic Day 90 monthly switch.",
+          isCore: false
+        },
+        {
+          id: "dog-deworm-90d",
+          workflow: "Parasiticide",
+          ageLabel: "3 Months Old (Day 90)",
+          daysOffset: 90,
+          category: "deworm",
+          className: "Deworming",
+          care: "Deworming (Frequency Switch to Every 30 Days)",
+          target: "Broad-spectrum internal parasites",
+          protocol: "Monthly preventative deworming tablet/chew",
+          constraints: "VCMS Rule: Switch frequency to every 30 days automatically at Day 90.",
+          isCore: false
+        },
+        {
+          id: "dog-parasite-56d",
+          workflow: "Parasiticide",
+          ageLabel: "8 Weeks Old (Day 56)",
+          daysOffset: 56,
+          category: "parasite",
+          className: "Flea/Tick/Heart",
+          care: "Flea, Tick & Heartworm Prevention Initiation",
+          target: "Ectoparasites + Dirofilaria immitis microfilariae",
+          protocol: "Oral chewable (NexGard Spectra / Simparica Trio) or topical",
+          constraints: "Start condition: Patient_Age >= 56 Days. Must verify minimum weight bracket (>= 1.25 - 2.0 kg).",
+          isCore: false
+        },
+        {
+          id: "dog-parasite-monthly",
+          workflow: "Parasiticide",
+          ageLabel: "Monthly Routine (Age >= 56 Days)",
+          daysOffset: 120,
+          category: "parasite",
+          className: "Flea/Tick/Heart",
+          care: "Monthly Flea/Tick & Heartworm Maintenance",
+          target: "Ticks, Fleas, Heartworm & Intestinal Worms",
+          protocol: "Administer strictly every 30 days based on digital weight-in",
+          constraints: "If Age >= 210 Days and gap > 45 days, lock & enforce Heartworm Antigen Test.",
+          isCore: false,
+          isRecurring: true
+        },
+
+        // --- IMMUNIZATION LOOP (Core Vaccines) ---
+        {
+          id: "dog-dhpp-1",
+          workflow: "Immunization",
+          ageLabel: "6 Weeks Old (Day 42)",
+          daysOffset: 42,
+          category: "vaccine",
+          className: "DHPP / 5-in-1",
+          care: "Core Vaccine DHPP (Dose 1)",
+          target: "Distemper, Adenovirus, Parvovirus, Parainfluenza",
+          protocol: "Initial puppy core vaccination",
+          vaccineName: "DHPP 5-in-1 Dose 1",
+          constraints: "Start Condition: Patient_Age >= 42 Days. Spacing: Every 21-28 Days.",
+          isCore: true
+        },
+        {
+          id: "dog-dhpp-2",
+          workflow: "Immunization",
+          ageLabel: "10 Weeks Old (Day 70)",
+          daysOffset: 70,
+          category: "vaccine",
+          className: "DHPP / 5-in-1",
+          care: "Core Vaccine DHPP (Dose 2)",
+          target: "Distemper, Adenovirus, Parvovirus, Parainfluenza",
+          protocol: "Regular booster spacing (21–28 days after Dose 1)",
+          vaccineName: "DHPP 5-in-1 Dose 2",
+          constraints: "Spacing: Every 21-28 Days. Maximum 3-4 puppy doses total.",
+          isCore: true
+        },
+        {
+          id: "dog-dhpp-3",
+          workflow: "Immunization",
+          ageLabel: "14 - 16 Weeks Old (Day 105)",
+          daysOffset: 105,
+          category: "vaccine",
+          className: "DHPP / 5-in-1",
+          care: "Core Vaccine DHPP (Dose 3 - Final Puppy Dose)",
+          target: "Distemper, Adenovirus, Parvovirus, Parainfluenza",
+          protocol: "Final puppy immunization shot; completes juvenile core series",
+          vaccineName: "DHPP 5-in-1 Dose 3",
+          constraints: "Completes puppy cycle. Transition to annual booster loop.",
+          isCore: true
+        },
+        {
+          id: "dog-rabies-1",
+          workflow: "Immunization",
+          ageLabel: "12 - 16 Weeks Old (Day 84+)",
+          daysOffset: 84,
+          category: "vaccine",
+          className: "Rabies",
+          care: "Core Vaccine: Rabies (Mandatory by Law - RA 9482)",
+          target: "Rabies Virus Prophylaxis",
+          protocol: "Single subcutaneous injection; annual compliance tracking",
+          vaccineName: "Rabies Dose 1",
+          constraints: "Start Condition: Patient_Age >= 84 Days (12 weeks). Hard block if Age < 12 weeks. Multi-year option after Year 1.",
+          isCore: true
+        },
+        {
+          id: "dog-booster-1y",
+          workflow: "Immunization",
+          ageLabel: "1 Year Old (Day 365)",
+          daysOffset: 365,
+          category: "vaccine",
+          className: "DHPP / Rabies Booster",
+          care: "First Adult Core Boosters (DHPP + Rabies)",
+          target: "Adult immunization renewal",
+          protocol: "Exactly 1 year after final puppy shots",
+          vaccineName: "Annual DHPP & Rabies Booster",
+          constraints: "Mandatory 1-year booster. Transition to 1-3 year adult cycle thereafter.",
+          isCore: true
+        }
+      ];
+    }
   } else if (species === "Feline") {
-    rawItems = [
-      // --- PARASITICIDE LOOP ---
-      {
-        id: "cat-deworm-14d",
-        workflow: "Parasiticide",
-        ageLabel: "2 Weeks Old (Day 14)",
-        daysOffset: 14,
-        category: "deworm",
-        className: "Deworming",
-        care: "Kitten Deworming Dose 1",
-        target: "Intestinal Parasites (Roundworms / Toxocara cati)",
-        protocol: "Oral preventative dose",
-        constraints: "Start Condition: Patient_Age == 14 Days. Every 14 Days interval.",
-        isCore: false
-      },
-      {
-        id: "cat-deworm-28d",
-        workflow: "Parasiticide",
-        ageLabel: "4 Weeks Old (Day 28)",
-        daysOffset: 28,
-        category: "deworm",
-        className: "Deworming",
-        care: "Kitten Deworming Dose 2",
-        target: "Intestinal Parasites",
-        protocol: "Oral preventative dose",
-        constraints: "Every 14 Days interval.",
-        isCore: false
-      },
-      {
-        id: "cat-deworm-42d",
-        workflow: "Parasiticide",
-        ageLabel: "6 Weeks Old (Day 42)",
-        daysOffset: 42,
-        category: "deworm",
-        className: "Deworming",
-        care: "Kitten Deworming Dose 3",
-        target: "Intestinal Parasites",
-        protocol: "Oral preventative dose concurrent with first vaccine consult",
-        constraints: "Every 14 Days interval.",
-        isCore: false
-      },
-      {
-        id: "cat-deworm-180d",
-        workflow: "Parasiticide",
-        ageLabel: "6 Months Old (Day 180)",
-        daysOffset: 180,
-        category: "deworm",
-        className: "Deworming",
-        care: "Deworming Frequency Transition (Every 90 Days)",
-        target: "Internal Parasite Maintenance",
-        protocol: "Transition to every 90 days for indoor-only profiles at 6 months",
-        constraints: "VCMS Rule: Transition to every 90 days for indoor-only profiles at 6 months.",
-        isCore: false
-      },
-      {
-        id: "cat-parasite-56d",
-        workflow: "Parasiticide",
-        ageLabel: "8 Weeks Old (Day 56)",
-        daysOffset: 56,
-        category: "parasite",
-        className: "Flea/Tick/Mite",
-        care: "Feline Topical Flea, Tick & Ear Mite Prevention",
-        target: "Ectoparasites, Otodectes cynotis & Heartworm",
-        protocol: "Feline-approved spot-on (Revolution Plus / Bravecto Plus) every 30 days",
-        constraints: "Start Condition: Patient_Age >= 56 Days. TOXICOLOGY BLOCK: Completely restrict formulas containing Permethrin.",
-        isCore: false
-      },
+    if (age.isAdult) {
+      // Adult Cat Maintenance
+      const nextAnniv = getNextBirthdayAnniversary(birthDate);
+      const lastDeworm = completedVaccs.find(v => v.done && v.vaccine?.toLowerCase().includes("deworm"));
+      const lastParasite = completedVaccs.find(v => v.done && (v.vaccine?.toLowerCase().includes("flea") || v.vaccine?.toLowerCase().includes("parasite") || v.vaccine?.toLowerCase().includes("revolution")));
+      const lastFVRCP = completedVaccs.find(v => v.done && v.vaccine?.toLowerCase().includes("fvrcp"));
+      const lastRabies = completedVaccs.find(v => v.done && v.vaccine?.toLowerCase().includes("rabies"));
 
-      // --- IMMUNIZATION LOOP ---
-      {
-        id: "cat-fvrcp-1",
-        workflow: "Immunization",
-        ageLabel: "6 Weeks Old (Day 42)",
-        daysOffset: 42,
-        category: "vaccine",
-        className: "FVRCP / 4-in-1",
-        care: "Core Vaccine FVRCP (Dose 1)",
-        target: "Rhinotracheitis, Calicivirus, Panleukopenia, Chlamydia",
-        protocol: "Kitten core immunization start",
-        vaccineName: "FVRCP 4-in-1 Dose 1",
-        constraints: "Start Condition: Patient_Age >= 42 Days. Interval: Every 28 Days.",
-        isCore: true
-      },
-      {
-        id: "cat-fvrcp-2",
-        workflow: "Immunization",
-        ageLabel: "10 Weeks Old (Day 70)",
-        daysOffset: 70,
-        category: "vaccine",
-        className: "FVRCP / 4-in-1",
-        care: "Core Vaccine FVRCP (Dose 2)",
-        target: "Feline Viral Rhinotracheitis, Calicivirus, Panleukopenia",
-        protocol: "Booster spaced exactly 28 days apart",
-        vaccineName: "FVRCP 4-in-1 Dose 2",
-        constraints: "Interval: Every 28 Days. Maximum 3 kitten doses.",
-        isCore: true
-      },
-      {
-        id: "cat-fvrcp-3",
-        workflow: "Immunization",
-        ageLabel: "14 Weeks Old (Day 98)",
-        daysOffset: 98,
-        category: "vaccine",
-        className: "FVRCP / 4-in-1",
-        care: "Core Vaccine FVRCP (Dose 3 - Final Kitten Shot)",
-        target: "Feline Viral Rhinotracheitis, Calicivirus, Panleukopenia",
-        protocol: "Final kitten core shot. Completes initial series.",
-        vaccineName: "FVRCP 4-in-1 Dose 3",
-        constraints: "Maximum 3 kitten doses. Switch to 1-3 year adult cycles.",
-        isCore: true
-      },
-      {
-        id: "cat-rabies-1",
-        workflow: "Immunization",
-        ageLabel: "12 Weeks Old (Day 84)",
-        daysOffset: 84,
-        category: "vaccine",
-        className: "Rabies",
-        care: "Core Vaccine: Rabies (Feline Formulation)",
-        target: "Rabies Virus Prophylaxis",
-        protocol: "Annual compliance vaccination",
-        vaccineName: "Feline Rabies",
-        constraints: "Start Condition: Patient_Age >= 84 Days. Annual interval. Mandatory legal layout tracking.",
-        isCore: true
-      },
-      {
-        id: "cat-booster-1y",
-        workflow: "Immunization",
-        ageLabel: "1 Year Old (Day 365)",
-        daysOffset: 365,
-        category: "vaccine",
-        className: "FVRCP / Rabies Booster",
-        care: "First Adult Core Boosters (FVRCP + Rabies)",
-        target: "Feline adult immunity renewal",
-        protocol: "Administer 1 year after final kitten series",
-        vaccineName: "Annual FVRCP & Rabies Booster",
-        constraints: "Transition to 1-3 year adult cycles.",
-        isCore: true
+      const dewormTarget = lastDeworm?.date ? addDays(lastDeworm.date, 90) : addDays(TODAY, 14);
+      const parasiteTarget = lastParasite?.date ? addDays(lastParasite.date, 30) : addDays(TODAY, 7);
+      const fvrcpTarget = lastFVRCP?.date ? addDays(lastFVRCP.date, 365) : nextAnniv;
+      const rabiesTarget = lastRabies?.date ? addDays(lastRabies.date, 365) : nextAnniv;
+
+      rawItems = [
+        {
+          id: "cat-adult-fvrcp-annual",
+          workflow: "Immunization",
+          ageLabel: "Adult Booster (Every 1 - 3 Yrs)",
+          category: "vaccine",
+          className: "FVRCP / 4-in-1",
+          care: "Annual Core Booster: FVRCP (4-in-1)",
+          target: "Rhinotracheitis, Calicivirus, Panleukopenia, Chlamydia",
+          protocol: "Administer on anniversary; 1-3 year adult cycle per WSAVA feline protocol",
+          vaccineName: "FVRCP 4-in-1 Booster",
+          constraints: "Switch to 1-3 year adult cycles.",
+          isCore: true,
+          isRecurring: true,
+          targetDateOverride: fvrcpTarget,
+          lifeStage: "Adult"
+        },
+        {
+          id: "cat-adult-rabies-annual",
+          workflow: "Immunization",
+          ageLabel: "Adult Annual Booster (Mandatory)",
+          category: "vaccine",
+          className: "Rabies",
+          care: "Annual Core Vaccine: Rabies (Feline Formulation)",
+          target: "Rabies Virus Prophylaxis",
+          protocol: "Annual compliance vaccination",
+          vaccineName: "Feline Rabies Booster",
+          constraints: "Mandatory legal layout tracking.",
+          isCore: true,
+          isRecurring: true,
+          targetDateOverride: rabiesTarget,
+          lifeStage: "Adult"
+        },
+        {
+          id: "cat-adult-deworm-quarterly",
+          workflow: "Parasiticide",
+          ageLabel: "Every 3 Months (Quarterly)",
+          category: "deworm",
+          className: "Deworming",
+          care: "Adult Deworming (Quarterly / Every 90 Days)",
+          target: "Internal Parasite Maintenance",
+          protocol: "Oral broad-spectrum deworming tablet every 90 days",
+          constraints: "VCMS Rule: Transition to every 90 days for indoor-only profiles at 6 months.",
+          isCore: false,
+          isRecurring: true,
+          targetDateOverride: dewormTarget,
+          lifeStage: "Adult"
+        },
+        {
+          id: "cat-adult-parasite-monthly",
+          workflow: "Parasiticide",
+          ageLabel: "Every Month (30 Days)",
+          category: "parasite",
+          className: "Flea/Tick/Mite",
+          care: "Monthly Topical Flea, Tick & Ear Mite Prevention",
+          target: "Ectoparasites, Otodectes cynotis & Heartworm",
+          protocol: "Feline-approved spot-on (Revolution Plus / Bravecto Plus) strictly every 30 days",
+          constraints: "TOXICOLOGY BLOCK: Completely restrict formulas containing Permethrin.",
+          isCore: false,
+          isRecurring: true,
+          targetDateOverride: parasiteTarget,
+          lifeStage: "Adult"
+        },
+        {
+          id: "cat-adult-wellness-annual",
+          workflow: "Physical Exam",
+          ageLabel: "Annual Comprehensive",
+          category: "exam",
+          className: "Wellness Exam",
+          care: "Annual Adult Feline Wellness & Dental Inspection",
+          target: "Thoracic auscultation, feline resorptive dental lesions check & BCS",
+          protocol: "Comprehensive adult feline health examination",
+          constraints: "Annual wellness check.",
+          isCore: true,
+          isRecurring: true,
+          targetDateOverride: nextAnniv,
+          lifeStage: "Adult"
+        }
+      ];
+
+      if (age.isSenior) {
+        rawItems.push({
+          id: "cat-senior-panel",
+          workflow: "Diagnostic",
+          ageLabel: "Senior Feline Care (Every 6 Months)",
+          category: "diagnostic",
+          className: "Geriatric Panel",
+          care: "Senior Feline Renal & Thyroid Evaluation",
+          target: "Serum Creatinine/SDMA, BUN, total T4 (Hyperthyroidism) & Blood Pressure",
+          protocol: "Bi-annual senior feline diagnostic panel",
+          constraints: "Senior protocol for feline patients 7 years and older.",
+          isCore: true,
+          isRecurring: true,
+          targetDateOverride: addDays(TODAY, 30),
+          lifeStage: "Senior"
+        });
       }
-    ];
+
+      // Juvenile kitten foundation records
+      const juvenileKittenItems = [
+        { id: "cat-deworm-14d", workflow: "Parasiticide", ageLabel: "2 Weeks Old", category: "deworm", className: "Deworming", care: "Kitten Deworming Dose 1", daysOffset: 14 },
+        { id: "cat-deworm-28d", workflow: "Parasiticide", ageLabel: "4 Weeks Old", category: "deworm", className: "Deworming", care: "Kitten Deworming Dose 2", daysOffset: 28 },
+        { id: "cat-fvrcp-1", workflow: "Immunization", ageLabel: "6 Weeks Old", category: "vaccine", className: "FVRCP / 4-in-1", care: "Kitten FVRCP Dose 1", daysOffset: 42 },
+        { id: "cat-fvrcp-2", workflow: "Immunization", ageLabel: "10 Weeks Old", category: "vaccine", className: "FVRCP / 4-in-1", care: "Kitten FVRCP Dose 2", daysOffset: 70 },
+        { id: "cat-fvrcp-3", workflow: "Immunization", ageLabel: "14 Weeks Old", category: "vaccine", className: "FVRCP / 4-in-1", care: "Kitten FVRCP Dose 3", daysOffset: 98 },
+        { id: "cat-rabies-1", workflow: "Immunization", ageLabel: "12 Weeks Old", category: "vaccine", className: "Rabies", care: "First Feline Rabies Shot", daysOffset: 84 }
+      ];
+
+      juvenileKittenItems.forEach(item => {
+        rawItems.push({
+          ...item,
+          protocol: "Completed during kittenhood (Juvenile Foundation Series)",
+          target: "Juvenile core immunization & deworming",
+          constraints: "Kitten series completed. Patient is currently on Adult Maintenance.",
+          isCore: false,
+          targetDateOverride: addDays(birthDate, item.daysOffset),
+          isJuvenileCompleted: true
+        });
+      });
+    } else {
+      // Kitten schedule (< 12 months)
+      rawItems = [
+        // --- PARASITICIDE LOOP ---
+        {
+          id: "cat-deworm-14d",
+          workflow: "Parasiticide",
+          ageLabel: "2 Weeks Old (Day 14)",
+          daysOffset: 14,
+          category: "deworm",
+          className: "Deworming",
+          care: "Kitten Deworming Dose 1",
+          target: "Intestinal Parasites (Roundworms / Toxocara cati)",
+          protocol: "Oral preventative dose",
+          constraints: "Start Condition: Patient_Age == 14 Days. Every 14 Days interval.",
+          isCore: false
+        },
+        {
+          id: "cat-deworm-28d",
+          workflow: "Parasiticide",
+          ageLabel: "4 Weeks Old (Day 28)",
+          daysOffset: 28,
+          category: "deworm",
+          className: "Deworming",
+          care: "Kitten Deworming Dose 2",
+          target: "Intestinal Parasites",
+          protocol: "Oral preventative dose",
+          constraints: "Every 14 Days interval.",
+          isCore: false
+        },
+        {
+          id: "cat-deworm-42d",
+          workflow: "Parasiticide",
+          ageLabel: "6 Weeks Old (Day 42)",
+          daysOffset: 42,
+          category: "deworm",
+          className: "Deworming",
+          care: "Kitten Deworming Dose 3",
+          target: "Intestinal Parasites",
+          protocol: "Oral preventative dose concurrent with first vaccine consult",
+          constraints: "Every 14 Days interval.",
+          isCore: false
+        },
+        {
+          id: "cat-deworm-180d",
+          workflow: "Parasiticide",
+          ageLabel: "6 Months Old (Day 180)",
+          daysOffset: 180,
+          category: "deworm",
+          className: "Deworming",
+          care: "Deworming Frequency Transition (Every 90 Days)",
+          target: "Internal Parasite Maintenance",
+          protocol: "Transition to every 90 days for indoor-only profiles at 6 months",
+          constraints: "VCMS Rule: Transition to every 90 days for indoor-only profiles at 6 months.",
+          isCore: false
+        },
+        {
+          id: "cat-parasite-56d",
+          workflow: "Parasiticide",
+          ageLabel: "8 Weeks Old (Day 56)",
+          daysOffset: 56,
+          category: "parasite",
+          className: "Flea/Tick/Mite",
+          care: "Feline Topical Flea, Tick & Ear Mite Prevention",
+          target: "Ectoparasites, Otodectes cynotis & Heartworm",
+          protocol: "Feline-approved spot-on (Revolution Plus / Bravecto Plus) every 30 days",
+          constraints: "Start Condition: Patient_Age >= 56 Days. TOXICOLOGY BLOCK: Completely restrict formulas containing Permethrin.",
+          isCore: false
+        },
+
+        // --- IMMUNIZATION LOOP ---
+        {
+          id: "cat-fvrcp-1",
+          workflow: "Immunization",
+          ageLabel: "6 Weeks Old (Day 42)",
+          daysOffset: 42,
+          category: "vaccine",
+          className: "FVRCP / 4-in-1",
+          care: "Core Vaccine FVRCP (Dose 1)",
+          target: "Rhinotracheitis, Calicivirus, Panleukopenia, Chlamydia",
+          protocol: "Kitten core immunization start",
+          vaccineName: "FVRCP 4-in-1 Dose 1",
+          constraints: "Start Condition: Patient_Age >= 42 Days. Interval: Every 28 Days.",
+          isCore: true
+        },
+        {
+          id: "cat-fvrcp-2",
+          workflow: "Immunization",
+          ageLabel: "10 Weeks Old (Day 70)",
+          daysOffset: 70,
+          category: "vaccine",
+          className: "FVRCP / 4-in-1",
+          care: "Core Vaccine FVRCP (Dose 2)",
+          target: "Feline Viral Rhinotracheitis, Calicivirus, Panleukopenia",
+          protocol: "Booster spaced exactly 28 days apart",
+          vaccineName: "FVRCP 4-in-1 Dose 2",
+          constraints: "Interval: Every 28 Days. Maximum 3 kitten doses.",
+          isCore: true
+        },
+        {
+          id: "cat-fvrcp-3",
+          workflow: "Immunization",
+          ageLabel: "14 Weeks Old (Day 98)",
+          daysOffset: 98,
+          category: "vaccine",
+          className: "FVRCP / 4-in-1",
+          care: "Core Vaccine FVRCP (Dose 3 - Final Kitten Shot)",
+          target: "Feline Viral Rhinotracheitis, Calicivirus, Panleukopenia",
+          protocol: "Final kitten core shot. Completes initial series.",
+          vaccineName: "FVRCP 4-in-1 Dose 3",
+          constraints: "Maximum 3 kitten doses. Switch to 1-3 year adult cycles.",
+          isCore: true
+        },
+        {
+          id: "cat-rabies-1",
+          workflow: "Immunization",
+          ageLabel: "12 Weeks Old (Day 84)",
+          daysOffset: 84,
+          category: "vaccine",
+          className: "Rabies",
+          care: "Core Vaccine: Rabies (Feline Formulation)",
+          target: "Rabies Virus Prophylaxis",
+          protocol: "Annual compliance vaccination",
+          vaccineName: "Feline Rabies",
+          constraints: "Start Condition: Patient_Age >= 84 Days. Annual interval. Mandatory legal layout tracking.",
+          isCore: true
+        },
+        {
+          id: "cat-booster-1y",
+          workflow: "Immunization",
+          ageLabel: "1 Year Old (Day 365)",
+          daysOffset: 365,
+          category: "vaccine",
+          className: "FVRCP / Rabies Booster",
+          care: "First Adult Core Boosters (FVRCP + Rabies)",
+          target: "Feline adult immunity renewal",
+          protocol: "Administer 1 year after final kitten series",
+          vaccineName: "Annual FVRCP & Rabies Booster",
+          constraints: "Transition to 1-3 year adult cycles.",
+          isCore: true
+        }
+      ];
+    }
   } else if (species === "Lagomorph") {
     rawItems = [
       // --- IMMUNIZATION LOOP ---
@@ -574,10 +889,19 @@ export function getPreventiveSchedule(birthDate, rawSpecies = "Canine", complete
   }
 
   return rawItems.map(item => {
-    const targetDate = addDays(birthDate, item.daysOffset);
+    const targetDate = item.targetDateOverride || addDays(birthDate, item.daysOffset);
     const isPast = targetDate < TODAY;
     const isToday = targetDate === TODAY;
     const isDueSoon = !isPast && targetDate <= addDays(TODAY, 14);
+
+    if (item.isJuvenileCompleted) {
+      return {
+        ...item,
+        targetDate,
+        status: "Completed (Juvenile Foundation)",
+        isDone: true
+      };
+    }
 
     // Check if matching record exists in completedVaccs
     const isDone = completedVaccs.some(v =>
@@ -609,9 +933,14 @@ export function getNextMilestone(birthDate, species = "Canine", completedVaccs =
   const schedule = getPreventiveSchedule(birthDate, species, completedVaccs);
   if (!schedule.length) return null;
 
-  // Filter out advisory-only continuous warnings like fipronil ban or teflon alert for the top banner milestone
-  const actionable = schedule.filter(s => s.daysOffset > 1);
-  const list = actionable.length ? actionable : schedule;
+  // Filter out advisory warnings and juvenile completed foundation items
+  const actionable = schedule.filter(s =>
+    s.daysOffset !== 1 &&
+    !s.isJuvenileCompleted &&
+    s.status !== "Completed (Juvenile Foundation)" &&
+    s.status !== "Completed"
+  );
+  const list = actionable.length ? actionable : schedule.filter(s => !s.isJuvenileCompleted);
 
   // Find overdue first, then due soon, then first upcoming
   const overdue = list.find(s => s.status === "Overdue" && !s.isDone);
@@ -621,7 +950,7 @@ export function getNextMilestone(birthDate, species = "Canine", completedVaccs =
   if (dueSoon) return dueSoon;
 
   const upcoming = list.find(s => s.status === "Upcoming" && !s.isDone);
-  return upcoming || list[list.length - 1];
+  return upcoming || list[0] || null;
 }
 
 /**

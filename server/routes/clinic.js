@@ -381,128 +381,310 @@ clinicRouter.post("/owner/pets", async (req, res) => {
         [petId, birth || today, parseFloat(weight) || 5.0, "owner"]
       );
 
-      // 3. Seed Core Vaccination Protocols based on VCMS v2.0
+      // Calculate pet life stage (Puppy/Kitten vs Adult vs Senior)
+      let isAdult = false;
+      let isSenior = false;
+      if (birth) {
+        const b = new Date(birth + "T00:00:00");
+        const now = new Date(today + "T00:00:00");
+        const diffDays = Math.floor((now - b) / (1000 * 60 * 60 * 24));
+        if (diffDays >= 365) isAdult = true;
+        if (diffDays >= 365 * 7) isSenior = true;
+      }
+
+      // 3. Seed Core Vaccination Protocols based on VCMS v2.0 & Life Stage
       const seeded = [];
       if (isDog) {
-        // DHPP 5-in-1
-        const v1 = {
-          id: "v_" + Math.random().toString(36).slice(2, 8),
-          pet_id: petId,
-          card_id: cardId,
-          vaccine: "DHPP (5-in-1 Core)",
-          brand: "Nobivac DHPP",
-          batch: "AUTO-DHPP-01",
-          date: today,
-          next_due: addDays(today, 21),
-          dose_no: 1,
-          dose_of: 3,
-          done: false,
-          automated: true,
-          protocol_type: "Core Canine Protocol",
-          recorded_by: "System Automation"
-        };
-        await client.query(
-          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-          Object.values(v1)
-        );
-        seeded.push(v1);
+        if (isAdult) {
+          // Lifelong Adult Canine Maintenance Schedule (1 Year and Beyond)
+          // 1. Annual DHPP Booster (Core)
+          const v1 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "DHPP (5-in-1 Adult Core Booster)",
+            brand: "Nobivac DHPP",
+            batch: "AUTO-DHPP-ADULT",
+            date: today,
+            next_due: addDays(today, 365),
+            dose_no: 1,
+            dose_of: 1,
+            done: false,
+            automated: true,
+            protocol_type: "Adult Core Immunization (Annual)",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v1)
+          );
+          seeded.push(v1);
 
-        // Anti-Rabies (Mandatory Core RA 9482)
-        const v2 = {
-          id: "v_" + Math.random().toString(36).slice(2, 8),
-          pet_id: petId,
-          card_id: cardId,
-          vaccine: "Anti-Rabies (1-Year Core)",
-          brand: "Defensor 3",
-          batch: "AUTO-RAB-01",
-          date: today,
-          next_due: addDays(today, 30),
-          dose_no: 1,
-          dose_of: 1,
-          done: false,
-          automated: true,
-          protocol_type: "Core Rabies Protocol",
-          recorded_by: "System Automation"
-        };
-        await client.query(
-          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-          Object.values(v2)
-        );
-        seeded.push(v2);
+          // 2. Annual Anti-Rabies Core Booster (Mandatory RA 9482)
+          const v2 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "Anti-Rabies Booster (RA 9482 Compliance)",
+            brand: "Defensor 3",
+            batch: "AUTO-RAB-ADULT",
+            date: today,
+            next_due: addDays(today, 365),
+            dose_no: 1,
+            dose_of: 1,
+            done: false,
+            automated: true,
+            protocol_type: "Core Rabies Protocol (Annual Mandatory)",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v2)
+          );
+          seeded.push(v2);
 
-        // Broad-Spectrum Deworming
-        const v3 = {
-          id: "v_" + Math.random().toString(36).slice(2, 8),
-          pet_id: petId,
-          card_id: cardId,
-          vaccine: "Broad-Spectrum Deworming",
-          brand: "Canex Multi-Spectrum",
-          batch: "AUTO-DEW-01",
-          date: today,
-          next_due: addDays(today, 14),
-          dose_no: 1,
-          dose_of: 4,
-          done: false,
-          automated: true,
-          protocol_type: "Parasiticide Protocol",
-          recorded_by: "System Automation"
-        };
-        await client.query(
-          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-          Object.values(v3)
-        );
-        seeded.push(v3);
+          // 3. Adult Deworming (Quarterly / Every 3 Months / 90 Days)
+          const v3 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "Adult Deworming (Quarterly Routine)",
+            brand: "Canex Multi-Spectrum",
+            batch: "AUTO-DEW-ADULT",
+            date: today,
+            next_due: addDays(today, 90),
+            dose_no: 1,
+            dose_of: 4,
+            done: false,
+            automated: true,
+            protocol_type: "Adult Parasiticide Protocol (Quarterly)",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v3)
+          );
+          seeded.push(v3);
+
+          // 4. Monthly Flea, Tick & Heartworm Prevention (Every 30 Days)
+          const v4 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "Monthly Flea, Tick & Heartworm Chewable",
+            brand: "NexGard Spectra / Simparica Trio",
+            batch: "AUTO-ECTO-M",
+            date: today,
+            next_due: addDays(today, 30),
+            dose_no: 1,
+            dose_of: 12,
+            done: false,
+            automated: true,
+            protocol_type: "Monthly Prophylaxis Protocol",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v4)
+          );
+          seeded.push(v4);
+        } else {
+          // Puppy series (< 12 months)
+          // DHPP 5-in-1
+          const v1 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "DHPP (5-in-1 Core)",
+            brand: "Nobivac DHPP",
+            batch: "AUTO-DHPP-01",
+            date: today,
+            next_due: addDays(today, 21),
+            dose_no: 1,
+            dose_of: 3,
+            done: false,
+            automated: true,
+            protocol_type: "Core Canine Protocol",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v1)
+          );
+          seeded.push(v1);
+
+          // Anti-Rabies (Mandatory Core RA 9482)
+          const v2 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "Anti-Rabies (1-Year Core)",
+            brand: "Defensor 3",
+            batch: "AUTO-RAB-01",
+            date: today,
+            next_due: addDays(today, 30),
+            dose_no: 1,
+            dose_of: 1,
+            done: false,
+            automated: true,
+            protocol_type: "Core Rabies Protocol",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v2)
+          );
+          seeded.push(v2);
+
+          // Broad-Spectrum Deworming
+          const v3 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "Broad-Spectrum Deworming",
+            brand: "Canex Multi-Spectrum",
+            batch: "AUTO-DEW-01",
+            date: today,
+            next_due: addDays(today, 14),
+            dose_no: 1,
+            dose_of: 4,
+            done: false,
+            automated: true,
+            protocol_type: "Parasiticide Protocol",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v3)
+          );
+          seeded.push(v3);
+        }
       } else if (isCat) {
-        // FVRCP 4-in-1
-        const v1 = {
-          id: "v_" + Math.random().toString(36).slice(2, 8),
-          pet_id: petId,
-          card_id: cardId,
-          vaccine: "FVRCP (4-in-1 Core)",
-          brand: "Fel-O-Vax 4",
-          batch: "AUTO-FVR-01",
-          date: today,
-          next_due: addDays(today, 28),
-          dose_no: 1,
-          dose_of: 3,
-          done: false,
-          automated: true,
-          protocol_type: "Core Feline Protocol",
-          recorded_by: "System Automation"
-        };
-        await client.query(
-          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-          Object.values(v1)
-        );
-        seeded.push(v1);
+        if (isAdult) {
+          // Adult Feline Maintenance
+          const v1 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "FVRCP (4-in-1 Adult Core Booster)",
+            brand: "Fel-O-Vax 4",
+            batch: "AUTO-FVR-ADULT",
+            date: today,
+            next_due: addDays(today, 365),
+            dose_no: 1,
+            dose_of: 1,
+            done: false,
+            automated: true,
+            protocol_type: "Adult Core Feline Protocol",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v1)
+          );
+          seeded.push(v1);
 
-        // Feline Rabies
-        const v2 = {
-          id: "v_" + Math.random().toString(36).slice(2, 8),
-          pet_id: petId,
-          card_id: cardId,
-          vaccine: "Anti-Rabies (Feline Formulation)",
-          brand: "Defensor 3",
-          batch: "AUTO-RABF-01",
-          date: today,
-          next_due: addDays(today, 30),
-          dose_no: 1,
-          dose_of: 1,
-          done: false,
-          automated: true,
-          protocol_type: "Core Rabies Protocol",
-          recorded_by: "System Automation"
-        };
-        await client.query(
-          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-          Object.values(v2)
-        );
-        seeded.push(v2);
+          const v2 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "Anti-Rabies Booster (Feline Formulation)",
+            brand: "Defensor 3",
+            batch: "AUTO-RABF-ADULT",
+            date: today,
+            next_due: addDays(today, 365),
+            dose_no: 1,
+            dose_of: 1,
+            done: false,
+            automated: true,
+            protocol_type: "Core Rabies Protocol (Annual)",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v2)
+          );
+          seeded.push(v2);
+
+          const v3 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "Adult Feline Deworming (Quarterly)",
+            brand: "Profender / Milbemax",
+            batch: "AUTO-DEWF-ADULT",
+            date: today,
+            next_due: addDays(today, 90),
+            dose_no: 1,
+            dose_of: 4,
+            done: false,
+            automated: true,
+            protocol_type: "Feline Parasiticide Protocol (Quarterly)",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v3)
+          );
+          seeded.push(v3);
+        } else {
+          // Kitten series
+          const v1 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "FVRCP (4-in-1 Core)",
+            brand: "Fel-O-Vax 4",
+            batch: "AUTO-FVR-01",
+            date: today,
+            next_due: addDays(today, 28),
+            dose_no: 1,
+            dose_of: 3,
+            done: false,
+            automated: true,
+            protocol_type: "Core Feline Protocol",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v1)
+          );
+          seeded.push(v1);
+
+          const v2 = {
+            id: "v_" + Math.random().toString(36).slice(2, 8),
+            pet_id: petId,
+            card_id: cardId,
+            vaccine: "Anti-Rabies (Feline Formulation)",
+            brand: "Defensor 3",
+            batch: "AUTO-RABF-01",
+            date: today,
+            next_due: addDays(today, 30),
+            dose_no: 1,
+            dose_of: 1,
+            done: false,
+            automated: true,
+            protocol_type: "Core Rabies Protocol",
+            recorded_by: "System Automation"
+          };
+          await client.query(
+            `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            Object.values(v2)
+          );
+          seeded.push(v2);
+        }
       } else if (isRabbit) {
         const v1 = {
           id: "v_" + Math.random().toString(36).slice(2, 8),

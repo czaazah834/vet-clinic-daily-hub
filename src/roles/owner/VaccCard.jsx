@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Badge, VETS, scope, petName, dueState, TODAY, ICON, I } from "../../lib.jsx";
 import { auth, OFFLINE_MSG } from "../../authApi.js";
 import { setPrefill, Avatar, PhotoUpload, pick, petAge, Icon, Modal } from "./ui.jsx";
-import { formatSpeciesLabel } from "../../preventiveSchedule.js";
+import { formatSpeciesLabel, computeAgeDetails } from "../../preventiveSchedule.js";
 import MedProfile from "./MedProfile.jsx";
 
 const CLINIC = {
@@ -38,6 +38,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
   const all = (scope(db, me, "vacc") || []).slice().sort((a, b) => b.date.localeCompare(a.date));
   const over = all.filter(v => stateOf(v) === "Overdue"), soon = all.filter(v => stateOf(v) === "Due soon");
   const p = pets.find(x => x.id === sel), o = (db.owners || []).find(x => x.id === me.ownerId) || {};
+  const ageDetails = p?.birth ? computeAgeDetails(p.birth) : null;
   const mine = all.filter(v => v.petId === sel);
   const count = s => mine.filter(v => stateOf(v) === s).length;
   const next = mine.filter(v => !v.done && v.nextDue).sort((a, b) => a.nextDue.localeCompare(b.nextDue))[0];
@@ -213,6 +214,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Breed:</span> <b>{p.breed || "Mixed Breed"}</b></div>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Sex:</span> <b>{p.sex || "—"}</b></div>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Birth Date:</span> <b>{p.birth ? fmtDate(p.birth) : "—"}</b> {p.birth && <small style={{ color: "#0284c7" }}>({petAge(p.birth)})</small>}</div>
+                          <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Life Stage Protocol:</span> <b style={{ color: ageDetails?.isAdult ? "#059669" : "#2563eb" }}>{ageDetails?.lifeStageLabel || "Standard"}</b></div>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Weight:</span> <b>{p.weight != null ? `${p.weight} kg` : "—"}</b></div>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Coat / Markings:</span> <b>{p.color || "Standard"}</b></div>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Neutered:</span> <b>{p.neutered || "Not sure"}</b></div>
@@ -292,6 +294,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                       </h3>
                       <div style={{ fontSize: "12px", color: "#cbd5e1" }}>
                         Patient: <b>{p.name}</b> · Card ID: <b>{cardIdFormatted}</b>
+                        {ageDetails?.isAdult && <span style={{ marginLeft: 8, background: "rgba(16, 185, 129, 0.25)", color: "#6ee7b7", border: "1px solid #10b981", padding: "1px 7px", borderRadius: 4, fontSize: "11px", fontWeight: 700 }}>Lifelong Adult Routine Active</span>}
                       </div>
                     </div>
                     <button
