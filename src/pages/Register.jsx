@@ -54,6 +54,7 @@ function Combo({ label, text, setText, load, pick, disabled, ph, err, ok, bad, o
             role="combobox"
             className={bad ? "bad" : ok ? "ok" : ""}
             onFocus={() => run(text)}
+            onClick={() => { if (!open) run(text); }}
             onChange={(ev) => {
               setText(ev.target.value);
               pick(null, ev.target.value);
@@ -291,7 +292,7 @@ export default function Register({ onDone, onBack, go, limited }) {
     setZl((z) => ({ ...z, busy: true }));
     api(`geo/zips?country=PH&state=${encodeURIComponent(f.state)}&city=${encodeURIComponent(f.city)}`).then((r) => {
       if (!on) return;
-      const zips = Array.isArray(r.d?.zips) ? r.d.zips : [];
+      const zips = Array.isArray(r.d?.zips) ? r.d.zips : Array.isArray(r.d?.data?.zips) ? r.d.data.zips : [];
       setZl({ zips, exact: r.d?.exact !== false, busy: false });
       setF((p) => (zips.some((z) => z.zip === p.zip_code) ? p : { ...p, zip_code: zips.length === 1 ? zips[0].zip : "" }));
       setAx((a) => ({ ...a, zip_code: "" }));
@@ -326,11 +327,11 @@ export default function Register({ onDone, onBack, go, limited }) {
     setTx((t) => ({ ...t, state: "", city: "" }));
     setF((p) => ({ ...p, state: "", city: "" }));
     const cRes = await api("geo/countries/" + o.v);
-    const c = cRes.d && cRes.d.code ? cRes.d : null;
+    const c = cRes.d && cRes.d.code ? cRes.d : cRes.d?.data?.code ? cRes.d.data : null;
     if (!c) return;
     setCUR(c);
     const sRes = await api("geo/states?country=" + o.v);
-    const s = Array.isArray(sRes.d) ? sRes.d : [];
+    const s = Array.isArray(sRes.d) ? sRes.d : Array.isArray(sRes.d?.data) ? sRes.d.data : [];
     setST(s);
     if (!s.length) {
       setF((p) => ({ ...p, state: c.name }));
@@ -423,10 +424,10 @@ export default function Register({ onDone, onBack, go, limited }) {
           onTouch={() => touch("country")}
           load={async (q) => {
             const res = await api("geo/countries?q=" + encodeURIComponent(q));
-            const list = Array.isArray(res.d) ? res.d : [];
+            const list = Array.isArray(res.d) ? res.d : Array.isArray(res.d?.data) ? res.d.data : [];
             return list.map((c) => ({
               v: c.code,
-              t: `${c.flag ? c.flag + " " : ""}${c.name} (${c.dial})`,
+              t: `${c.name} (${c.dial})`,
               n: c.name,
             }));
           }}
@@ -481,7 +482,7 @@ export default function Register({ onDone, onBack, go, limited }) {
             const res = await api(
               `geo/cities?country=${CUR.code}&state=${encodeURIComponent(ST.length ? f.state : "")}&q=${encodeURIComponent(q)}`
             );
-            const list = Array.isArray(res.d) ? res.d : [];
+            const list = Array.isArray(res.d) ? res.d : Array.isArray(res.d?.data) ? res.d.data : [];
             return list.map((c) => ({ v: c, t: c, n: c }));
           }}
           pick={(o, typed) => {

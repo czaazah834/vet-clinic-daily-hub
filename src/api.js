@@ -833,8 +833,8 @@ async function call(method, path, body) {
       if (res.ok) {
         return data.data !== undefined ? data.data : data;
       }
-      // If Vite proxy returned 500/502/504 because backend is starting up or unreachable, fallback
-      if (res.status >= 500 && typeof data === "string" && (data.includes("proxy error") || data.includes("ECONNREFUSED"))) {
+      // If endpoint 404 or backend unreachable / proxy error (>= 500), fallback to in-memory
+      if (res.status === 404 || res.status >= 500) {
         // Fallback to in-memory below
       } else {
         const err = new Error(data?.error || `Request failed with status ${res.status}`);
@@ -845,10 +845,10 @@ async function call(method, path, body) {
         throw err;
       }
     } catch (networkOrApiErr) {
-      if (networkOrApiErr.fields || networkOrApiErr.remainingCooldown || networkOrApiErr.lockout || (networkOrApiErr.message && !networkOrApiErr.message.includes("fetch"))) {
+      if (networkOrApiErr.fields || networkOrApiErr.remainingCooldown || networkOrApiErr.lockout) {
         throw networkOrApiErr;
       }
-      // Server offline / not responding on this endpoint: fallback to in-memory
+      // Server offline / not responding on this endpoint: fallback to in-memory below
     }
   }
 
