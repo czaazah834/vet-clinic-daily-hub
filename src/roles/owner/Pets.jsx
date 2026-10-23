@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { TODAY, scope, uid, addLog, dueState } from "../../lib.jsx";
 import { useLive, Field, Modal, petAge, fmt12, onlyDecimal, Icon } from "./ui.jsx";
+import { computeAgeDetails, getPreventiveSchedule, getNextMilestone } from "../../preventiveSchedule.js";
 
 /* ---------- validation rules for the Add-pet form ---------- */
 /* Rules for the "Add my pet" form. Plain JS with no React, so the same file can move to the Node server later. */
@@ -238,6 +239,9 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
   const showCustomBreedField = v.species === "Other" || breedChoice.startsWith("Other");
   const petCalculatedAge = v.birth && !f.errs.birth ? petAge(v.birth) : "";
   const isOlderThanSixMonths = v.birth && !f.errs.birth && petCalculatedAge && !petCalculatedAge.includes("mo") && !petCalculatedAge.includes("under");
+  const [showSchedule, setShowSchedule] = useState(false);
+  const nextFormMilestone = v.birth && !f.errs.birth ? getNextMilestone(v.birth, v.species) : null;
+  const fullFormSchedule = v.birth && !f.errs.birth ? getPreventiveSchedule(v.birth, v.species) : [];
 
   return (
     <Modal title={editing ? "Edit pet request" : "Add my pet"} onClose={onClose}>
@@ -288,6 +292,70 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
           <Field id="pc" label="Color or markings (optional)" value={v.color} filter={petText} filterMsg="Letters, numbers and basic punctuation only" maxLen={40} onChange={x => f.set("color", x)} onBlur={() => f.blur("color")} error={f.show("color")} valid={f.ok("color")} hint="For example brown with a white chest" />
           <div className="full"><Field id="pm" label="Anything the clinic should know (optional)" type="textarea" rows={2} max={200} value={v.notes} onChange={x => f.set("notes", x)} onBlur={() => f.blur("notes")} error={f.show("notes")} valid={f.ok("notes")} hint="Health problems, behavior or past treatments" /></div>
         </div>
+
+        {nextFormMilestone && (
+          <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "12px", padding: "14px", marginTop: "14px", marginBottom: "10px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "#166534" }}>
+                  🤖 Automated Preventive Care Schedule (Calculated from Birthdate)
+                </div>
+                <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#065f46", marginTop: "3px" }}>
+                  Upcoming Priority: {nextFormMilestone.care} ({nextFormMilestone.ageLabel})
+                </div>
+                <div style={{ fontSize: "0.84rem", color: "#047857", marginTop: "2px" }}>
+                  Target: <b>{nextFormMilestone.target}</b> · Spacing: {nextFormMilestone.protocol}
+                </div>
+                <div style={{ fontSize: "0.82rem", color: "#166534", marginTop: "4px" }}>
+                  📅 Calculated Target Date: <b>{nextFormMilestone.targetDate}</b>
+                </div>
+              </div>
+              <button type="button" className="lnk" style={{ fontSize: "0.8rem", whiteSpace: "nowrap" }} onClick={() => setShowSchedule(!showSchedule)}>
+                {showSchedule ? "Hide Roadmap ▲" : `View Full Roadmap (${fullFormSchedule.length}) ▼`}
+              </button>
+            </div>
+
+            {showSchedule && (
+              <div style={{ marginTop: "12px", borderTop: "1px solid #bbf7d0", paddingTop: "10px", maxHeight: "240px", overflowY: "auto" }}>
+                <table style={{ width: "100%", fontSize: "0.8rem", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", color: "#14532d", borderBottom: "1px solid #bbf7d0" }}>
+                      <th style={{ padding: "4px" }}>Age</th>
+                      <th style={{ padding: "4px" }}>Care Required</th>
+                      <th style={{ padding: "4px" }}>Target Date</th>
+                      <th style={{ padding: "4px" }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fullFormSchedule.map(s => (
+                      <tr key={s.id} style={{ borderBottom: "1px solid #dcfce7" }}>
+                        <td style={{ padding: "6px 4px", fontWeight: 600 }}>{s.ageLabel}</td>
+                        <td style={{ padding: "6px 4px" }}>
+                          <div>{s.care}</div>
+                          <small style={{ color: "#047857", fontSize: "0.75rem" }}>{s.target}</small>
+                        </td>
+                        <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{s.targetDate}</td>
+                        <td style={{ padding: "6px 4px" }}>
+                          <span style={{
+                            padding: "2px 6px",
+                            borderRadius: "8px",
+                            fontSize: "0.72rem",
+                            fontWeight: 600,
+                            background: s.status === "Overdue" ? "#fee2e2" : s.status === "Due Soon" ? "#fef3c7" : "#e0e7ff",
+                            color: s.status === "Overdue" ? "#991b1b" : s.status === "Due Soon" ? "#92400e" : "#3730a3"
+                          }}>
+                            {s.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {top && <p className="err" role="alert">{top}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
         <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Close</button><button className="btn">{editing ? "Save and resend" : "Send to clinic"}</button></div>
@@ -338,16 +406,79 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
   const soon = V.filter(v => !v.done && v.nextDue && dueState(v.nextDue) === "Due soon").length;
   const next = A.filter(a => ["Scheduled", "Confirmed", "Checked-in"].includes(a.status) && a.date >= TODAY).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
   const rows = [["Kind", kind(p)], ["Digital Card ID", p.vaccinationCardId], ["Breed", p.breed], ["Sex", p.sex], ["Age", p.birth ? petAge(p.birth) : ""], ["Birth date", p.birth], ["Weight", p.weight != null ? `${p.weight} kg` : ""], ["Spayed or neutered", p.neutered], ["Color", p.color]].filter(([, x]) => x);
+
+  const petSchedule = p.birth ? getPreventiveSchedule(p.birth, p.species, V) : [];
+  const nextMilestone = p.birth ? getNextMilestone(p.birth, p.species, V) : null;
+
   return (
     <Modal title={p.name} onClose={onClose}>
       <dl className="op-dl">{rows.map(([k, x]) => <div key={k}><dt>{k}</dt><dd>{x}</dd></div>)}</dl>
       {(p.allergies || []).length > 0 && <div className="op-sec"><h4>Allergies</h4><ul className="ow-tags">{p.allergies.map(a => <li className="ow-tag" key={a}>{a}</li>)}</ul></div>}
       {p.notes && <div className="op-sec"><h4>Care notes</h4><p>{p.notes}</p></div>}
+      
       <div className="op-sec">
         <h4>Health at a glance</h4>
         <p className="op-line"><Icon n="syringe" size={16} /> {V.length ? <>{V.length} vaccine record{V.length > 1 ? "s" : ""}{over ? <span className="op-chip no">{over} overdue</span> : soon ? <span className="op-chip wait">{soon} due soon</span> : <span className="op-chip ok">Up to date</span>}</> : "No vaccine records yet"}</p>
         <p className="op-line"><Icon n="calendar" size={16} /> {next ? `Next visit: ${next.date} at ${fmt12(next.time)} (${next.status})` : "No visit booked"}</p>
       </div>
+
+      {p.birth && petSchedule.length > 0 && (
+        <div className="op-sec">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
+            <h4 style={{ margin: 0 }}>Automated Preventive Schedule & Roadmap</h4>
+            <span style={{ fontSize: "0.8rem", color: "#0b3a5b", fontWeight: 700 }}>
+              Calculated Age: {petAge(p.birth)}
+            </span>
+          </div>
+
+          {nextMilestone && (
+            <div style={{ background: "#eff6ff", border: "1.5px solid #93c5fd", borderRadius: "10px", padding: "10px 12px", marginBottom: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                <div>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#1e40af", textTransform: "uppercase" }}>🎯 Current Recommended Care</div>
+                  <div style={{ fontSize: "0.92rem", fontWeight: 700, color: "#1e3a8a", marginTop: "2px" }}>{nextMilestone.care} ({nextMilestone.ageLabel})</div>
+                  <div style={{ fontSize: "0.8rem", color: "#2563eb", marginTop: "1px" }}>Target: <b>{nextMilestone.target}</b> · Spacing: {nextMilestone.protocol}</div>
+                  <div style={{ fontSize: "0.8rem", color: "#1e40af", marginTop: "2px" }}>Calculated Target Date: <b>{nextMilestone.targetDate}</b></div>
+                </div>
+                <button className="btn sm gold" style={{ whiteSpace: "nowrap" }} onClick={() => onBook(p.id, `${nextMilestone.care} (${nextMilestone.ageLabel})`)}>
+                  Book this visit
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ maxHeight: "220px", overflowY: "auto", border: "1px solid var(--ln)", borderRadius: "8px", padding: "4px" }}>
+            <table style={{ width: "100%", fontSize: "0.78rem", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ textAlign: "left", color: "var(--mu)", borderBottom: "1px solid var(--ln)" }}>
+                  <th style={{ padding: "6px 4px" }}>Age Milestone</th>
+                  <th style={{ padding: "6px 4px" }}>Care Required</th>
+                  <th style={{ padding: "6px 4px" }}>Target Date</th>
+                  <th style={{ padding: "6px 4px" }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {petSchedule.map(s => (
+                  <tr key={s.id} style={{ borderBottom: "1px solid var(--ln)" }}>
+                    <td style={{ padding: "6px 4px", fontWeight: 600 }}>{s.ageLabel}</td>
+                    <td style={{ padding: "6px 4px" }}>
+                      <div style={{ fontWeight: 600, color: "#0f172a" }}>{s.care}</div>
+                      <small style={{ color: "var(--mu)", fontSize: "0.74rem" }}>{s.target}</small>
+                    </td>
+                    <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{s.targetDate}</td>
+                    <td style={{ padding: "6px 4px" }}>
+                      <span className={`op-chip ${s.status === "Completed" ? "ok" : s.status === "Overdue" ? "no" : s.status === "Due Soon" ? "wait" : ""}`} style={{ fontSize: "0.72rem" }}>
+                        {s.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <p className="ow-hint">Need to change the name, breed or birth date? Ask the clinic front desk, they keep the official record.</p>
       <div className="row end"><button className="btn ghost" onClick={onVacc}>Vaccination card</button><button className="btn" onClick={onBook}>Book a visit</button></div>
     </Modal>

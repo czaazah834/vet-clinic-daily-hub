@@ -44,7 +44,7 @@ function Dash({ db, setDb, me, go, say }) {
     </section>}
     {!pets.length && reqs.length > 0 && <div className="empty sm">Your pet will appear here once the clinic approves the request.</div>}
     {modal && modal.form && <PetFormModal db={db} setDb={setDb} me={me} say={say} editing={modal.editing} onClose={() => setModal(null)} />}
-    {modal && modal.profile && <PetProfileModal pet={modal.profile} db={db} me={me} onClose={() => setModal(null)} onVacc={() => { pick.petId = modal.profile.id; go("vacc"); }} onBook={() => book(modal.profile.id)} />}
+    {modal && modal.profile && <PetProfileModal pet={modal.profile} db={db} me={me} onClose={() => setModal(null)} onVacc={() => { pick.petId = modal.profile.id; go("vacc"); }} onBook={(pid, rsn) => book(pid || modal.profile.id, rsn)} />}
   </>);
 }
 const P = (k, l, i, sub, Page) => ({ k, l, i, sub, Page });
