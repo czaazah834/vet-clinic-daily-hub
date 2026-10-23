@@ -110,11 +110,55 @@ export const CLINICAL_PROTOCOLS = {
 
   Rabbit: [
     {
+      vaccine: "RHDV1 / RHDV2 Core Vaccine",
+      brand: "Filavac VHD K C+V",
+      type: "Core Lagomorph",
+      description: "Protects against Rabbit Hemorrhagic Disease Virus strains 1 and 2.",
+      getSchedule: () => ({ initialDue: plus(7), boosterDays: 365, doseNo: 1, doseOf: 1 }),
+    },
+    {
       vaccine: "Comprehensive Deworming & Health Exam",
       brand: "Panacur (Fenbendazole)",
       type: "Prophylaxis & Wellness",
       description: "Encephalitozoon cuniculi and internal parasite protection.",
+      getSchedule: () => ({ initialDue: plus(14), boosterDays: 180, doseNo: 1, doseOf: 2 }),
+    },
+  ],
+
+  Lagomorph: [
+    {
+      vaccine: "RHDV1 / RHDV2 Core Vaccine",
+      brand: "Filavac VHD K C+V",
+      type: "Core Lagomorph",
+      description: "Protects against Rabbit Hemorrhagic Disease Virus strains 1 and 2.",
+      getSchedule: () => ({ initialDue: plus(7), boosterDays: 365, doseNo: 1, doseOf: 1 }),
+    },
+    {
+      vaccine: "Comprehensive Deworming & Health Exam",
+      brand: "Panacur (Fenbendazole)",
+      type: "Prophylaxis & Wellness",
+      description: "Encephalitozoon cuniculi and internal parasite protection.",
+      getSchedule: () => ({ initialDue: plus(14), boosterDays: 180, doseNo: 1, doseOf: 2 }),
+    },
+  ],
+
+  Rodent: [
+    {
+      vaccine: "Dental & Occlusion Clinical Assessment",
+      brand: "VCMS Diagnostic Protocol",
+      type: "Dental Surveillance",
+      description: "Incisor and molar overgrowth surveillance and nutritional audit.",
       getSchedule: () => ({ initialDue: plus(7), boosterDays: 180, doseNo: 1, doseOf: 2 }),
+    },
+  ],
+
+  Avian: [
+    {
+      vaccine: "Avian Fecal Float Diagnostic & Wellness",
+      brand: "Microscopic Screening",
+      type: "Diagnostic Screening",
+      description: "Fecal parasite floatation, Gram stain and nutritional counseling.",
+      getSchedule: () => ({ initialDue: plus(7), boosterDays: 365, doseNo: 1, doseOf: 1 }),
     },
   ],
 
@@ -128,6 +172,9 @@ export const CLINICAL_PROTOCOLS = {
     },
   ],
 };
+
+CLINICAL_PROTOCOLS.Canine = CLINICAL_PROTOCOLS.Dog;
+CLINICAL_PROTOCOLS.Feline = CLINICAL_PROTOCOLS.Cat;
 
 /**
  * Generates an official unique Pet Digital Vaccination Card ID

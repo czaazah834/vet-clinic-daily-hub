@@ -404,9 +404,13 @@ clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
         [newPetId, today, r.weight]
       );
 
-      // 3. Automated Digital Card Vaccine Protocol Seeds (Core schedules)
-      const isDog = (r.species || "").toLowerCase() === "dog";
-      const isCat = (r.species || "").toLowerCase() === "cat";
+      // 3. Automated Digital Card Vaccine Protocol Seeds (Core schedules per VCMS v2.0)
+      const sp = (r.species || "").toLowerCase();
+      const isDog = sp.includes("dog") || sp.includes("canine");
+      const isCat = sp.includes("cat") || sp.includes("feline");
+      const isRabbit = sp.includes("rabbit") || sp.includes("lagomorph");
+      const isRodent = sp.includes("rodent") || sp.includes("hamster") || sp.includes("guinea");
+      const isAvian = sp.includes("bird") || sp.includes("avian");
       const addDays = (dStr, days) => {
         const d = new Date(dStr);
         d.setDate(d.getDate() + days);
@@ -438,6 +442,27 @@ clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
           `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
           ["v_" + Math.random().toString(36).slice(2, 8), newPetId, cardId, "Rabies (Feline)", "Defensor", "AUTO-GEN-04", today, addDays(today, 30), 1, 1, false, true, "Core Rabies Protocol", "System Automation"]
+        );
+      } else if (isRabbit) {
+        // RHDV1 / RHDV2
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          ["v_" + Math.random().toString(36).slice(2, 8), newPetId, cardId, "RHDV1 / RHDV2 Core Vaccine", "Filavac", "AUTO-GEN-05", today, addDays(today, 30), 1, 1, false, true, "Core Lagomorph Protocol", "System Automation"]
+        );
+      } else if (isRodent) {
+        // Rodent Dental / Occlusion Surveillance
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          ["v_" + Math.random().toString(36).slice(2, 8), newPetId, cardId, "Dental & Occlusion Exam", "VCMS Dental Check", "AUTO-GEN-06", today, addDays(today, 180), 1, 2, false, true, "Rodent Dental Protocol", "System Automation"]
+        );
+      } else if (isAvian) {
+        // Avian Fecal Float
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          ["v_" + Math.random().toString(36).slice(2, 8), newPetId, cardId, "Fecal Float Screening", "Microscopic Float", "AUTO-GEN-07", today, addDays(today, 180), 1, 1, false, true, "Avian Diagnostic Protocol", "System Automation"]
         );
       }
 

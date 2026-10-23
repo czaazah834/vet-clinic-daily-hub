@@ -27,9 +27,14 @@ export const BREED_WEIGHTS = {
 
 export const SPECIES_DEFAULTS = {
   Dog: { min: 6.0, max: 22.0, tempMin: 38.0, tempMax: 39.2, normalTempPreset: 38.5 },
+  Canine: { min: 6.0, max: 22.0, tempMin: 38.0, tempMax: 39.2, normalTempPreset: 38.5 },
   Cat: { min: 3.2, max: 5.2, tempMin: 38.0, tempMax: 39.2, normalTempPreset: 38.4 },
+  Feline: { min: 3.2, max: 5.2, tempMin: 38.0, tempMax: 39.2, normalTempPreset: 38.4 },
   Rabbit: { min: 1.5, max: 3.2, tempMin: 38.5, tempMax: 40.0, normalTempPreset: 39.0 },
+  Lagomorph: { min: 1.5, max: 3.2, tempMin: 38.5, tempMax: 40.0, normalTempPreset: 39.0 },
+  Rodent: { min: 0.1, max: 1.2, tempMin: 37.0, tempMax: 39.0, normalTempPreset: 38.0 },
   Bird: { min: 0.05, max: 0.6, tempMin: 40.0, tempMax: 42.0, normalTempPreset: 41.0 },
+  Avian: { min: 0.05, max: 0.6, tempMin: 40.0, tempMax: 42.0, normalTempPreset: 41.0 },
   Other: { min: 1.0, max: 10.0, tempMin: 38.0, tempMax: 39.5, normalTempPreset: 38.5 },
 };
 

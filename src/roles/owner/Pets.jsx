@@ -1,12 +1,36 @@
 import { useState } from "react";
-import { TODAY, scope, uid, addLog, dueState } from "../../lib.jsx";
+import { TODAY, scope, uid, addLog, dueState, ICON } from "../../lib.jsx";
 import { useLive, Field, Modal, petAge, fmt12, onlyDecimal, Icon } from "./ui.jsx";
-import { computeAgeDetails, getPreventiveSchedule, getNextMilestone, computeWeightBracket } from "../../preventiveSchedule.js";
+import {
+  computeAgeDetails,
+  getPreventiveSchedule,
+  getNextMilestone,
+  computeWeightBracket,
+  normalizeSpecies,
+  formatSpeciesLabel
+} from "../../preventiveSchedule.js";
+import { api } from "../../api.js";
 
-/* ---------- validation rules for the Add-pet form ---------- */
-/* Rules for the "Add my pet" form. Plain JS with no React, so the same file can move to the Node server later. */
-export const SPECIES = ["Dog", "Cat", "Rabbit", "Bird", "Other"];
+/* ---------- Clinical Species Classification (VCMS Protocols v2.0) ---------- */
+export const SPECIES = [
+  "Canine (Dog)",
+  "Feline (Cat)",
+  "Lagomorph (Rabbit)",
+  "Rodent (Hamster / Guinea Pig / etc.)",
+  "Avian (Bird)",
+  "Other / Exotic"
+];
+
 export const NEUTERED = ["Yes", "No", "Not sure"];
+
+export const RODENT_DENTAL_STATUS = [
+  "Normal / Aligned (Healthy Occlusion)",
+  "Incisor Overgrowth (Needs Trim)",
+  "Molar Spurs / Malocclusion (Needs Dental Burr)",
+  "Signs of Drooling / Wet Chin (Suspected Malocclusion)",
+  "Not Evaluated Yet"
+];
+
 export const PET_COLORS = [
   "Black",
   "White",
@@ -28,12 +52,13 @@ export const PET_COLORS = [
   "Spotted",
   "Other / Custom markings (type below)"
 ];
+
 export const MAX_PETS = 10;      // approved pets + requests on one account
 export const MAX_PENDING = 3;    // requests waiting for the clinic at one time
 export const MAX_NOTES = 200;
 
 export const BREEDS_BY_SPECIES = {
-  Dog: [
+  "Canine (Dog)": [
     "Aspin (Philippine Native Dog)",
     "Shih Tzu",
     "Pomeranian",
@@ -60,7 +85,7 @@ export const BREEDS_BY_SPECIES = {
     "Jack Russell Terrier",
     "Other / Mixed (type your own)"
   ],
-  Cat: [
+  "Feline (Cat)": [
     "Puspin (Philippine Domestic Short Hair)",
     "Persian",
     "Siamese",
@@ -77,7 +102,7 @@ export const BREEDS_BY_SPECIES = {
     "Himalayan",
     "Other / Mixed (type your own)"
   ],
-  Rabbit: [
+  "Lagomorph (Rabbit)": [
     "Netherland Dwarf",
     "Holland Lop",
     "Mini Rex",
@@ -89,7 +114,22 @@ export const BREEDS_BY_SPECIES = {
     "English Spot",
     "Other / Mixed (type your own)"
   ],
-  Bird: [
+  "Rodent (Hamster / Guinea Pig / etc.)": [
+    "Syrian Hamster (Golden / Teddy Bear)",
+    "Roborovski Dwarf Hamster",
+    "Winter White Dwarf Hamster",
+    "Campbell's Dwarf Hamster",
+    "Guinea Pig (Abyssinian)",
+    "Guinea Pig (American / Short-haired)",
+    "Guinea Pig (Peruvian / Long-haired)",
+    "Chinchilla (Standard Gray / Mutation)",
+    "Fancy Rat (Dumbo / Standard)",
+    "Fancy Mouse",
+    "Degu",
+    "Mongolian Gerbil",
+    "Other / Mixed (type your own)"
+  ],
+  "Avian (Bird)": [
     "Parakeet / Budgerigar (Budgie)",
     "Cockatiel",
     "Lovebird (Agapornis)",
@@ -101,27 +141,37 @@ export const BREEDS_BY_SPECIES = {
     "Cockatoo",
     "Macaw",
     "Monk Parakeet (Quaker)",
-    "Ringneck Parakeet",
+    "Indian Ringneck Parakeet",
     "Dove / Pigeon",
     "Other (type your own)"
   ],
-  Other: [
-    "Hamster (Syrian / Dwarf)",
-    "Guinea Pig",
-    "Ferret",
-    "Hedgehog",
+  "Other / Exotic": [
+    "African Pygmy Hedgehog",
     "Sugar Glider",
-    "Red-eared Slider Turtle",
+    "Ferret",
+    "Bearded Dragon (Reptile)",
+    "Leopard Gecko (Reptile)",
+    "Red-eared Slider (Turtle)",
+    "Sulcata Tortoise",
     "Other (type your own)"
   ]
 };
 
+// Aliases for backward compatibility
+BREEDS_BY_SPECIES.Dog = BREEDS_BY_SPECIES["Canine (Dog)"];
+BREEDS_BY_SPECIES.Cat = BREEDS_BY_SPECIES["Feline (Cat)"];
+BREEDS_BY_SPECIES.Rabbit = BREEDS_BY_SPECIES["Lagomorph (Rabbit)"];
+BREEDS_BY_SPECIES.Rodent = BREEDS_BY_SPECIES["Rodent (Hamster / Guinea Pig / etc.)"];
+BREEDS_BY_SPECIES.Bird = BREEDS_BY_SPECIES["Avian (Bird)"];
+BREEDS_BY_SPECIES.Other = BREEDS_BY_SPECIES["Other / Exotic"];
+
 export const GUIDANCE_BY_SPECIES = {
-  Dog: "🐶 Dog Health Guidance: Core puppy vaccinations (5-in-1 / DHPP) start at 6–8 weeks, with Rabies at 3+ months. Monthly preventative deworming and tick/flea prevention are recommended.",
-  Cat: "🐱 Cat Health Guidance: Feline 4-in-1 (FVRCP) starts at 8 weeks, with Rabies at 3+ months. Annual check-ups and preventative parasite care are strongly advised.",
-  Rabbit: "🐰 Rabbit Care Guidance: Fresh high-fiber grass hay (Timothy/Orchard) should make up 80%+ of daily food. Regular dental checks and preventative care keep rabbits healthy.",
-  Bird: "🦜 Avian Care Guidance: Birds require clean, well-ventilated air away from aerosols and non-stick cookware fumes. Annual wellness exams help detect hidden issues.",
-  Other: "🐾 Companion Pet Guidance: Exotic and small pets thrive with species-tailored nutrition and regular preventative check-ups."
+  "Canine (Dog)": "🐶 Canine Protocol (VCMS v2.0): Bi-weekly deworming starts at Day 14, switching to monthly at Day 90. Core DHPP starts at 6 weeks (Day 42), with Rabies at 12+ weeks (Day 84). Flea/tick/heartworm starts at 8 weeks. Strict heartworm antigen testing required for dogs >= 7 months with safety gaps.",
+  "Feline (Cat)": "🐱 Feline Protocol (VCMS v2.0): Bi-weekly deworming starts at Day 14 (transitions to quarterly at 6 months). FVRCP 4-in-1 core immunization starts at 6 weeks, with Rabies at 12+ weeks. Strict toxicology block: Never use Permethrin formulas on felines.",
+  "Lagomorph (Rabbit)": "🐰 Lagomorph Protocol (VCMS v2.0): Annual RHDV1/RHDV2 vaccination starts at Day 35. High-fiber timothy hay (80%+) and semi-annual dental checks are vital. Strict toxicology block: Fipronil (Frontline) is strictly prohibited due to fatal neurotoxicity.",
+  "Rodent (Hamster / Guinea Pig / etc.)": "🐹 Rodent Protocol (VCMS v2.0): Continuous elodont dentition requires semi-annual molar and incisor occlusion surveillance. Monitor for incisor overgrowth, molar spurs, and wet chin / drooling.",
+  "Avian (Bird)": "🦜 Avian Protocol (VCMS v2.0): Annual fecal float screening at 6 months. Home Hazard Warning: Inhaled PTFE/Teflon cookware fumes and aerosol sprays cause fatal hemorrhagic respiratory failure.",
+  "Other / Exotic": "🐾 Exotic Species Protocol: Specialized husbandry, temperature regulation, and regular preventative veterinary evaluations."
 };
 
 const getYesterday = () => {
@@ -151,9 +201,9 @@ export function validatePet(v, taken = []) {
   else if (!LETTER.test(name)) e.name = "The name needs at least one letter";
   else if (taken.includes(name.toLowerCase())) e.name = `You already have a pet named ${name}`;
 
-  if (!v.species) e.species = "Choose the kind of animal";
-  else if (!SPECIES.includes(v.species)) e.species = "Pick one from the list";
-  else if (v.species === "Other") {
+  if (!v.species) e.species = "Select pet species classification";
+  else if (!SPECIES.includes(v.species) && !Object.keys(BREEDS_BY_SPECIES).includes(v.species)) e.species = "Pick a species from the list";
+  else if (v.species.includes("Other")) {
     const o = v.other.trim();
     if (!o) e.other = "Tell us what kind of animal it is";
     else if (o.length < 3) e.other = "Use at least 3 characters";
@@ -185,34 +235,53 @@ export function validatePet(v, taken = []) {
   if (c.length > 40) e.color = "Keep it under 40 characters";
   else if (c && !LETTER.test(c)) e.color = "Use words, not only numbers or symbols";
 
+  if (v.species && v.species.includes("Rodent")) {
+    if (!v.dentalOcclusion) e.dentalOcclusion = "Please assess dental/occlusion status";
+    else if (!RODENT_DENTAL_STATUS.includes(v.dentalOcclusion)) e.dentalOcclusion = "Select an occlusion status";
+  }
+
   const n = v.notes.trim();
   if (n.length > MAX_NOTES) e.notes = `Keep notes under ${MAX_NOTES} characters`;
   else if (n && !LETTER.test(n)) e.notes = "Write a few words, not only numbers or symbols";
   return e;
 }
 
-
-/* Requests an owner sends to the clinic for a new pet. They live in db.petRequests until the front desk reviews them.
-   No database yet: this is the same in-memory db the other owner pages use. */
 export const myRequests = (db, me) => (db.petRequests || []).filter(r => r.ownerId === me.ownerId);
 
-/* Returns a sentence when the owner can't add another pet right now, or "" when they can. */
 export const addBlock = (db, me) => {
   const have = scope(db, me, "pets").length, reqs = myRequests(db, me);
   if (have + reqs.length >= MAX_PETS) return `One account can hold up to ${MAX_PETS} pets`;
   if (reqs.filter(r => r.status === "Pending").length >= MAX_PENDING) return `${MAX_PENDING} requests are already waiting for the clinic. Wait for a reply before adding more`;
   return "";
 };
-const kind = p => (p.species === "Other" && p.speciesOther) ? p.speciesOther : p.species;
+
+const kind = p => (p.species && p.species.includes("Other") && p.speciesOther) ? p.speciesOther : formatSpeciesLabel(p.species);
 
 /* ---------- Add / edit a pet request ---------- */
 export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
   const e0 = editing || {};
   const taken = [...scope(db, me, "pets"), ...myRequests(db, me).filter(r => !editing || r.id !== editing.id)].map(p => p.name.trim().toLowerCase());
-  const f = useLive({ name: e0.name || "", species: e0.species || "", other: e0.speciesOther || "", breed: e0.breed || "", sex: e0.sex || "", birth: e0.birth || "", weight: e0.weight != null ? String(e0.weight) : "", neutered: e0.neutered || "", color: e0.color || "", notes: e0.notes || "" }, v => validatePet(v, taken));
+  
+  // Normalize initial species
+  const initialSpecies = e0.species ? formatSpeciesLabel(e0.species) : "";
+
+  const f = useLive({
+    name: e0.name || "",
+    species: initialSpecies || "",
+    other: e0.speciesOther || "",
+    breed: e0.breed || "",
+    sex: e0.sex || "",
+    birth: e0.birth || "",
+    weight: e0.weight != null ? String(e0.weight) : "",
+    neutered: e0.neutered || "",
+    color: e0.color || "",
+    dentalOcclusion: e0.dentalOcclusion || "Normal / Aligned (Healthy Occlusion)",
+    notes: e0.notes || ""
+  }, v => validatePet(v, taken));
+
   const { v } = f, [top, setTop] = useState("");
 
-  const initialSpeciesBreeds = BREEDS_BY_SPECIES[e0.species] || [];
+  const initialSpeciesBreeds = BREEDS_BY_SPECIES[v.species] || BREEDS_BY_SPECIES[e0.species] || [];
   const isCustomInitial = e0.breed && !initialSpeciesBreeds.includes(e0.breed);
   const [breedChoice, setBreedChoice] = useState(isCustomInitial ? "Other / Mixed (type your own)" : (e0.breed || ""));
   const [customBreed, setCustomBreed] = useState(isCustomInitial ? e0.breed : "");
@@ -226,6 +295,11 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
     setBreedChoice("");
     setCustomBreed("");
     f.set("breed", "");
+    if (newSpecies.includes("Rodent")) {
+      f.set("dentalOcclusion", "Normal / Aligned (Healthy Occlusion)");
+    } else {
+      f.set("dentalOcclusion", "");
+    }
   };
 
   const handleBreedChoiceChange = choice => {
@@ -263,45 +337,129 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
       const cur = (db.petRequests || []).find(r => r.id === editing.id && r.ownerId === me.ownerId);
       if (!cur) { say("This request is no longer available"); return onClose(); }
     } else { const m = addBlock(db, me); if (m) return setTop(m); }
-    const data = { name: v.name.trim(), species: v.species, speciesOther: v.species === "Other" ? v.other.trim() : "", breed: v.breed.trim(), sex: v.sex, birth: v.birth, weight: +v.weight, neutered: v.neutered, color: v.color.trim(), notes: v.notes.trim() };
+
+    const canonicalSpecies = normalizeSpecies(v.species);
+    const data = {
+      name: v.name.trim(),
+      species: canonicalSpecies,
+      speciesLabel: formatSpeciesLabel(v.species),
+      speciesOther: v.species.includes("Other") ? v.other.trim() : "",
+      breed: v.breed.trim(),
+      sex: v.sex,
+      birth: v.birth,
+      weight: +v.weight,
+      neutered: v.neutered,
+      color: v.color.trim(),
+      dentalOcclusion: canonicalSpecies === "Rodent" ? v.dentalOcclusion : "",
+      notes: v.notes.trim()
+    };
+
     setDb(p => ({
       ...p,
       petRequests: editing
         ? (p.petRequests || []).map(r => r.id === editing.id ? { ...r, ...data, status: "Pending", declineReason: "" } : r)
         : [...(p.petRequests || []), { id: uid(), ownerId: me.ownerId, requestedAt: TODAY, status: "Pending", declineReason: "", ...data }],
-      log: addLog(p, me, `Owner ${editing ? "updated" : "sent"} a pet request for ${data.name}`),
+      log: addLog(p, me, `Owner ${editing ? "updated" : "sent"} a pet request for ${data.name} (${canonicalSpecies})`),
     }));
+
+    // Async sync to PostgreSQL
+    api.post("/api/pet-requests", { ...data, ownerId: me.ownerId }).catch(() => {});
+
     say(editing ? "Request updated and sent again" : `${data.name} was sent to the clinic for review`); onClose();
   };
 
   const availableBreeds = BREEDS_BY_SPECIES[v.species] || [];
-  const showCustomBreedField = v.species === "Other" || breedChoice.startsWith("Other");
+  const showCustomBreedField = v.species.includes("Other") || breedChoice.startsWith("Other");
   const showCustomColorField = colorChoice.startsWith("Other");
   const petCalculatedAge = v.birth && !f.errs.birth ? petAge(v.birth) : "";
   const isOlderThanSixMonths = v.birth && !f.errs.birth && petCalculatedAge && !petCalculatedAge.includes("mo") && !petCalculatedAge.includes("under");
   const [showSchedule, setShowSchedule] = useState(false);
+  const [activeWorkflowTab, setActiveWorkflowTab] = useState("all");
+  
   const nextFormMilestone = v.birth && !f.errs.birth ? getNextMilestone(v.birth, v.species) : null;
   const fullFormSchedule = v.birth && !f.errs.birth ? getPreventiveSchedule(v.birth, v.species) : [];
+  const filteredSchedule = activeWorkflowTab === "all"
+    ? fullFormSchedule
+    : fullFormSchedule.filter(s => s.workflow === activeWorkflowTab);
+
   const weightBracket = computeWeightBracket(v.weight, v.species, v.birth);
+  const normSpecies = normalizeSpecies(v.species);
 
   return (
     <Modal title={editing ? "Edit pet request" : "Add my pet"} onClose={onClose}>
       <form onSubmit={submit} noValidate>
-        <p className="ow-note info">The clinic front desk checks every new pet before it appears on your account. You will see its status on the My Pets page.</p>
+        <p className="ow-note info">The clinic front desk reviews each patient registration before activating it in the clinical system.</p>
 
         {v.species && GUIDANCE_BY_SPECIES[v.species] && (
-          <div className="ow-note" style={{ background: "#eff6ff", borderColor: "#93c5fd", color: "#1e3a8a", fontSize: "0.85rem", lineHeight: 1.45, marginBottom: 14 }}>
+          <div className="ow-note" style={{ background: "#eff6ff", borderColor: "#93c5fd", color: "#1e3a8a", fontSize: "0.83rem", lineHeight: 1.45, marginBottom: 14 }}>
             {GUIDANCE_BY_SPECIES[v.species]}
+          </div>
+        )}
+
+        {/* Clinical Interceptors & Toxicity Blocks based on VCMS v2.0 Protocols */}
+        {normSpecies === "Lagomorph" && (
+          <div style={{ background: "#fef2f2", border: "1.5px solid #f87171", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", color: "#991b1b", fontSize: "0.82rem" }}>
+            <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>🚫</span> <span>TOXICOLOGY BLOCK: Strict Fipronil (Frontline) Ban</span>
+            </div>
+            <div style={{ marginTop: "3px", lineHeight: 1.4 }}>
+              Fipronil is lethal to rabbits and causes severe neurotoxic seizures and death. Frontline or fipronil-based products must never be dispensed or applied.
+            </div>
+          </div>
+        )}
+
+        {normSpecies === "Feline" && (
+          <div style={{ background: "#fef2f2", border: "1.5px solid #f87171", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", color: "#991b1b", fontSize: "0.82rem" }}>
+            <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>🚫</span> <span>TOXICOLOGY BLOCK: Permethrin Toxicity Restriction</span>
+            </div>
+            <div style={{ marginTop: "3px", lineHeight: 1.4 }}>
+              Completely restrict formulas containing Permethrin. Canine spot-ons with permethrin are fatal to cats, causing severe tremors and neurological failure.
+            </div>
+          </div>
+        )}
+
+        {normSpecies === "Avian" && (
+          <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", color: "#92400e", fontSize: "0.82rem" }}>
+            <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>⚠️</span> <span>HOME HAZARD ALERT: PTFE / Teflon Cookware Toxic Fumes</span>
+            </div>
+            <div style={{ marginTop: "3px", lineHeight: 1.4 }}>
+              Overheated non-stick PTFE pans, self-cleaning ovens, and aerosol sprays release colorless, odorless fumes that cause acute fatal pulmonary hemorrhage in birds. Keep cages far away from the kitchen.
+            </div>
+          </div>
+        )}
+
+        {weightBracket && weightBracket.heartwormAlert && (
+          <div style={{ background: "#fef2f2", border: "1.5px solid #ef4444", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", color: "#991b1b", fontSize: "0.82rem" }}>
+            <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>🛡️</span> <span>VCMS 2.0 SAFETY PROTOCOL: Heartworm Antigen Test Required</span>
+            </div>
+            <div style={{ marginTop: "3px", lineHeight: 1.4 }}>
+              {weightBracket.heartwormAlert}
+            </div>
           </div>
         )}
 
         <div className="op-2">
           <Field id="pn" label="Pet name" req value={v.name} filter={petText} filterMsg="Letters, numbers and . ' - only" maxLen={30} onChange={x => f.set("name", x)} onBlur={() => f.blur("name")} error={f.show("name")} valid={f.ok("name")} />
-          <Field id="ps" label="Kind of animal" req type="select" value={v.species} onChange={handleSpeciesChange} onBlur={() => f.blur("species")} options={SPECIES.map(s => [s, s])} error={f.show("species")} valid={f.ok("species")} />
-          {v.species === "Other" && <div className="full"><Field id="po" label="What kind of animal?" req value={v.other} filter={petText} filterMsg="Letters, numbers and basic punctuation only" maxLen={30} onChange={x => f.set("other", x)} onBlur={() => f.blur("other")} error={f.show("other")} valid={f.ok("other")} hint="For example hamster, guinea pig, turtle" /></div>}
+          
+          <Field id="ps" label="Species (Animal Classification)" req type="select" value={v.species} onChange={handleSpeciesChange} onBlur={() => f.blur("species")} options={SPECIES.map(s => [s, s])} error={f.show("species")} valid={f.ok("species")} hint="Mandatory clinical classification (VCMS Protocols v2.0)" />
+          
+          {v.species.includes("Other") && (
+            <div className="full">
+              <Field id="po" label="What kind of animal?" req value={v.other} filter={petText} filterMsg="Letters, numbers and basic punctuation only" maxLen={30} onChange={x => f.set("other", x)} onBlur={() => f.blur("other")} error={f.show("other")} hint="For example Hedgehog, Sugar Glider, Bearded Dragon, Tortoise" />
+            </div>
+          )}
+
+          {normSpecies === "Rodent" && (
+            <div className="full">
+              <Field id="p-dental" label="Dental / Occlusion Status" req type="select" value={v.dentalOcclusion} onChange={x => f.set("dentalOcclusion", x)} onBlur={() => f.blur("dentalOcclusion")} options={RODENT_DENTAL_STATUS.map(s => [s, s])} error={f.show("dentalOcclusion")} valid={f.ok("dentalOcclusion")} hint="VCMS Protocol: Continuous rodent elodont dentition requires routine incisor & molar surveillance." />
+            </div>
+          )}
 
           {v.species && availableBreeds.length > 0 ? (
-            <Field id="pb-sel" label={`${v.species} breed`} req={false} type="select" value={breedChoice} onChange={handleBreedChoiceChange} options={availableBreeds.map(b => [b, b])} error={f.show("breed")} valid={f.ok("breed")} hint="Select breed or choose Other/Mixed" />
+            <Field id="pb-sel" label={`${formatSpeciesLabel(v.species)} breed`} req={false} type="select" value={breedChoice} onChange={handleBreedChoiceChange} options={availableBreeds.map(b => [b, b])} error={f.show("breed")} valid={f.ok("breed")} hint="Select breed or choose Other/Mixed" />
           ) : null}
 
           {(showCustomBreedField || !availableBreeds.length) && (
@@ -339,7 +497,8 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
           <div className="full"><Field id="pm" label="Anything the clinic should know (optional)" type="textarea" rows={2} max={200} value={v.notes} onChange={x => f.set("notes", x)} onBlur={() => f.blur("notes")} error={f.show("notes")} valid={f.ok("notes")} hint="Health problems, behavior or past treatments" /></div>
         </div>
 
-        {weightBracket && v.species === "Dog" && (
+        {/* Dynamic Weight Brackets (Canine) */}
+        {weightBracket && normSpecies === "Canine" && (
           <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: "12px", padding: "14px", marginTop: "12px", marginBottom: "8px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
               <span style={{ fontSize: "1.1rem" }}>⚖️</span>
@@ -390,12 +549,13 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
           </div>
         )}
 
+        {/* Automated Preventive Care Schedule (VCMS v2.0 Separation) */}
         {nextFormMilestone && (
           <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "12px", padding: "14px", marginTop: "14px", marginBottom: "10px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", flexWrap: "wrap" }}>
               <div>
                 <div style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "#166534" }}>
-                  🤖 Automated Preventive Care Schedule (Calculated from Birthdate)
+                  🤖 VCMS Automated Schedule (Calculated from Birthdate)
                 </div>
                 <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#065f46", marginTop: "3px" }}>
                   Upcoming Priority: {nextFormMilestone.care} ({nextFormMilestone.ageLabel})
@@ -413,41 +573,105 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
             </div>
 
             {showSchedule && (
-              <div style={{ marginTop: "12px", borderTop: "1px solid #bbf7d0", paddingTop: "10px", maxHeight: "240px", overflowY: "auto" }}>
-                <table style={{ width: "100%", fontSize: "0.8rem", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ textAlign: "left", color: "#14532d", borderBottom: "1px solid #bbf7d0" }}>
-                      <th style={{ padding: "4px" }}>Age</th>
-                      <th style={{ padding: "4px" }}>Care Required</th>
-                      <th style={{ padding: "4px" }}>Target Date</th>
-                      <th style={{ padding: "4px" }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fullFormSchedule.map(s => (
-                      <tr key={s.id} style={{ borderBottom: "1px solid #dcfce7" }}>
-                        <td style={{ padding: "6px 4px", fontWeight: 600 }}>{s.ageLabel}</td>
-                        <td style={{ padding: "6px 4px" }}>
-                          <div>{s.care}</div>
-                          <small style={{ color: "#047857", fontSize: "0.75rem" }}>{s.target}</small>
-                        </td>
-                        <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{s.targetDate}</td>
-                        <td style={{ padding: "6px 4px" }}>
-                          <span style={{
-                            padding: "2px 6px",
-                            borderRadius: "8px",
-                            fontSize: "0.72rem",
-                            fontWeight: 600,
-                            background: s.status === "Overdue" ? "#fee2e2" : s.status === "Due Soon" ? "#fef3c7" : "#e0e7ff",
-                            color: s.status === "Overdue" ? "#991b1b" : s.status === "Due Soon" ? "#92400e" : "#3730a3"
-                          }}>
-                            {s.status}
-                          </span>
-                        </td>
+              <div style={{ marginTop: "12px", borderTop: "1px solid #bbf7d0", paddingTop: "10px" }}>
+                {/* Workflow Loop Filter Tabs */}
+                <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveWorkflowTab("all")}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      border: "1px solid #86efac",
+                      background: activeWorkflowTab === "all" ? "#166534" : "#fff",
+                      color: activeWorkflowTab === "all" ? "#fff" : "#166534",
+                      cursor: "pointer"
+                    }}
+                  >
+                    All Milestones ({fullFormSchedule.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveWorkflowTab("Immunization")}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      border: "1px solid #86efac",
+                      background: activeWorkflowTab === "Immunization" ? "#166534" : "#fff",
+                      color: activeWorkflowTab === "Immunization" ? "#fff" : "#166534",
+                      cursor: "pointer"
+                    }}
+                  >
+                    💉 Immunization Loop
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveWorkflowTab("Parasiticide")}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      border: "1px solid #86efac",
+                      background: activeWorkflowTab === "Parasiticide" ? "#166534" : "#fff",
+                      color: activeWorkflowTab === "Parasiticide" ? "#fff" : "#166534",
+                      cursor: "pointer"
+                    }}
+                  >
+                    🛡️ Parasiticide Loop
+                  </button>
+                </div>
+
+                <div style={{ maxHeight: "240px", overflowY: "auto" }}>
+                  <table style={{ width: "100%", fontSize: "0.8rem", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ textAlign: "left", color: "#14532d", borderBottom: "1px solid #bbf7d0" }}>
+                        <th style={{ padding: "4px" }}>Loop / Age</th>
+                        <th style={{ padding: "4px" }}>Care Required</th>
+                        <th style={{ padding: "4px" }}>Target Date</th>
+                        <th style={{ padding: "4px" }}>Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {filteredSchedule.map(s => (
+                        <tr key={s.id} style={{ borderBottom: "1px solid #dcfce7" }}>
+                          <td style={{ padding: "6px 4px", fontWeight: 600 }}>
+                            <span style={{ fontSize: "0.7rem", color: s.workflow === "Immunization" ? "#2563eb" : "#059669", display: "block" }}>
+                              {s.workflow || "Care"}
+                            </span>
+                            {s.ageLabel}
+                          </td>
+                          <td style={{ padding: "6px 4px" }}>
+                            <div>{s.care}</div>
+                            <small style={{ color: "#047857", fontSize: "0.75rem" }}>{s.target}</small>
+                            {s.constraints && (
+                              <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "2px" }}>
+                                <i>{s.constraints}</i>
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{s.targetDate}</td>
+                          <td style={{ padding: "6px 4px" }}>
+                            <span style={{
+                              padding: "2px 6px",
+                              borderRadius: "8px",
+                              fontSize: "0.72rem",
+                              fontWeight: 600,
+                              background: s.status === "Overdue" ? "#fee2e2" : s.status === "Due Soon" ? "#fef3c7" : "#e0e7ff",
+                              color: s.status === "Overdue" ? "#991b1b" : s.status === "Due Soon" ? "#92400e" : "#3730a3"
+                            }}>
+                              {s.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -481,6 +705,13 @@ export function RequestList({ db, setDb, me, say, onEdit }) {
             <span className={`op-ico${no ? " no" : ""}`}><Icon n={no ? "alert" : "clock"} size={20} /></span>
             <div className="op-reqb">
               <b>{r.name}</b> <small>{kind(r)}{r.breed ? ` · ${r.breed}` : ""} · {r.sex} · {r.weight} kg</small>
+              {r.dentalOcclusion && (
+                <div style={{ marginTop: "3px" }}>
+                  <span style={{ background: "#e0e7ff", color: "#3730a3", fontSize: "0.72rem", padding: "1px 6px", borderRadius: "6px", fontWeight: 600 }}>
+                    🦷 Dental: {r.dentalOcclusion}
+                  </span>
+                </div>
+              )}
               <span className={`op-chip ${no ? "no" : "wait"}`}>{no ? "Declined by the clinic" : "Waiting for the clinic to review"}</span>
               {no && r.declineReason && <small className="op-why">Reason: {r.declineReason}</small>}
               {no && <small className="op-why">Fix the details and send it again, or remove it.</small>}
@@ -502,7 +733,20 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
   const over = V.filter(v => !v.done && v.nextDue && dueState(v.nextDue) === "Overdue").length;
   const soon = V.filter(v => !v.done && v.nextDue && dueState(v.nextDue) === "Due soon").length;
   const next = A.filter(a => ["Scheduled", "Confirmed", "Checked-in"].includes(a.status) && a.date >= TODAY).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
-  const rows = [["Kind", kind(p)], ["Digital Card ID", p.vaccinationCardId], ["Breed", p.breed], ["Sex", p.sex], ["Age", p.birth ? petAge(p.birth) : ""], ["Birth date", p.birth], ["Weight", p.weight != null ? `${p.weight} kg` : ""], ["Spayed or neutered", p.neutered], ["Color", p.color]].filter(([, x]) => x);
+  
+  const normSpecies = normalizeSpecies(p.species);
+  const rows = [
+    ["Species", formatSpeciesLabel(p.species)],
+    ["Digital Card ID", p.vaccinationCardId],
+    ["Breed", p.breed],
+    ["Sex", p.sex],
+    ["Age", p.birth ? petAge(p.birth) : ""],
+    ["Birth date", p.birth],
+    ["Weight", p.weight != null ? `${p.weight} kg` : ""],
+    ["Spayed or neutered", p.neutered],
+    ["Color", p.color],
+    p.dentalOcclusion ? ["Dental Status", p.dentalOcclusion] : null
+  ].filter(Boolean).filter(([, x]) => x);
 
   const petSchedule = p.birth ? getPreventiveSchedule(p.birth, p.species, V) : [];
   const nextMilestone = p.birth ? getNextMilestone(p.birth, p.species, V) : null;
@@ -520,7 +764,26 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
         <p className="op-line"><Icon n="calendar" size={16} /> {next ? `Next visit: ${next.date} at ${fmt12(next.time)} (${next.status})` : "No visit booked"}</p>
       </div>
 
-      {petWeightBracket && p.species === "Dog" && (
+      {/* Lagomorph & Feline Toxicology Banners */}
+      {normSpecies === "Lagomorph" && (
+        <div style={{ background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 12px", color: "#991b1b", fontSize: "0.8rem", marginBottom: "10px" }}>
+          <b>🚫 Lagomorph Safety Rule:</b> Strict ban on Fipronil (Frontline). Fipronil is fatal to rabbits.
+        </div>
+      )}
+
+      {normSpecies === "Feline" && (
+        <div style={{ background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 12px", color: "#991b1b", fontSize: "0.8rem", marginBottom: "10px" }}>
+          <b>🚫 Feline Safety Rule:</b> Strict ban on Permethrin. Permethrin is fatal to cats.
+        </div>
+      )}
+
+      {normSpecies === "Avian" && (
+        <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "8px", padding: "8px 12px", color: "#92400e", fontSize: "0.8rem", marginBottom: "10px" }}>
+          <b>⚠️ Avian Airborne Safety:</b> Inhaled non-stick Teflon/PTFE fumes and aerosol sprays cause acute fatal lung hemorrhage.
+        </div>
+      )}
+
+      {petWeightBracket && normSpecies === "Canine" && (
         <div className="op-sec">
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
             <h4 style={{ margin: 0 }}>Medication & Weight Brackets ({petWeightBracket.kg} kg)</h4>
@@ -529,6 +792,12 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
           {petWeightBracket.alert && (
             <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", padding: "8px 12px", borderRadius: "8px", fontSize: "0.82rem", fontWeight: 600, marginBottom: "8px" }}>
               {petWeightBracket.alert}
+            </div>
+          )}
+
+          {petWeightBracket.heartwormAlert && (
+            <div style={{ background: "#fee2e2", border: "1px solid #f87171", color: "#991b1b", padding: "8px 12px", borderRadius: "8px", fontSize: "0.82rem", fontWeight: 600, marginBottom: "8px" }}>
+              {petWeightBracket.heartwormAlert}
             </div>
           )}
 
@@ -581,7 +850,9 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
             <div style={{ background: "#eff6ff", border: "1.5px solid #93c5fd", borderRadius: "10px", padding: "10px 12px", marginBottom: "12px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
                 <div>
-                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#1e40af", textTransform: "uppercase" }}>🎯 Current Recommended Care</div>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#1e40af", textTransform: "uppercase" }}>
+                    🎯 Current Recommended Care ({nextMilestone.workflow || "Care"})
+                  </div>
                   <div style={{ fontSize: "0.92rem", fontWeight: 700, color: "#1e3a8a", marginTop: "2px" }}>{nextMilestone.care} ({nextMilestone.ageLabel})</div>
                   <div style={{ fontSize: "0.8rem", color: "#2563eb", marginTop: "1px" }}>Target: <b>{nextMilestone.target}</b> · Spacing: {nextMilestone.protocol}</div>
                   <div style={{ fontSize: "0.8rem", color: "#1e40af", marginTop: "2px" }}>Calculated Target Date: <b>{nextMilestone.targetDate}</b></div>
@@ -597,7 +868,7 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
             <table style={{ width: "100%", fontSize: "0.78rem", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ textAlign: "left", color: "var(--mu)", borderBottom: "1px solid var(--ln)" }}>
-                  <th style={{ padding: "6px 4px" }}>Age Milestone</th>
+                  <th style={{ padding: "6px 4px" }}>Loop / Age</th>
                   <th style={{ padding: "6px 4px" }}>Care Required</th>
                   <th style={{ padding: "6px 4px" }}>Target Date</th>
                   <th style={{ padding: "6px 4px" }}>Status</th>
@@ -606,10 +877,20 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
               <tbody>
                 {petSchedule.map(s => (
                   <tr key={s.id} style={{ borderBottom: "1px solid var(--ln)" }}>
-                    <td style={{ padding: "6px 4px", fontWeight: 600 }}>{s.ageLabel}</td>
+                    <td style={{ padding: "6px 4px", fontWeight: 600 }}>
+                      <span style={{ fontSize: "0.68rem", color: s.workflow === "Immunization" ? "#2563eb" : "#059669", display: "block" }}>
+                        {s.workflow || "Care"}
+                      </span>
+                      {s.ageLabel}
+                    </td>
                     <td style={{ padding: "6px 4px" }}>
                       <div style={{ fontWeight: 600, color: "#0f172a" }}>{s.care}</div>
                       <small style={{ color: "var(--mu)", fontSize: "0.74rem" }}>{s.target}</small>
+                      {s.constraints && (
+                        <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "2px" }}>
+                          <i>{s.constraints}</i>
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{s.targetDate}</td>
                     <td style={{ padding: "6px 4px" }}>

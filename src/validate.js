@@ -135,7 +135,20 @@ export function validatePasswordChange(d) {
   return e;
 }
 
-export const SPECIES = ["Dog", "Cat", "Bird", "Rabbit", "Other"];
+export const SPECIES = [
+  "Canine (Dog)",
+  "Feline (Cat)",
+  "Lagomorph (Rabbit)",
+  "Rodent (Hamster / Guinea Pig / etc.)",
+  "Avian (Bird)",
+  "Other / Exotic",
+  "Canine", "Dog",
+  "Feline", "Cat",
+  "Lagomorph", "Rabbit",
+  "Rodent",
+  "Avian", "Bird",
+  "Other"
+];
 export const MAX_ALLERGIES = 10, MAX_NOTE = 300;
 export const NAME_RE = /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .'\-]*$/;
 

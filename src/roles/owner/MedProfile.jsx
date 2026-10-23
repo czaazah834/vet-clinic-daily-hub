@@ -30,7 +30,13 @@ const ALLERGY_LISTS = {
   ],
 };
 
-const allergyGroups = species => ALLERGY_LISTS[species] || ALLERGY_LISTS.Other;
+const normSp = sp => {
+  const s = String(sp || "").toLowerCase();
+  if (s.includes("canine") || s.includes("dog")) return "Dog";
+  if (s.includes("feline") || s.includes("cat")) return "Cat";
+  return "Other";
+};
+const allergyGroups = species => ALLERGY_LISTS[normSp(species)] || ALLERGY_LISTS.Other;
 
 /* Ready-made care notes, grouped, per kind of animal. Tapping a tag adds or removes the sentence in the note box.
    Edit the lists to change what owners see. Keep each sentence short and ending with a full stop. */
@@ -51,7 +57,7 @@ const NOTE_LISTS = {
     { g: "Health and routine", items: ["Picky eater.", "Has a sensitive stomach.", "Takes daily medicine."] },
   ],
 };
-const noteGroups = species => NOTE_LISTS[species] || GENERAL;
+const noteGroups = species => NOTE_LISTS[normSp(species)] || GENERAL;
 
 /* ================= allergy dropdown ================= */
 /* Typing guard: drops characters that don't belong, same rule the old field used. */

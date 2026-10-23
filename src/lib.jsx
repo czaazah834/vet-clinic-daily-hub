@@ -81,7 +81,14 @@ export const plus = n => { const d = new Date(); d.setDate(d.getDate() + n); ret
 export const TODAY = plus(0);
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const VETS = [["v1", "Dr. Ana Cruz"], ["v2", "Dr. Ben Lim"]];
-export const ICON = { Dog: "🐶", Cat: "🐱", Bird: "🐦", Rabbit: "🐰", Other: "🐾" };
+export const ICON = {
+  Dog: "🐶", Canine: "🐶", "Canine (Dog)": "🐶",
+  Cat: "🐱", Feline: "🐱", "Feline (Cat)": "🐱",
+  Rabbit: "🐰", Lagomorph: "🐰", "Lagomorph (Rabbit)": "🐰",
+  Rodent: "🐹", "Rodent (Hamster / Guinea Pig / etc.)": "🐹",
+  Bird: "🐦", Avian: "🐦", "Avian (Bird)": "🐦",
+  Other: "🐾", "Other / Exotic": "🐾"
+};
 export const ROLES = { admin: ["Clinic Administrator", "Full access to every record"], vet: ["Veterinarian", "Consultations, vaccines, appointments"], assistant: ["Vet Assistant", "Front desk: owners, pets, bookings"], owner: ["Pet Owner", "Your pets, visits and vaccines"] };
 export const SEED = {
   owners: [{ id: "o1", name: "Maria Santos", email: "maria@example.com", phone: "09171234567", address: "Caloocan City" }, { id: "o2", name: "Jose Reyes", email: "jose@example.com", phone: "09189876543", address: "Quezon City" }],
