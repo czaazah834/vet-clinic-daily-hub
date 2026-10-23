@@ -190,3 +190,19 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 13. STAFF INVITATIONS (Admin invites Vets and Vet Assistants)
+CREATE TABLE IF NOT EXISTS staff_invitations (
+  id VARCHAR(50) PRIMARY KEY DEFAULT ('inv_' || substr(md5(random()::text), 1, 10)),
+  email VARCHAR(255) NOT NULL UNIQUE,
+  name VARCHAR(100) NOT NULL,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('vet', 'assistant')),
+  token_hash VARCHAR(255) NOT NULL,
+  invited_by VARCHAR(50),
+  accepted_at TIMESTAMPTZ,
+  expired_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS staff_inv_email_uniq ON staff_invitations(email);
+CREATE INDEX IF NOT EXISTS staff_inv_lookup ON staff_invitations(token_hash);
+
+

@@ -640,9 +640,9 @@ export default function Register({ onDone, onBack, go, limited }) {
         <button type="button" className="lnk" onClick={onBack}>
           ← Back to home
         </button>
-        <h2>Create your account</h2>
+        <h2>Create your Pet Owner Account</h2>
         <p className="auth-note">
-          Sign up with your personal and address details. We verify your email and send an SMS OTP to your mobile number before opening your account.
+          Sign up as a <b>Pet Owner</b> to view your pets' vaccination records and schedule clinic visits. Staff accounts (Veterinarians and Vet Assistants) are strictly provisioned by Clinic Administrator invitation.
         </p>
 
         <div className="auth-grid">{FIELDS.map(renderField)}</div>

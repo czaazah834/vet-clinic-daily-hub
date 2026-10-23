@@ -1,5 +1,17 @@
 import { useState } from "react";
+import {
+  Send,
+  Copy,
+  Check,
+  Mail,
+  UserPlus,
+  Stethoscope,
+  ConciergeBell,
+  X,
+  AlertCircle
+} from "lucide-react";
 import { M, by, Stats, Hero, TODAY, plus, ROLES, VETS, uid, addLog, Badge } from "../lib.jsx";
+import { auth } from "../authApi.js";
 import ClinicCalendar from "./ClinicCalendar.jsx";
 
 function Bars({ title, data }) {
@@ -22,123 +34,169 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
   const [f, setF] = useState({
     name: "",
     email: "",
-    username: "",
-    password: "",
-    role: "assistant",
-    vetId: "v1",
+    role: "assistant"
   });
+  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [success, setSuccess] = useState(null);
+  const [copied, setCopied] = useState(false);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     setErr("");
     if (!f.name.trim()) return setErr("Staff full name is required");
     if (!f.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) return setErr("Valid staff email required");
-    if (!f.username.trim() || f.username.length < 3) return setErr("Username must be at least 3 characters");
-    if (!f.password || f.password.length < 8) return setErr("Password must be at least 8 characters");
 
-    if (db.users.some(u => u.username.toLowerCase() === f.username.trim().toLowerCase())) {
-      return setErr("That username is already taken");
+    setLoading(true);
+    try {
+      const res = await auth.inviteStaff({
+        email: f.email.trim().toLowerCase(),
+        name: f.name.trim(),
+        role: f.role
+      });
+
+      if (res.status === "ok") {
+        setSuccess(res);
+        setDb(p => ({
+          ...p,
+          log: addLog(p, me, `Administrator ${me.name} dispatched staff invitation to ${f.name} (${f.role}) via Brevo.`)
+        }));
+      } else {
+        setErr(res.error || "Failed to dispatch staff invitation.");
+      }
+    } catch (err) {
+      setErr(err.message || "Failed to connect to clinic server.");
+    } finally {
+      setLoading(false);
     }
-    if (db.users.some(u => u.email?.toLowerCase() === f.email.trim().toLowerCase())) {
-      return setErr("A user with this email already exists");
-    }
-
-    const newUser = {
-      id: "u" + uid(),
-      name: f.name.trim(),
-      email: f.email.trim().toLowerCase(),
-      username: f.username.trim().toLowerCase(),
-      password: f.password,
-      role: f.role,
-      vetId: f.role === "vet" ? f.vetId : undefined,
-      emailVerified: true,
-      mobileVerified: true,
-      created_at: new Date().toISOString(),
-    };
-
-    setDb(p => ({
-      ...p,
-      users: [...p.users, newUser],
-      log: addLog(p, me, `Administrator ${me.name} registered new staff account: ${newUser.name} (${ROLES[newUser.role][0]}).`),
-    }));
-
-    onCreated && onCreated(newUser);
   };
+
+  const copyLink = () => {
+    if (!success?.inviteLink) return;
+    navigator.clipboard.writeText(success.inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const roleName = f.role === "vet" ? "Veterinarian" : "Vet Assistant";
 
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ width: "min(520px, 100%)" }}>
-        <h3>Register New Staff Account</h3>
-        <p className="auth-note">
-          <b>Role-Based Access Control:</b> Only the Clinic Administrator can create and authorize staff logins (Veterinarians and Vet Assistants).
-        </p>
-
-        {err && <p className="err" role="alert" style={{ marginBottom: "12px" }}>{err}</p>}
-
-        <form onSubmit={submit}>
-          <div className="fld">
-            <label>Staff Role<i> *</i></label>
-            <select value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>
-              <option value="assistant">Vet Assistant (Front Desk &amp; Operations)</option>
-              <option value="vet">Veterinarian (Clinical Queue &amp; EMR)</option>
-            </select>
+      <div className="modal" style={{ width: "min(540px, 100%)", borderRadius: "18px", padding: "26px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+          <div>
+            <h3 style={{ margin: "0 0 4px", fontSize: "19px", color: "var(--navy, #0f172a)", fontWeight: 700 }}>
+              Invite Staff Member
+            </h3>
+            <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
+              Authorizes a Veterinarian or Vet Assistant account via Brevo invitation email
+            </p>
           </div>
+          <button className="btn ghost sm" onClick={onClose} style={{ padding: "6px" }} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
 
-          {f.role === "vet" && (
+        {success ? (
+          <div style={{ textAlign: "center", padding: "12px 0" }}>
+            <div style={{ width: "52px", height: "52px", borderRadius: "50%", background: "#dcfce7", color: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+              <Check size={28} strokeWidth={2.5} />
+            </div>
+            <h4 style={{ margin: "0 0 8px", fontSize: "17px", color: "#14532d", fontWeight: 700 }}>
+              Invitation Sent Successfully!
+            </h4>
+            <p style={{ margin: "0 0 18px", color: "#475569", fontSize: "13px", lineHeight: 1.5 }}>
+              An invitation email has been dispatched via <b>Brevo</b> to <b>{f.email}</b>.<br />
+              The recipient will receive an activation link to set their password and verify their phone number via <b>TextBee SMS OTP</b>.
+            </p>
+
+            <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "20px", textAlign: "left" }}>
+              <span style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>
+                Direct Activation Link
+              </span>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input
+                  type="text"
+                  readOnly
+                  value={success.inviteLink}
+                  style={{ flex: 1, fontSize: "12px", padding: "8px 10px", background: "#ffffff", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+                />
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  onClick={copyLink}
+                  style={{ display: "flex", alignItems: "center", gap: "4px", padding: "8px 12px" }}
+                >
+                  {copied ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
+                  <span>{copied ? "Copied!" : "Copy"}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="row end">
+              <button className="btn gold" onClick={onClose}>Done</button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            {err && (
+              <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: "10px", padding: "10px 14px", fontSize: "13px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <span>{err}</span>
+              </div>
+            )}
+
             <div className="fld">
-              <label>Link Doctor Profile<i> *</i></label>
-              <select value={f.vetId} onChange={e => setF({ ...f, vetId: e.target.value })}>
-                {VETS.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              <label>Staff Role<i> *</i></label>
+              <select value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>
+                <option value="assistant">Vet Assistant (Front Desk &amp; Operations)</option>
+                <option value="vet">Veterinarian (Clinical Queue &amp; EMR)</option>
               </select>
             </div>
-          )}
 
-          <div className="fld">
-            <label>Full Name<i> *</i></label>
-            <input
-              type="text"
-              placeholder="e.g. Dr. Carlo Santos, Liza Ramos"
-              value={f.name}
-              onChange={e => setF({ ...f, name: e.target.value })}
-            />
-          </div>
+            <div className="fld">
+              <label>Full Name<i> *</i></label>
+              <input
+                type="text"
+                placeholder={f.role === "vet" ? "e.g. Dr. Roberto Santos" : "e.g. Liza Ramos"}
+                value={f.name}
+                onChange={e => setF({ ...f, name: e.target.value })}
+                required
+              />
+            </div>
 
-          <div className="fld">
-            <label>Staff Clinic Email<i> *</i></label>
-            <input
-              type="email"
-              placeholder="staff@pawcare.com"
-              value={f.email}
-              onChange={e => setF({ ...f, email: e.target.value })}
-            />
-          </div>
+            <div className="fld">
+              <label>Staff Email Address<i> *</i></label>
+              <input
+                type="email"
+                placeholder="staff@pawcare.com"
+                value={f.email}
+                onChange={e => setF({ ...f, email: e.target.value })}
+                required
+              />
+              <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
+                ✉️ An invitation email will be sent to this address via Brevo with a secure setup link.
+              </span>
+            </div>
 
-          <div className="fld">
-            <label>Username<i> *</i></label>
-            <input
-              type="text"
-              placeholder="e.g. carlo_vet, liza_frontdesk"
-              value={f.username}
-              onChange={e => setF({ ...f, username: e.target.value })}
-            />
-          </div>
+            <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px 14px", fontSize: "12px", color: "#1e40af", marginTop: "14px", marginBottom: "18px", lineHeight: 1.5 }}>
+              <b>Security Protocol:</b> Only Pet Owners can self-register online. Staff logins are strictly authorized by you (the Administrator). The invited staff member will set their own password and verify their phone number via TextBee SMS OTP upon clicking the invitation link.
+            </div>
 
-          <div className="fld">
-            <label>Initial Temporary Password<i> *</i></label>
-            <input
-              type="password"
-              placeholder="At least 8 characters"
-              value={f.password}
-              onChange={e => setF({ ...f, password: e.target.value })}
-            />
-          </div>
-
-          <div className="row end" style={{ marginTop: "18px", gap: "10px" }}>
-            <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn gold">Create Staff Login</button>
-          </div>
-        </form>
+            <div className="row end" style={{ gap: "10px" }}>
+              <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+              <button
+                type="submit"
+                className="btn gold"
+                disabled={loading}
+                style={{ display: "inline-flex", alignItems: "center", gap: "8px", padding: "10px 18px", fontWeight: 600 }}
+              >
+                <Send size={15} />
+                <span>{loading ? "Sending Invitation..." : `Send ${roleName} Invitation`}</span>
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -161,7 +219,7 @@ function Dash({ db, setDb, me, go, say }) {
       >
         <div className="row" style={{ flexWrap: "wrap", gap: "10px" }}>
           <button className="btn gold" onClick={() => setShowStaffModal(true)}>
-            + Register Staff Account
+            + Invite Staff (Vet / Assistant)
           </button>
           <button className="btn" onClick={() => go("users")}>
             Manage User Accounts

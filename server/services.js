@@ -88,6 +88,43 @@ export async function sendSms(phone, message) {
   };
   serverOutbox.unshift(record);
 
+  // 1. TextBee Gateway (https://textbee.dev)
+  const textbeeKey = E.TEXTBEE_API_KEY || E.TEXTBEE_KEY;
+  if (textbeeKey) {
+    try {
+      const deviceId = E.TEXTBEE_DEVICE_ID;
+      const url = deviceId
+        ? `https://api.textbee.dev/api/v1/gateway/devices/${deviceId}/send-sms`
+        : 'https://api.textbee.dev/api/v1/gateway/send-sms';
+
+      const payload = {
+        recipients: [phone],
+        message: message,
+      };
+      if (deviceId) payload.device_id = deviceId;
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': textbeeKey,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        console.log(`✅ TextBee SMS dispatched to ${phone}`);
+        return { ok: true, via: 'textbee', data };
+      } else {
+        console.warn('TextBee notice:', data.message || res.statusText);
+      }
+    } catch (err) {
+      console.error('TextBee SMS request failed:', err.message);
+    }
+  }
+
+  // 2. PhilSMS Gateway Fallback
   if (E.PHILSMS_TOKEN || E.PHILSMS_API_TOKEN) {
     const token = E.PHILSMS_TOKEN || E.PHILSMS_API_TOKEN;
     try {

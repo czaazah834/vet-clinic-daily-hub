@@ -103,6 +103,14 @@ router.post('/register', async (req, res) => {
     const em = String(email || '').trim().toLowerCase();
     if (!em) return res.status(400).json({ error: 'Email address is required.' });
 
+    // Strict RBAC: Public registration is strictly restricted to Pet Owners only!
+    // Staff (Veterinarians and Vet Assistants) must be invited by the Clinic Administrator.
+    if (req.body.role && req.body.role !== 'owner') {
+      return res.status(403).json({
+        error: 'Public registration is only available for Pet Owners. Staff accounts must be invited by the Clinic Administrator.'
+      });
+    }
+
     // Check existing
     const existing = await query('SELECT id FROM users WHERE LOWER(email) = $1', [em]);
     if (existing.rows.length > 0) {
@@ -472,6 +480,194 @@ router.post('/unlock', async (req, res) => {
 // 9. DEV OUTBOX
 router.get('/outbox', (req, res) => {
   res.json({ outbox: serverOutbox });
+});
+
+// 10. INVITE STAFF (Clinic Administrator Only)
+router.post('/staff/invite', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only the Clinic Administrator can invite staff members.' });
+  }
+
+  const { email, name, role } = req.body;
+  const em = String(email || '').trim().toLowerCase();
+  const staffRole = role === 'assistant' ? 'assistant' : 'vet';
+  const roleName = staffRole === 'vet' ? 'Veterinarian' : 'Vet Assistant';
+
+  if (!em) return res.status(400).json({ error: 'Staff email address is required.' });
+  if (!name) return res.status(400).json({ error: 'Staff full name is required.' });
+
+  try {
+    const existingUser = await query('SELECT id FROM users WHERE LOWER(email) = $1', [em]);
+    if (existingUser.rows.length) {
+      return res.status(400).json({ error: 'A user account with this email already exists.' });
+    }
+
+    const rawToken = randomHex(32);
+    await query(
+      `INSERT INTO staff_invitations (email, name, role, token_hash, invited_by, expired_at)
+       VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '7 days')
+       ON CONFLICT (email) DO UPDATE SET
+         name = EXCLUDED.name,
+         role = EXCLUDED.role,
+         token_hash = EXCLUDED.token_hash,
+         invited_by = EXCLUDED.invited_by,
+         accepted_at = NULL,
+         expired_at = NOW() + INTERVAL '7 days'`,
+      [em, name.trim(), staffRole, sha256(rawToken), req.user.id]
+    );
+
+    const siteUrl = getAppUrl(req);
+    const inviteLink = `${siteUrl}/?invite=${rawToken}`;
+
+    await sendMail(
+      em,
+      `PawCare Staff Invitation: Set up your ${roleName} Account`,
+      `Hello ${name},\n\nYou have been invited by the Clinic Administrator to join PawCare Clinic as a ${roleName}.\n\nClick the link below to set your password and complete your mobile phone verification via OTP:\n${inviteLink}\n\nThis invitation link expires in 7 days.\n\nWarm regards,\nPawCare Administration`,
+      `<div style="font-family: Arial, sans-serif; padding: 24px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 520px;">
+        <h2 style="color: #1e3a8a; margin-top: 0;">🐾 Welcome to the PawCare Clinic Staff</h2>
+        <p style="color: #334155; font-size: 15px; line-height: 1.6;">
+          Hello <b>${name}</b>,<br>
+          You have been invited by the Clinic Administrator to join the PawCare team as a <b>${roleName}</b>.
+        </p>
+        <p style="color: #334155; font-size: 14px;">
+          Please click below to set your password and complete your mobile phone OTP verification:
+        </p>
+        <div style="margin: 24px 0;">
+          <a href="${inviteLink}" style="background: #2563eb; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">
+            Activate ${roleName} Account
+          </a>
+        </div>
+        <p style="color: #64748b; font-size: 12px;">
+          Direct Link: <a href="${inviteLink}" style="color: #2563eb;">${inviteLink}</a><br>
+          This invitation expires in 7 days.
+        </p>
+      </div>`
+    );
+
+    res.json({
+      status: 'ok',
+      message: `Invitation successfully sent to ${em} via Brevo!`,
+      inviteLink,
+      token: rawToken
+    });
+  } catch (err) {
+    console.error('Staff invite error:', err);
+    res.status(500).json({ error: 'Failed to send staff invitation: ' + err.message });
+  }
+});
+
+// 11. GET STAFF INVITATION INFO
+router.get('/staff/invite-info', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ error: 'Invitation token is required.' });
+
+  try {
+    const r = await query(
+      `SELECT * FROM staff_invitations WHERE token_hash = $1 AND expired_at > NOW()`,
+      [sha256(token)]
+    );
+    if (!r.rows.length) {
+      return res.status(404).json({ error: 'Invitation link is invalid or has expired.' });
+    }
+    const inv = r.rows[0];
+    if (inv.accepted_at) {
+      return res.status(400).json({ error: 'This invitation has already been accepted.' });
+    }
+
+    res.json({
+      status: 'ok',
+      email: inv.email,
+      name: inv.name,
+      role: inv.role
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 12. ACCEPT STAFF INVITATION (Sets password + sends TextBee OTP)
+router.post('/staff/accept-invite', async (req, res) => {
+  const { token, firstName, lastName, birthday, mobileNumber, password } = req.body;
+  if (!token) return res.status(400).json({ error: 'Invitation token is required.' });
+  if (!mobileNumber) return res.status(400).json({ error: 'Mobile number is required for OTP verification.' });
+
+  try {
+    const r = await query(
+      `SELECT * FROM staff_invitations WHERE token_hash = $1 AND expired_at > NOW()`,
+      [sha256(token)]
+    );
+    if (!r.rows.length) {
+      return res.status(400).json({ error: 'Invitation link is invalid or has expired.' });
+    }
+    const inv = r.rows[0];
+    if (inv.accepted_at) {
+      return res.status(400).json({ error: 'This invitation has already been used.' });
+    }
+
+    const pwErr = validatePasswordComplexity(password);
+    if (pwErr) return res.status(400).json({ error: pwErr });
+
+    const pwHash = await hashPassword(password);
+    const userId = 'u_' + randomHex(8);
+    const vetId = inv.role === 'vet' ? 'v_' + randomHex(8) : null;
+
+    // Insert user account with email pre-verified
+    await query(
+      `INSERT INTO users (
+        id, first_name, last_name, birthday,
+        password_hash, email, role, vet_id, mobile_number,
+        email_verified_at, mobile_verified
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), false)`,
+      [
+        userId,
+        (firstName || inv.name).trim(),
+        (lastName || '').trim(),
+        birthday || '1990-01-01',
+        pwHash,
+        inv.email,
+        inv.role,
+        vetId,
+        mobileNumber.trim()
+      ]
+    );
+
+    // Mark invitation accepted
+    await query('UPDATE staff_invitations SET accepted_at = NOW() WHERE id = $1', [inv.id]);
+
+    // Generate TextBee SMS OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    await query(
+      `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at)
+       VALUES ($1, $2, 'mobile_otp', NOW() + INTERVAL '10 minutes')`,
+      [userId, sha256(otpCode)]
+    );
+
+    await sendSms(
+      mobileNumber.trim(),
+      `PawCare Staff Security: Your verification OTP code is ${otpCode}. Valid for 10 minutes.`
+    );
+
+    // Create session cookie with needsOtp
+    const sid = randomHex(32);
+    await query(
+      `INSERT INTO sessions (token_hash, user_id, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+      [sha256(sid), userId]
+    );
+
+    res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', maxAge: 7 * 86400 * 1000 });
+
+    res.json({
+      status: 'ok',
+      needsOtp: true,
+      message: `Account created! Verification code sent via TextBee to ${mobileNumber}.`,
+      token: sid,
+      devCode: otpCode
+    });
+  } catch (err) {
+    console.error('Accept staff invite failed:', err);
+    res.status(500).json({ error: 'Failed to complete staff registration: ' + err.message });
+  }
 });
 
 export const authRouter = router;

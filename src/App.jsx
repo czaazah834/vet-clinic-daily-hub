@@ -7,6 +7,7 @@ import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import Forgot from "./pages/Forgot.jsx";
 import { CheckEmail, Otp, Unlock } from "./pages/Verify.jsx";
+import StaffSetup from "./pages/StaffSetup.jsx";
 import DevInbox from "./pages/DevInbox.jsx";
 import Portal from "./Portal.jsx";
 import { admin } from "./roles/Admin.jsx";
@@ -50,8 +51,9 @@ export default function App() {
   const go = v => { setNotice(""); setBad(false); setView(v); };
   const toLogin = (msg, isBad = false) => { setNotice(msg || ""); setBad(isBad); setView("login"); };
 
-  /* Links from the emails: <site>/?verify=TOKEN and <site>/?unlock=TOKEN (and the dev inbox buttons, which do the same thing). */
+  /* Links from the emails: <site>/?verify=TOKEN, <site>/?unlock=TOKEN, and <site>/?invite=TOKEN */
   const openLink = async ({ type, token }) => {
+    if (type === "invite") { setFlow({ inviteToken: token }); setNotice(""); setView("staff-setup"); return; }
     if (type === "unlock") { setFlow({ token }); setNotice(""); setView("unlock"); return; }
     try {
       const r = await auth.verifyEmail(token);
@@ -62,16 +64,22 @@ export default function App() {
     } catch (x) { toLogin(x.offline ? OFFLINE_MSG : "We couldn’t check that link. Please try again.", true); }
   };
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search), v = q.get("verify"), u = q.get("unlock");
-    if (!v && !u) return;
+    const q = new URLSearchParams(window.location.search),
+          v = q.get("verify"),
+          u = q.get("unlock"),
+          inv = q.get("invite");
+    if (!v && !u && !inv) return;
     window.history.replaceState(null, "", window.location.pathname);   // the token must not stay in the address bar
-    openLink(v ? { type: "verify", token: v } : { type: "unlock", token: u });
+    if (inv) openLink({ type: "invite", token: inv });
+    else if (u) openLink({ type: "unlock", token: u });
+    else if (v) openLink({ type: "verify", token: v });
   }, []); // eslint-disable-line
   const onLogin = r => { if (r.needsOtp) { setNotice(""); setView("otp"); } else setMe(r.user); };   // password right but mobile not verified yet: ask for the SMS code first
 
   if (me) return <Portal cfg={CFG[me.role]} me={me} db={db} setDb={setDb} onLogout={() => logout()} />;
   const screen =
     view === "login" ? <Login role={role} notice={notice} bad={bad} onLogin={onLogin} onBack={() => go("landing")} go={go} />
+    : view === "staff-setup" ? <StaffSetup token={flow.inviteToken} onDone={r => { if (r.needsOtp) { setNotice(""); setView("otp"); } else setMe(r.user); }} onCancel={() => go("landing")} />
     : view === "register" ? <Register onDone={email => { setFlow({ email }); setView("checkemail"); }} onBack={() => go("landing")} go={go} limited={() => toLogin("Registration limit reached. To prevent bot spam, each IP address can make at most 5 registration attempts per hour. Please try again later, or log in if you already have an account.", true)} />
     : view === "checkemail" ? <CheckEmail email={flow.email} go={go} />
     : view === "otp" ? <Otp onDone={u => u ? setMe(u) : toLogin("Mobile number verified. Please log in to continue.")} onBack={async () => { try { await auth.logout(); } catch { /* nothing to sign out */ } go("login"); }} />
