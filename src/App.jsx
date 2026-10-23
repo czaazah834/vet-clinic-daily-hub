@@ -15,8 +15,21 @@ import { vet } from "./roles/Vet.jsx";
 import { assistant } from "./roles/Assistant.jsx";
 import { owner } from "./roles/Owner.jsx";
 const CFG = { admin, vet, assistant, owner };
+
+function getInitialView() {
+  if (typeof window === "undefined") return "landing";
+  try {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("verify") || q.get("token")) return "verifying";
+    if (q.get("verified") === "ok" || q.get("otp")) return "otp";
+    if (q.get("unlock")) return "unlock";
+    if (q.get("invite")) return "staff-setup";
+  } catch (_) {}
+  return "landing";
+}
+
 export default function App() {
-  const [db, setDb] = useState(SEED), [me, setMe] = useState(null), [view, setView] = useState("landing"), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
+  const [db, setDb] = useState(SEED), [me, setMe] = useState(null), [view, setView] = useState(getInitialView), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
   const dbRef = useRef(db); dbRef.current = db;
   useEffect(() => { bindStore(() => dbRef.current, setDb); }, []);   // lets the sign-in "server" (api.js) read and update the same data
   useEffect(() => {
@@ -57,12 +70,42 @@ export default function App() {
     if (type === "unlock") { setFlow({ token }); setNotice(""); setView("unlock"); return; }
     try {
       const r = await auth.verifyEmail(token);
-      if (r.status !== "ok" && !r.ok) return toLogin("That verification link is invalid or expired. Log in and choose “Resend verification email”.", true);
-      const i = await auth.otpInfo();
-      if (i.mobileVerified) return toLogin("Email verified. Your mobile number is already verified, so you can log in.");
-      setNotice(""); setView("otp");                                   // email link -> mobile code -> log in
+      if (r && (r.status === "ok" || r.ok)) {
+        if (r.token) {
+          try {
+            localStorage.setItem("pawcare_token", r.token);
+            sessionStorage.setItem("pawcare_token", r.token);
+          } catch (_) {}
+        }
+        setNotice("");
+        setView("otp");
+        return;
+      }
+
+      // Check if user is already verified and waiting for OTP
+      try {
+        const i = await auth.otpInfo();
+        if (i && !i.mobileVerified) {
+          setNotice("");
+          setView("otp");
+          return;
+        } else if (i && i.mobileVerified) {
+          return toLogin("Email verified. Your mobile number is already verified, so you can log in.");
+        }
+      } catch (_) {}
+
+      return toLogin("That verification link is invalid or expired. Log in and choose “Resend verification email”.", true);
     } catch (x) {
       console.error("Verification link error:", x);
+      // Fallback: see if user is already verified and waiting for OTP
+      try {
+        const i = await auth.otpInfo();
+        if (i && !i.mobileVerified) {
+          setNotice("");
+          setView("otp");
+          return;
+        }
+      } catch (_) {}
       toLogin(x.offline ? OFFLINE_MSG : (x.message || "We couldn’t check that link. Please try again."), true);
     }
   };
@@ -71,7 +114,7 @@ export default function App() {
           v = q.get("verify") || q.get("token"),
           u = q.get("unlock"),
           inv = q.get("invite"),
-          vOk = q.get("verified") === "ok";
+          vOk = q.get("verified") === "ok" || q.get("otp");
     if (!v && !u && !inv && !vOk) return;
     window.history.replaceState(null, "", window.location.pathname);   // the token must not stay in the address bar
     if (vOk) {
@@ -96,7 +139,15 @@ export default function App() {
 
   if (me) return <Portal cfg={CFG[me.role]} me={me} db={db} setDb={setDb} onLogout={() => logout()} />;
   const screen =
-    view === "login" ? <Login role={role} notice={notice} bad={bad} onLogin={onLogin} onBack={() => go("landing")} go={go} />
+    view === "verifying" ? (
+      <div className="lg auth">
+        <div className="lgr auth-ok" style={{ margin: "40px auto", maxWidth: 440, textAlign: "center" }}>
+          <h2 style={{ marginTop: 12 }}>Verifying your email</h2>
+          <p className="auth-fine">Please wait a moment while we confirm your email and prepare your mobile security code…</p>
+        </div>
+      </div>
+    )
+    : view === "login" ? <Login role={role} notice={notice} bad={bad} onLogin={onLogin} onBack={() => go("landing")} go={go} />
     : view === "staff-setup" ? <StaffSetup token={flow.inviteToken} onDone={r => { if (r.needsOtp) { setNotice(""); setView("otp"); } else setMe(r.user); }} onCancel={() => go("landing")} />
     : view === "register" ? <Register onDone={email => { setFlow({ email }); setView("checkemail"); }} onBack={() => go("landing")} go={go} limited={() => toLogin("Registration limit reached. To prevent bot spam, each IP address can make at most 5 registration attempts per hour. Please try again later, or log in if you already have an account.", true)} />
     : view === "checkemail" ? <CheckEmail email={flow.email} go={go} />

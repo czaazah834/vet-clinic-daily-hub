@@ -820,8 +820,8 @@ async function call(method, path, body) {
     try {
       const headers = { "Content-Type": "application/json" };
       try {
-        const storedTok = (typeof sessionStorage !== "undefined" && sessionStorage.getItem("pawcare_token")) ||
-                          (typeof localStorage !== "undefined" && localStorage.getItem("pawcare_token"));
+        const storedTok = (typeof localStorage !== "undefined" && localStorage.getItem("pawcare_token")) ||
+                          (typeof sessionStorage !== "undefined" && sessionStorage.getItem("pawcare_token"));
         if (storedTok) {
           headers["Authorization"] = `Bearer ${storedTok}`;
         }
@@ -840,13 +840,22 @@ async function call(method, path, body) {
       const data = isJson ? await res.json() : await res.text();
 
       if (res.ok) {
-        if (data?.token && typeof sessionStorage !== "undefined") {
-          try { sessionStorage.setItem("pawcare_token", data.token); } catch (_) {}
+        if (data?.token) {
+          try {
+            sessionStorage.setItem("pawcare_token", data.token);
+            localStorage.setItem("pawcare_token", data.token);
+          } catch (_) {}
         }
         return data.data !== undefined ? data.data : data;
       }
       // If endpoint 404 or backend unreachable / proxy error (>= 500), fallback to in-memory
       if (res.status === 404 || res.status >= 500) {
+        if (path.includes("/auth/") || path.includes("/otp") || path.includes("/verify")) {
+          const errMsg = data?.error || (res.status === 504 ? "Unable to connect to clinic server. Please try again." : `Server returned error (${res.status}).`);
+          const err = new Error(errMsg);
+          err.isApiError = true;
+          throw err;
+        }
         // Fallback to in-memory below
       } else {
         const err = new Error(data?.error || `Request failed with status ${res.status}`);
@@ -860,6 +869,11 @@ async function call(method, path, body) {
     } catch (networkOrApiErr) {
       if (networkOrApiErr.isApiError || networkOrApiErr.fields || networkOrApiErr.remainingCooldown || networkOrApiErr.lockout) {
         throw networkOrApiErr;
+      }
+      if (path.includes("/auth/") || path.includes("/otp") || path.includes("/verify")) {
+        const err = new Error("Unable to reach the clinic server. Please try again in a moment.");
+        err.isApiError = true;
+        throw err;
       }
       // Server offline / not responding on this endpoint: fallback to in-memory below
     }

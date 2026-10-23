@@ -59,8 +59,13 @@ export function Otp({ onDone, onBack }) {
       try {
         const i = await auth.otpInfo();
         if (i.mobileVerified) return onDone(null);        // nothing left to verify: send them to Log in
-        setPhone(i.phone); setReady(true); await send(true);
-      } catch (x) { fail(x); setReady(true); }
+        if (i.phone) setPhone(i.phone);
+        setReady(true);
+        setN(60);
+      } catch (x) {
+        setReady(true);
+        setN(60);
+      }
     })();
   }, []); // eslint-disable-line
   useEffect(() => { if (n <= 0) return; const t = setTimeout(() => setN(c => c - 1), 1000); return () => clearTimeout(t); }, [n]);

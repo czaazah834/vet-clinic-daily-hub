@@ -13,9 +13,13 @@ import { sendMail, sendSms, serverOutbox } from '../services.js';
 
 export function getAppUrl(req) {
   if (req) {
+    const origin = req.headers?.origin || (req.headers?.referer ? new URL(req.headers.referer).origin : null);
+    if (origin && !origin.includes('localhost:3000') && !origin.includes('127.0.0.1:3000')) {
+      return origin.replace(/\/+$/, '');
+    }
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
     const host = req.headers['x-forwarded-host'] || (req.get ? req.get('host') : req.headers?.host);
-    if (host && !host.includes('localhost:3000') && !host.includes('127.0.0.1:3000')) return `${proto}://${host}`;
+    if (host && !host.includes('localhost:3000') && !host.includes('127.0.0.1:3000')) return `${proto}://${host}`.replace(/\/+$/, '');
   }
   if (process.env.APP_URL && !process.env.APP_URL.includes('localhost')) return process.env.APP_URL.replace(/\/+$/, '');
   if (process.env.SITE_URL && !process.env.SITE_URL.includes('localhost')) return process.env.SITE_URL.replace(/\/+$/, '');
@@ -255,10 +259,11 @@ router.post('/login', async (req, res) => {
         'INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'7 days\')',
         [sha256(sid), u.id]
       );
-      res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', maxAge: 7 * 86400 * 1000 });
+      res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
       return res.json({
         status: 'ok',
         needsOtp: true,
+        token: sid,
         message: 'Please complete mobile number SMS verification.',
       });
     }
@@ -273,6 +278,7 @@ router.post('/login', async (req, res) => {
     res.cookie('sid', sid, {
       httpOnly: true,
       sameSite: 'lax',
+      path: '/',
       maxAge: 14 * 86400 * 1000,
     });
 
@@ -373,6 +379,58 @@ async function handleEmailVerification(req, res) {
       [sha256(token)]
     );
     if (!r.rows.length) {
+      // Check if user is already verified and mobile OTP is still pending
+      const sid = req.cookies?.sid || (req.headers.authorization && req.headers.authorization.replace('Bearer ', ''));
+      if (sid) {
+        const s = await query(
+          `SELECT u.id, u.email, u.mobile_number, u.mobile_verified
+           FROM sessions s JOIN users u ON u.id = s.user_id
+           WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
+          [sha256(sid)]
+        );
+        if (s.rows.length) {
+          const u = s.rows[0];
+          if (req.headers.accept?.includes('text/html') && !req.xhr) {
+            return res.redirect('/?verified=ok');
+          }
+          return res.json({
+            status: 'ok',
+            ok: true,
+            message: 'Email address already verified.',
+            token: sid,
+            phone: u.mobile_number
+          });
+        }
+      }
+
+      // Fallback: Check if any recent user verified email in the last 2 hours and mobile is pending
+      const recent = await query(
+        `SELECT u.id, u.email, u.mobile_number, u.mobile_verified
+         FROM users u
+         WHERE u.email_verified_at > NOW() - INTERVAL '2 hours' AND u.mobile_verified = false
+         ORDER BY u.email_verified_at DESC LIMIT 1`
+      );
+      if (recent.rows.length) {
+        const u = recent.rows[0];
+        const newSid = randomHex(32);
+        await query(
+          `INSERT INTO sessions (token_hash, user_id, expires_at)
+           VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+          [sha256(newSid), u.id]
+        );
+        res.cookie('sid', newSid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
+        if (req.headers.accept?.includes('text/html') && !req.xhr) {
+          return res.redirect('/?verified=ok');
+        }
+        return res.json({
+          status: 'ok',
+          ok: true,
+          message: 'Email address verified.',
+          token: newSid,
+          phone: u.mobile_number
+        });
+      }
+
       if (req.headers.accept?.includes('text/html')) {
         return res.redirect('/?verified=invalid');
       }
@@ -390,7 +448,7 @@ async function handleEmailVerification(req, res) {
        VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
       [sha256(sid), tok.user_id]
     );
-    res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', maxAge: 7 * 86400 * 1000 });
+    res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
 
     // Generate and send mobile OTP via TextBee
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -435,42 +493,58 @@ router.post('/verify-email', handleEmailVerification);
 // 6.5 OTP INFO (Resilient session lookup)
 router.get(['/otp/info', '/otp-info'], async (req, res) => {
   const sid = req.cookies?.sid || (req.headers.authorization && req.headers.authorization.replace('Bearer ', ''));
+  let userId = null;
+  let phone = '';
+  let mobileVerified = false;
+
   if (sid) {
     try {
       const r = await query(
-        `SELECT u.mobile_number, u.mobile_verified, u.mobile_verified_at
+        `SELECT u.id, u.mobile_number, u.mobile_verified, u.mobile_verified_at
          FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
         [sha256(sid)]
       );
       if (r.rows.length) {
         const u = r.rows[0];
-        return res.json({
-          mobileVerified: !!u.mobile_verified || !!u.mobile_verified_at,
-          phone: u.mobile_number || ''
-        });
+        userId = u.id;
+        phone = u.mobile_number || '';
+        mobileVerified = !!u.mobile_verified || !!u.mobile_verified_at;
       }
     } catch (_) {}
   }
-  try {
-    const r = await query(
-      `SELECT u.mobile_number, u.mobile_verified, u.mobile_verified_at
-       FROM verification_tokens t JOIN users u ON u.id = t.user_id
-       WHERE t.type = 'mobile_otp' AND t.expired_at > NOW()
-       ORDER BY t.created_at DESC LIMIT 1`
-    );
-    if (r.rows.length) {
-      const u = r.rows[0];
-      return res.json({
-        mobileVerified: !!u.mobile_verified || !!u.mobile_verified_at,
-        phone: u.mobile_number || ''
-      });
-    }
-  } catch (_) {}
+  if (!userId) {
+    try {
+      const r = await query(
+        `SELECT u.id, u.mobile_number, u.mobile_verified, u.mobile_verified_at
+         FROM verification_tokens t JOIN users u ON u.id = t.user_id
+         WHERE t.type = 'mobile_otp' AND t.expired_at > NOW()
+         ORDER BY t.created_at DESC LIMIT 1`
+      );
+      if (r.rows.length) {
+        const u = r.rows[0];
+        userId = u.id;
+        phone = u.mobile_number || '';
+        mobileVerified = !!u.mobile_verified || !!u.mobile_verified_at;
+      }
+    } catch (_) {}
+  }
+
+  let hasActiveOtp = false;
+  if (userId) {
+    try {
+      const tok = await query(
+        `SELECT id FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp' AND expired_at > NOW()`,
+        [userId]
+      );
+      hasActiveOtp = tok.rows.length > 0;
+    } catch (_) {}
+  }
 
   return res.json({
-    mobileVerified: false,
-    phone: ''
+    mobileVerified,
+    phone,
+    hasActiveOtp
   });
 });
 
@@ -556,10 +630,14 @@ router.post(['/otp/verify', '/verify-otp'], async (req, res) => {
         `SELECT * FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp' AND expired_at > NOW() ORDER BY created_at DESC LIMIT 1`,
         [userId]
       );
-      tok = r.rows[0];
-    } else {
-      // Find token by code directly across active mobile_otp tokens
-      const r = await query(
+      if (r.rows.length) {
+        tok = r.rows[0];
+      }
+    }
+
+    // If no token by userId or code doesn't match, check directly by code hash
+    if (!tok || tok.token_hash !== sha256(code)) {
+      const byCode = await query(
         `SELECT t.*, u.id as uid, u.email, u.first_name, u.last_name, u.role, u.mobile_number
          FROM verification_tokens t
          JOIN users u ON u.id = t.user_id
@@ -567,8 +645,8 @@ router.post(['/otp/verify', '/verify-otp'], async (req, res) => {
          ORDER BY t.created_at DESC LIMIT 1`,
         [sha256(code)]
       );
-      if (r.rows.length) {
-        tok = r.rows[0];
+      if (byCode.rows.length) {
+        tok = byCode.rows[0];
         userId = tok.uid;
         userObj = tok;
       }
@@ -597,7 +675,7 @@ router.post(['/otp/verify', '/verify-otp'], async (req, res) => {
       `INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
       [sha256(newSid), userId]
     );
-    res.cookie('sid', newSid, { httpOnly: true, sameSite: 'lax', maxAge: 7 * 86400 * 1000 });
+    res.cookie('sid', newSid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
 
     const safeUser = {
       id: userId,
@@ -828,7 +906,7 @@ router.post('/staff/accept-invite', async (req, res) => {
       [sha256(sid), userId]
     );
 
-    res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', maxAge: 7 * 86400 * 1000 });
+    res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
 
     res.json({
       status: 'ok',
