@@ -12,15 +12,16 @@ import {
 import { sendMail, sendSms, serverOutbox } from '../services.js';
 
 export function getAppUrl(req) {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/+$/, '');
-  if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/+$/, '');
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   if (req) {
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-    const host = req.headers['x-forwarded-host'] || req.get('host');
-    if (host && !host.includes('localhost:3000')) return `${proto}://${host}`;
+    const host = req.headers['x-forwarded-host'] || (req.get ? req.get('host') : req.headers?.host);
+    if (host && !host.includes('localhost:3000') && !host.includes('127.0.0.1:3000')) return `${proto}://${host}`;
   }
+  if (process.env.APP_URL && !process.env.APP_URL.includes('localhost')) return process.env.APP_URL.replace(/\/+$/, '');
+  if (process.env.SITE_URL && !process.env.SITE_URL.includes('localhost')) return process.env.SITE_URL.replace(/\/+$/, '');
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/+$/, '');
   return 'http://localhost:5173';
 }
 
@@ -353,57 +354,120 @@ router.post('/resend-verification', async (req, res) => {
   }
 });
 
-// 6. VERIFY EMAIL LINK
-router.post('/verify-email', async (req, res) => {
-  const { token } = req.body;
-  if (!token) return res.status(400).json({ error: 'Token is required.' });
+// 6. VERIFY EMAIL LINK (Supports GET and POST)
+async function handleEmailVerification(req, res) {
+  const token = req.query.token || req.body?.token;
+  if (!token) {
+    if (req.headers.accept?.includes('text/html')) {
+      return res.redirect('/?verified=invalid');
+    }
+    return res.status(400).json({ status: 'invalid', error: 'Token is required.' });
+  }
 
   try {
     const r = await query(
-      `SELECT * FROM verification_tokens WHERE token_hash = $1 AND type = 'email_verify' AND expired_at > NOW()`,
+      `SELECT t.*, u.id as user_id, u.email, u.first_name, u.mobile_number, u.mobile_verified
+       FROM verification_tokens t
+       JOIN users u ON u.id = t.user_id
+       WHERE t.token_hash = $1 AND t.type = 'email_verify' AND t.expired_at > NOW()`,
       [sha256(token)]
     );
     if (!r.rows.length) {
-      return res.status(400).json({ error: 'Verification link is invalid or has expired.' });
+      if (req.headers.accept?.includes('text/html')) {
+        return res.redirect('/?verified=invalid');
+      }
+      return res.status(400).json({ status: 'invalid', error: 'Verification link is invalid or has expired.' });
     }
 
     const tok = r.rows[0];
     await query('UPDATE users SET email_verified_at = NOW() WHERE id = $1', [tok.user_id]);
     await query('DELETE FROM verification_tokens WHERE id = $1', [tok.id]);
 
-    res.json({ status: 'ok', message: 'Email address successfully verified!' });
+    // Create session cookie so subsequent OTP requests are authenticated
+    const sid = randomHex(32);
+    await query(
+      `INSERT INTO sessions (token_hash, user_id, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+      [sha256(sid), tok.user_id]
+    );
+    res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', maxAge: 7 * 86400 * 1000 });
+
+    // Generate and send mobile OTP via TextBee
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    await query(`DELETE FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp'`, [tok.user_id]);
+    await query(
+      `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at)
+       VALUES ($1, $2, 'mobile_otp', NOW() + INTERVAL '10 minutes')`,
+      [tok.user_id, sha256(otpCode)]
+    );
+
+    if (tok.mobile_number) {
+      try {
+        await sendSms(tok.mobile_number.trim(), `PawCare Security: Your verification OTP code is ${otpCode}. Valid for 10 minutes.`);
+      } catch (smsErr) {
+        console.warn('Initial TextBee SMS warning:', smsErr.message);
+      }
+    }
+
+    if (req.headers.accept?.includes('text/html') && !req.xhr) {
+      return res.redirect('/?verified=ok');
+    }
+
+    return res.json({
+      status: 'ok',
+      message: 'Email address successfully verified!',
+      token: sid,
+      phone: tok.mobile_number,
+      devCode: otpCode
+    });
   } catch (err) {
     console.error('Email verify error:', err);
-    res.status(500).json({ error: 'Verification failed.' });
+    if (req.headers.accept?.includes('text/html')) {
+      return res.redirect('/?verified=invalid');
+    }
+    res.status(500).json({ status: 'error', error: 'Verification failed.' });
   }
+}
+
+router.get('/verify-email', handleEmailVerification);
+router.post('/verify-email', handleEmailVerification);
+
+// 6.5 OTP INFO
+router.get(['/otp/info', '/otp-info'], requireAuth, async (req, res) => {
+  res.json({
+    mobileVerified: !!req.user.mobileVerified,
+    phone: req.user.phone || ''
+  });
 });
 
-// 6. SEND MOBILE OTP
-router.post('/send-otp', requireAuth, async (req, res) => {
+// 7. SEND / RESEND MOBILE OTP
+router.post(['/otp/resend', '/send-otp'], requireAuth, async (req, res) => {
   try {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await query('DELETE FROM verification_tokens WHERE user_id = $1 AND type = \'mobile_otp\'', [req.user.id]);
+    await query(`DELETE FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp'`, [req.user.id]);
     await query(
-      'INSERT INTO verification_tokens (user_id, token_hash, type, expired_at) VALUES ($1, $2, \'mobile_otp\', NOW() + INTERVAL \'10 minutes\')',
+      `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at) VALUES ($1, $2, 'mobile_otp', NOW() + INTERVAL '10 minutes')`,
       [req.user.id, sha256(code)]
     );
 
-    await sendSms(req.user.phone, `PawCare Security: Your verification code is ${code}. Valid for 10 minutes.`);
-    res.json({ status: 'ok', message: `Verification code sent to ${req.user.phone}.`, devCode: code });
+    if (req.user.phone) {
+      await sendSms(req.user.phone.trim(), `PawCare Security: Your verification code is ${code}. Valid for 10 minutes.`);
+    }
+    res.json({ status: 'ok', ok: true, message: `Verification code sent to ${req.user.phone || 'your phone'}.`, devCode: code });
   } catch (err) {
     console.error('Send OTP error:', err);
     res.status(500).json({ error: 'Failed to send OTP.' });
   }
 });
 
-// 7. VERIFY MOBILE OTP
-router.post('/verify-otp', requireAuth, async (req, res) => {
-  const { code } = req.body;
+// 8. VERIFY MOBILE OTP
+router.post(['/otp/verify', '/verify-otp'], requireAuth, async (req, res) => {
+  const code = String(req.body?.code ?? '').trim();
   if (!code) return res.status(400).json({ error: 'Code is required.' });
 
   try {
     const r = await query(
-      `SELECT * FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp' AND expired_at > NOW()`,
+      `SELECT * FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp' AND expired_at > NOW() ORDER BY created_at DESC LIMIT 1`,
       [req.user.id]
     );
     if (!r.rows.length) {
@@ -411,7 +475,7 @@ router.post('/verify-otp', requireAuth, async (req, res) => {
     }
 
     const tok = r.rows[0];
-    if (tok.token_hash !== sha256(code.trim())) {
+    if (tok.token_hash !== sha256(code)) {
       const attempts = (tok.attempts || 0) + 1;
       if (attempts >= 3) {
         await query('DELETE FROM verification_tokens WHERE id = $1', [tok.id]);
@@ -421,10 +485,16 @@ router.post('/verify-otp', requireAuth, async (req, res) => {
       return res.status(400).json({ error: `Incorrect code. ${3 - attempts} attempt(s) remaining.` });
     }
 
-    await query('UPDATE users SET mobile_verified = true WHERE id = $1', [req.user.id]);
+    await query('UPDATE users SET mobile_verified = true, mobile_verified_at = NOW() WHERE id = $1', [req.user.id]);
     await query('DELETE FROM verification_tokens WHERE id = $1', [tok.id]);
 
-    res.json({ status: 'ok', message: 'Mobile number verified successfully!' });
+    const updatedUser = {
+      ...req.user,
+      mobileVerified: true,
+      mobile_verified: true,
+      mobile_verified_at: new Date().toISOString()
+    };
+    res.json({ status: 'ok', ok: true, message: 'Mobile number verified successfully!', user: updatedUser });
   } catch (err) {
     console.error('Verify OTP error:', err);
     res.status(500).json({ error: 'Code verification failed.' });

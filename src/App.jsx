@@ -57,19 +57,37 @@ export default function App() {
     if (type === "unlock") { setFlow({ token }); setNotice(""); setView("unlock"); return; }
     try {
       const r = await auth.verifyEmail(token);
-      if (r.status !== "ok") return toLogin("That verification link is invalid or expired. Log in and choose “Resend verification email”.", true);
+      if (r.status !== "ok" && !r.ok) return toLogin("That verification link is invalid or expired. Log in and choose “Resend verification email”.", true);
       const i = await auth.otpInfo();
       if (i.mobileVerified) return toLogin("Email verified. Your mobile number is already verified, so you can log in.");
       setNotice(""); setView("otp");                                   // email link -> mobile code -> log in
-    } catch (x) { toLogin(x.offline ? OFFLINE_MSG : "We couldn’t check that link. Please try again.", true); }
+    } catch (x) {
+      console.error("Verification link error:", x);
+      toLogin(x.offline ? OFFLINE_MSG : (x.message || "We couldn’t check that link. Please try again."), true);
+    }
   };
   useEffect(() => {
     const q = new URLSearchParams(window.location.search),
-          v = q.get("verify"),
+          v = q.get("verify") || q.get("token"),
           u = q.get("unlock"),
-          inv = q.get("invite");
-    if (!v && !u && !inv) return;
+          inv = q.get("invite"),
+          vOk = q.get("verified") === "ok";
+    if (!v && !u && !inv && !vOk) return;
     window.history.replaceState(null, "", window.location.pathname);   // the token must not stay in the address bar
+    if (vOk) {
+      auth.otpInfo().then(i => {
+        if (!i.mobileVerified) {
+          setNotice("");
+          setView("otp");
+        } else {
+          toLogin("Email verified. Your mobile number is already verified, so you can log in.");
+        }
+      }).catch(() => {
+        setNotice("");
+        setView("otp");
+      });
+      return;
+    }
     if (inv) openLink({ type: "invite", token: inv });
     else if (u) openLink({ type: "unlock", token: u });
     else if (v) openLink({ type: "verify", token: v });

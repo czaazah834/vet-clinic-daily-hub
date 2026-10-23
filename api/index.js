@@ -39,6 +39,13 @@ app.get("/api/health", async (req, res) => {
   });
 });
 
+// Direct browser verify-email link handler
+app.get("/verify-email", (req, res) => {
+  const token = req.query.token;
+  if (token) return res.redirect(`/?verify=${encodeURIComponent(token)}`);
+  res.redirect("/");
+});
+
 // CSRF Endpoint
 app.get("/api/csrf", (req, res) => {
   res.json({ csrf: "pc-csrf-" + Math.random().toString(36).slice(2) });
