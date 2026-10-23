@@ -59,7 +59,7 @@ export async function requireAuth(req, res, next) {
       email: user.email,
       role: user.role,
       vetId: user.vet_id,
-      ownerId: user.owner_id,
+      ownerId: user.owner_id || user.id,
       phone: user.mobile_number,
       birthday: user.birthday,
       emailVerified: !!user.email_verified_at,
@@ -677,18 +677,35 @@ router.post(['/otp/verify', '/verify-otp'], async (req, res) => {
     );
     res.cookie('sid', newSid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
 
-    if (!userObj || !userObj.email) {
-      const uRes = await query('SELECT * FROM users WHERE id = $1', [userId]);
-      if (uRes.rows.length) {
-        userObj = uRes.rows[0];
-      }
+    const fullURes = await query(
+      `SELECT u.*, a.house_street, a.country, a.city, a.state, a.zip_code
+       FROM users u
+       LEFT JOIN addresses a ON a.user_id = u.id
+       WHERE u.id = $1`,
+      [userId]
+    );
+    if (fullURes.rows.length) {
+      userObj = fullURes.rows[0];
     }
 
     const safeUser = {
       id: userId,
       email: userObj?.email || '',
-      name: `${userObj?.first_name || ''} ${userObj?.last_name || ''}`.trim(),
+      name: `${userObj?.first_name || ''}${userObj?.middle_initial ? ' ' + userObj.middle_initial + '.' : ''} ${userObj?.last_name || ''}`.trim(),
+      firstName: userObj?.first_name || '',
+      lastName: userObj?.last_name || '',
+      middleInitial: userObj?.middle_initial || '',
       role: userObj?.role || 'owner',
+      vetId: userObj?.vet_id,
+      ownerId: userObj?.owner_id || userId,
+      phone: userObj?.mobile_number || '',
+      birthday: userObj?.birthday ? String(userObj.birthday).slice(0, 10) : '',
+      houseStreet: userObj?.house_street || '',
+      country: userObj?.country || '',
+      state: userObj?.state || '',
+      city: userObj?.city || '',
+      zipCode: userObj?.zip_code || '',
+      address: userObj?.house_street ? `${userObj.house_street}, ${userObj.city}, ${userObj.state} ${userObj.zip_code}, ${userObj.country}` : '',
       mobileVerified: true,
       mobile_verified: true,
       emailVerified: true

@@ -17,7 +17,12 @@ function Dash({ db, setDb, me, go, say }) {
   const over = V.filter(v => !v.done && v.nextDue && v.nextDue < TODAY);
   const addBtn = <button className="btn gold" disabled={!!blocked} title={blocked} onClick={() => setModal({ form: true })}><Icon n="plus" size={16} /> Add my pet</button>;
   return (<>
-    <Hero title={`Hi ${me.name.split(" ")[0]}!`} text="Here’s how your pets are doing." emoji="🐶🐱"><div className="row">{pets.length ? <button className="btn gold" onClick={() => book()}>Book a visit</button> : null}{pets.length ? <button className="btn ghost" disabled={!!blocked} title={blocked} onClick={() => setModal({ form: true })}>Add a pet</button> : addBtn}</div></Hero>
+    <Hero title={`Hi ${me.name.split(" ")[0]}!`} text="Here’s how your pets are doing." emoji="🐶🐱">
+      <div className="row">
+        {pets.length ? <button className="btn gold" onClick={() => book()}>Book a visit</button> : null}
+        {pets.length ? <button className="btn ghost" disabled={!!blocked} title={blocked} onClick={() => setModal({ form: true })}><Icon n="plus" size={16} /> Add a pet</button> : null}
+      </div>
+    </Hero>
     {over.length > 0 && <div className="ow-banner"><span><b>Vaccine overdue:</b> {over.map(v => `${petName(db, v.petId)} (${v.vaccine})`).join(", ")}</span><button className="btn sm" onClick={() => go("vacc")}>View records</button></div>}
     <RequestList db={db} setDb={setDb} me={me} say={say} onEdit={r => setModal({ form: true, editing: r })} />
     {pets.length ? <div className="petgrid">{pets.map(p => {

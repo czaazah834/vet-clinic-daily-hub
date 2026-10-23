@@ -60,7 +60,7 @@
 .modal .ow-card+.ow-card,.modal form.ow-card{border-top:1px solid var(--ln);padding-top:16px}
 .modal .ow-card:first-child{border-top:0;padding-top:0}
 .modal .ow-pw>h3{display:none}.modal .ow-pw{border-top:0!important;padding-top:0!important}
-.modal:has(.ow-card){width:min(480px,100%)}
+.modal:has(.ow-card){width:min(580px,100%)}
 /* booking by service: service cards and time slots */
 .ow-svcs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .ow-svc{display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;background:#fff;border:2px solid var(--ln);border-radius:14px;padding:10px 6px;cursor:pointer;color:var(--ink)}

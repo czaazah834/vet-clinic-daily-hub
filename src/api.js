@@ -46,7 +46,13 @@ const codes = new Map();
 const CODE_MINUTES = 10,
   MAX_TRIES = 5;
 
-const ownerOf = (db, u) => (db.owners || []).find((o) => o.id === u.ownerId);
+const ownerOf = (db, u) =>
+  (db.owners || []).find(
+    (o) =>
+      o.id === u.ownerId ||
+      o.userId === u.id ||
+      (u.email && o.email?.toLowerCase() === u.email.toLowerCase())
+  );
 export const findUser = (db, ident) => {
   const k = String(ident || "").trim().toLowerCase();
   return (

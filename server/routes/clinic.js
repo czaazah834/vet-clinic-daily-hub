@@ -1,5 +1,6 @@
 import express from "express";
 import { query, withTransaction } from "../db.js";
+import { sha256 } from "../security.js";
 
 export const clinicRouter = express.Router();
 
@@ -29,7 +30,14 @@ clinicRouter.get("/state", async (req, res) => {
       logsRes,
       vetsRes
     ] = await Promise.all([
-      query("SELECT * FROM owners ORDER BY name ASC"),
+      query(`
+        SELECT o.*, u.birthday, u.first_name, u.last_name, u.middle_initial, u.role as user_role,
+               a.house_street, a.country, a.state, a.city, a.zip_code
+        FROM owners o
+        LEFT JOIN users u ON u.id = o.user_id
+        LEFT JOIN addresses a ON a.user_id = o.user_id
+        ORDER BY o.name ASC
+      `),
       query("SELECT * FROM pets ORDER BY name ASC"),
       query("SELECT * FROM pet_weights ORDER BY date ASC"),
       query("SELECT * FROM appointments ORDER BY date ASC, time ASC"),
@@ -73,9 +81,18 @@ clinicRouter.get("/state", async (req, res) => {
       id: o.id,
       userId: o.user_id,
       name: o.name,
+      firstName: o.first_name || "",
+      lastName: o.last_name || "",
+      middleInitial: o.middle_initial || "",
+      birthday: o.birthday ? String(o.birthday).slice(0, 10) : "",
       email: o.email,
       phone: o.phone,
-      address: o.address
+      houseStreet: o.house_street || "",
+      country: o.country || "",
+      state: o.state || "",
+      city: o.city || "",
+      zipCode: o.zip_code || "",
+      address: o.address || (o.house_street ? `${o.house_street}, ${o.city}, ${o.state} ${o.zip_code}, ${o.country}` : "")
     }));
 
     const appts = apptsRes.rows.map(a => ({
@@ -168,6 +185,93 @@ clinicRouter.get("/state", async (req, res) => {
   } catch (err) {
     console.error("Clinic state fetch error:", err);
     res.status(500).json({ error: "Failed to load clinic state: " + err.message });
+  }
+});
+
+/* 1.5 OWNER CONTACT & PROFILE UPDATE */
+clinicRouter.post("/owner/contact", async (req, res) => {
+  try {
+    const { email, phone, address, houseStreet, city, state, country, zipCode } = req.body;
+    const sid = req.cookies?.sid || (req.headers.authorization && req.headers.authorization.replace("Bearer ", ""));
+    let userId = null;
+    let ownerId = null;
+
+    if (sid) {
+      const s = await query("SELECT user_id FROM sessions WHERE token_hash = $1 AND expires_at > NOW()", [sha256(sid)]);
+      if (s.rows.length) userId = s.rows[0].user_id;
+    }
+    if (userId) {
+      const o = await query("SELECT id FROM owners WHERE user_id = $1", [userId]);
+      if (o.rows.length) ownerId = o.rows[0].id;
+    }
+    if (!ownerId && email) {
+      const o = await query("SELECT id, user_id FROM owners WHERE LOWER(email) = LOWER($1)", [email]);
+      if (o.rows.length) {
+        ownerId = o.rows[0].id;
+        userId = o.rows[0].user_id;
+      }
+    }
+    if (!ownerId) {
+      return res.status(404).json({ error: "Owner record not found." });
+    }
+
+    if (email) {
+      await query("UPDATE owners SET email = $1 WHERE id = $2", [email, ownerId]);
+      if (userId) await query("UPDATE users SET email = $1 WHERE id = $2", [email, userId]);
+    }
+    if (phone) {
+      await query("UPDATE owners SET phone = $1 WHERE id = $2", [phone, ownerId]);
+      if (userId) await query("UPDATE users SET mobile_number = $1 WHERE id = $2", [phone, userId]);
+    }
+    if (address) {
+      await query("UPDATE owners SET address = $1 WHERE id = $2", [address, ownerId]);
+    }
+    if (userId && (houseStreet || city || state || country || zipCode)) {
+      await query(
+        `UPDATE addresses
+         SET house_street = COALESCE($1, house_street),
+             city = COALESCE($2, city),
+             state = COALESCE($3, state),
+             country = COALESCE($4, country),
+             zip_code = COALESCE($5, zip_code)
+         WHERE user_id = $6`,
+        [houseStreet || null, city || null, state || null, country || null, zipCode || null, userId]
+      );
+    }
+
+    const updated = await query(`
+      SELECT o.*, u.birthday, u.first_name, u.last_name, u.middle_initial,
+             a.house_street, a.country, a.state, a.city, a.zip_code
+      FROM owners o
+      LEFT JOIN users u ON u.id = o.user_id
+      LEFT JOIN addresses a ON a.user_id = o.user_id
+      WHERE o.id = $1
+    `, [ownerId]);
+
+    const row = updated.rows[0];
+    res.json({
+      status: "ok",
+      owner: {
+        id: row.id,
+        userId: row.user_id,
+        name: row.name,
+        firstName: row.first_name || "",
+        lastName: row.last_name || "",
+        middleInitial: row.middle_initial || "",
+        birthday: row.birthday ? String(row.birthday).slice(0, 10) : "",
+        email: row.email,
+        phone: row.phone,
+        houseStreet: row.house_street || "",
+        country: row.country || "",
+        state: row.state || "",
+        city: row.city || "",
+        zipCode: row.zip_code || "",
+        address: row.address || ""
+      }
+    });
+  } catch (err) {
+    console.error("Update contact error:", err);
+    res.status(500).json({ error: "Failed to update contact details." });
   }
 });
 
