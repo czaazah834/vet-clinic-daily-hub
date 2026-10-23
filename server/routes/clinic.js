@@ -1,0 +1,531 @@
+import express from "express";
+import { query, withTransaction } from "../db.js";
+
+export const clinicRouter = express.Router();
+
+/* Helper: log an action to audit_logs */
+async function recordAudit(userName, userRole, action) {
+  try {
+    await query(
+      "INSERT INTO audit_logs (user_name, user_role, action) VALUES ($1, $2, $3)",
+      [userName || "System", userRole || "system", action]
+    );
+  } catch (err) {
+    console.error("Audit log error:", err.message);
+  }
+}
+
+/* 1. BOOTSTRAP / FULL STATE SYNC */
+clinicRouter.get("/state", async (req, res) => {
+  try {
+    const [
+      ownersRes,
+      petsRes,
+      weightsRes,
+      apptsRes,
+      vaccsRes,
+      consultsRes,
+      requestsRes,
+      logsRes,
+      vetsRes
+    ] = await Promise.all([
+      query("SELECT * FROM owners ORDER BY name ASC"),
+      query("SELECT * FROM pets ORDER BY name ASC"),
+      query("SELECT * FROM pet_weights ORDER BY date ASC"),
+      query("SELECT * FROM appointments ORDER BY date ASC, time ASC"),
+      query("SELECT * FROM vaccinations ORDER BY date ASC, id ASC"),
+      query("SELECT * FROM consultations ORDER BY date DESC"),
+      query("SELECT * FROM pet_requests ORDER BY created_at DESC"),
+      query("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100"),
+      query("SELECT id, first_name, last_name, role FROM users WHERE role = 'vet' ORDER BY first_name ASC")
+    ]);
+
+    // Attach weights to pets
+    const weightsByPet = {};
+    for (const w of weightsRes.rows) {
+      if (!weightsByPet[w.pet_id]) weightsByPet[w.pet_id] = [];
+      weightsByPet[w.pet_id].push({
+        date: w.date ? String(w.date).slice(0, 10) : "",
+        kg: parseFloat(w.kg)
+      });
+    }
+
+    const pets = petsRes.rows.map(p => ({
+      id: p.id,
+      ownerId: p.owner_id,
+      name: p.name,
+      species: p.species,
+      speciesOther: p.species_other || "",
+      breed: p.breed,
+      sex: p.sex,
+      birth: p.birth ? String(p.birth).slice(0, 10) : "",
+      weight: parseFloat(p.weight),
+      color: p.color || "",
+      neutered: p.neutered || "Not sure",
+      allergies: p.allergies || [],
+      vaccinationCardId: p.vaccination_card_id || "",
+      notes: p.notes || "",
+      photo: p.photo || "",
+      weights: weightsByPet[p.id] || [{ date: p.birth ? String(p.birth).slice(0, 10) : "", kg: parseFloat(p.weight) }]
+    }));
+
+    const owners = ownersRes.rows.map(o => ({
+      id: o.id,
+      userId: o.user_id,
+      name: o.name,
+      email: o.email,
+      phone: o.phone,
+      address: o.address
+    }));
+
+    const appts = apptsRes.rows.map(a => ({
+      id: a.id,
+      petId: a.pet_id,
+      vetId: a.vet_id,
+      date: a.date ? String(a.date).slice(0, 10) : "",
+      time: a.time,
+      reason: a.reason,
+      status: a.status,
+      billingStatus: a.billing_status,
+      amount: parseFloat(a.amount),
+      intakeVitals: a.intake_vitals || null,
+      cancelReason: a.cancel_reason || ""
+    }));
+
+    const vaccs = vaccsRes.rows.map(v => ({
+      id: v.id,
+      petId: v.pet_id,
+      cardId: v.card_id,
+      vaccine: v.vaccine,
+      brand: v.brand || "",
+      batch: v.batch || "",
+      date: v.date ? String(v.date).slice(0, 10) : "",
+      nextDue: v.next_due ? String(v.next_due).slice(0, 10) : null,
+      doseNo: v.dose_no,
+      doseOf: v.dose_of,
+      done: Boolean(v.done),
+      automated: Boolean(v.automated),
+      protocolType: v.protocol_type || "",
+      notes: v.notes || "",
+      vetId: v.vet_id || "",
+      recordedBy: v.recorded_by || ""
+    }));
+
+    const consults = consultsRes.rows.map(c => ({
+      id: c.id,
+      petId: c.pet_id,
+      vetId: c.vet_id,
+      apptId: c.appt_id || "",
+      date: c.date ? String(c.date).slice(0, 10) : "",
+      symptoms: c.symptoms,
+      objective: c.objective,
+      diagnosis: c.diagnosis,
+      treatment: c.treatment,
+      prescription: c.prescription || ""
+    }));
+
+    const petRequests = requestsRes.rows.map(r => ({
+      id: r.id,
+      ownerId: r.owner_id,
+      name: r.name,
+      species: r.species,
+      speciesOther: r.species_other || "",
+      breed: r.breed || "",
+      sex: r.sex,
+      birth: r.birth ? String(r.birth).slice(0, 10) : "",
+      weight: parseFloat(r.weight),
+      color: r.color || "",
+      neutered: r.neutered || "",
+      notes: r.notes || "",
+      status: r.status,
+      declineReason: r.decline_reason || "",
+      petId: r.pet_id || "",
+      cardId: r.card_id || "",
+      requestedAt: r.requested_at ? String(r.requested_at).slice(0, 10) : "",
+      approvedAt: r.approved_at ? String(r.approved_at).slice(0, 10) : null,
+      approvedBy: r.approved_by || ""
+    }));
+
+    const log = logsRes.rows.map(l => ({
+      id: l.id,
+      ts: l.created_at ? new Date(l.created_at).toLocaleString() : "",
+      user: { name: l.user_name, role: l.user_role },
+      action: l.action
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        owners,
+        pets,
+        appts,
+        vaccs,
+        consults,
+        petRequests,
+        log
+      }
+    });
+  } catch (err) {
+    console.error("Clinic state fetch error:", err);
+    res.status(500).json({ error: "Failed to load clinic state: " + err.message });
+  }
+});
+
+/* 2. OWNERS CRUD */
+clinicRouter.post("/owners", async (req, res) => {
+  const { id, name, email, phone, address, actorName, actorRole } = req.body;
+  const ownerId = id || ("o_" + Math.random().toString(36).slice(2, 8));
+
+  try {
+    const result = await query(
+      `INSERT INTO owners (id, name, email, phone, address)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         email = EXCLUDED.email,
+         phone = EXCLUDED.phone,
+         address = EXCLUDED.address
+       RETURNING *`,
+      [ownerId, name, email, phone, address]
+    );
+
+    await recordAudit(actorName, actorRole, `Registered / updated pet owner: ${name}`);
+    res.json({ success: true, owner: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* 3. PETS CRUD & WEIGHT LOGGING */
+clinicRouter.post("/pets", async (req, res) => {
+  const {
+    id, ownerId, name, species, speciesOther, breed, sex,
+    birth, weight, color, neutered, allergies, notes, photo,
+    actorName, actorRole
+  } = req.body;
+  const petId = id || ("p_" + Math.random().toString(36).slice(2, 8));
+  const cardId = "VACC-" + new Date().getFullYear() + "-" + Math.floor(1000 + Math.random() * 9000);
+
+  try {
+    const result = await withTransaction(async (client) => {
+      const insPet = await client.query(
+        `INSERT INTO pets (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, allergies, vaccination_card_id, notes, photo)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         RETURNING *`,
+        [petId, ownerId, name, species || "Dog", speciesOther || "", breed || "Mixed Breed", sex || "Male", birth, weight || 5.0, color || "", neutered || "Not sure", allergies || [], cardId, notes || "", photo || ""]
+      );
+
+      // Record baseline weight
+      await client.query(
+        `INSERT INTO pet_weights (pet_id, date, kg) VALUES ($1, $2, $3)`,
+        [petId, birth || new Date().toISOString().slice(0, 10), weight || 5.0]
+      );
+
+      return insPet.rows[0];
+    });
+
+    await recordAudit(actorName, actorRole, `Registered patient ${name} (${species}) with card ${cardId}`);
+    res.json({ success: true, pet: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+clinicRouter.post("/pets/:id/weights", async (req, res) => {
+  const petId = req.params.id;
+  const { date, kg, recordedBy } = req.body;
+  try {
+    await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1, $2, $3, $4)`,
+        [petId, date || new Date().toISOString().slice(0, 10), kg, recordedBy || "clinic"]
+      );
+      await client.query(`UPDATE pets SET weight = $1 WHERE id = $2`, [kg, petId]);
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* 4. ONLINE PET REGISTRATION REQUESTS & APPROVAL AUTOMATION */
+clinicRouter.post("/pet-requests", async (req, res) => {
+  const { ownerId, name, species, speciesOther, breed, sex, birth, weight, color, neutered, notes } = req.body;
+  const reqId = "req_" + Math.random().toString(36).slice(2, 8);
+
+  try {
+    const result = await query(
+      `INSERT INTO pet_requests (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING *`,
+      [reqId, ownerId, name, species, speciesOther || "", breed || "", sex, birth, weight, color || "", neutered || "", notes || ""]
+    );
+    await recordAudit("Owner", "owner", `Submitted online pet registration request for ${name}`);
+    res.json({ success: true, request: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
+  const reqId = req.params.id;
+  const { actorName, actorRole } = req.body;
+  const today = new Date().toISOString().slice(0, 10);
+  const cardId = "VACC-" + new Date().getFullYear() + "-" + Math.floor(1000 + Math.random() * 9000);
+  const newPetId = "p_" + Math.random().toString(36).slice(2, 8);
+
+  try {
+    const result = await withTransaction(async (client) => {
+      const qReq = await client.query("SELECT * FROM pet_requests WHERE id = $1", [reqId]);
+      if (!qReq.rows.length) throw new Error("Request not found");
+      const r = qReq.rows[0];
+      if (r.status === "Approved") throw new Error("Request is already approved");
+
+      // 1. Insert into pets table
+      await client.query(
+        `INSERT INTO pets (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, vaccination_card_id, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [newPetId, r.owner_id, r.name, r.species, r.species_other || "", r.breed || "Mixed Breed", r.sex, r.birth, r.weight, r.color || "", r.neutered || "Not sure", cardId, r.notes || ""]
+      );
+
+      // 2. Insert weight baseline
+      await client.query(
+        `INSERT INTO pet_weights (pet_id, date, kg) VALUES ($1, $2, $3)`,
+        [newPetId, today, r.weight]
+      );
+
+      // 3. Automated Digital Card Vaccine Protocol Seeds (Core schedules)
+      const isDog = (r.species || "").toLowerCase() === "dog";
+      const isCat = (r.species || "").toLowerCase() === "cat";
+      const addDays = (dStr, days) => {
+        const d = new Date(dStr);
+        d.setDate(d.getDate() + days);
+        return d.toISOString().slice(0, 10);
+      };
+
+      if (isDog) {
+        // DHPP 1st Shot
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          ["v_" + Math.random().toString(36).slice(2, 8), newPetId, cardId, "DHPP (5-in-1)", "Nobivac", "AUTO-GEN-01", today, addDays(today, 21), 1, 3, false, true, "Core Canine Protocol", "System Automation"]
+        );
+        // Rabies Booster
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          ["v_" + Math.random().toString(36).slice(2, 8), newPetId, cardId, "Rabies (1-Year)", "Defensor", "AUTO-GEN-02", today, addDays(today, 30), 1, 1, false, true, "Core Rabies Protocol", "System Automation"]
+        );
+      } else if (isCat) {
+        // FVRCP 1st Shot
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          ["v_" + Math.random().toString(36).slice(2, 8), newPetId, cardId, "FVRCP (4-in-1)", "Fel-O-Vax", "AUTO-GEN-03", today, addDays(today, 28), 1, 2, false, true, "Core Feline Protocol", "System Automation"]
+        );
+        // Rabies
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          ["v_" + Math.random().toString(36).slice(2, 8), newPetId, cardId, "Rabies (Feline)", "Defensor", "AUTO-GEN-04", today, addDays(today, 30), 1, 1, false, true, "Core Rabies Protocol", "System Automation"]
+        );
+      }
+
+      // 4. Update pet_request record
+      const upd = await client.query(
+        `UPDATE pet_requests
+         SET status = 'Approved', approved_at = CURRENT_DATE, approved_by = $1, pet_id = $2, card_id = $3
+         WHERE id = $4
+         RETURNING *`,
+        [actorName || "Vet Assistant", newPetId, cardId, reqId]
+      );
+
+      return { petId: newPetId, cardId, request: upd.rows[0] };
+    });
+
+    await recordAudit(actorName, actorRole, `Approved pet request for ${result.request.name} (Assigned Card ${cardId})`);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+clinicRouter.post("/pet-requests/:id/decline", async (req, res) => {
+  const reqId = req.params.id;
+  const { reason, actorName, actorRole } = req.body;
+  try {
+    const result = await query(
+      `UPDATE pet_requests SET status = 'Declined', decline_reason = $1 WHERE id = $2 RETURNING *`,
+      [reason || "Incomplete or invalid pet information", reqId]
+    );
+    await recordAudit(actorName, actorRole, `Declined pet request ${reqId}: ${reason}`);
+    res.json({ success: true, request: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* 5. APPOINTMENTS & CHECK-IN INTAKE FLOW */
+clinicRouter.post("/appointments", async (req, res) => {
+  const { petId, vetId, date, time, reason, amount, actorName, actorRole } = req.body;
+  const apptId = "a_" + Math.random().toString(36).slice(2, 8);
+
+  try {
+    const result = await query(
+      `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, amount)
+       VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', $7)
+       RETURNING *`,
+      [apptId, petId, vetId || "u_vet_1", date, time, reason, amount || 600.00]
+    );
+
+    await recordAudit(actorName, actorRole, `Booked appointment for pet ${petId} on ${date} ${time}`);
+    res.json({ success: true, appointment: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+clinicRouter.patch("/appointments/:id/status", async (req, res) => {
+  const apptId = req.params.id;
+  const { status, intakeVitals, cancelReason, billingStatus, actorName, actorRole } = req.body;
+
+  try {
+    const result = await withTransaction(async (client) => {
+      let q = "UPDATE appointments SET status = $1";
+      const params = [status];
+      let pIdx = 2;
+
+      if (intakeVitals !== undefined) {
+        q += `, intake_vitals = $${pIdx++}`;
+        params.push(JSON.stringify(intakeVitals));
+      }
+      if (cancelReason !== undefined) {
+        q += `, cancel_reason = $${pIdx++}`;
+        params.push(cancelReason);
+      }
+      if (billingStatus !== undefined) {
+        q += `, billing_status = $${pIdx++}`;
+        params.push(billingStatus);
+      }
+
+      q += ` WHERE id = $${pIdx} RETURNING *`;
+      params.push(apptId);
+
+      const upd = await client.query(q, params);
+      if (!upd.rows.length) throw new Error("Appointment not found");
+
+      // If Checked-in and has weight in intake vitals, update pet weight log
+      if (status === "Checked-in" && intakeVitals?.weight) {
+        const appt = upd.rows[0];
+        const numWeight = parseFloat(intakeVitals.weight);
+        if (!isNaN(numWeight)) {
+          await client.query("UPDATE pets SET weight = $1 WHERE id = $2", [numWeight, appt.pet_id]);
+          await client.query(
+            "INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1, $2, $3, $4)",
+            [appt.pet_id, appt.date, numWeight, actorName || "Front Desk"]
+          );
+        }
+      }
+
+      return upd.rows[0];
+    });
+
+    await recordAudit(actorName, actorRole, `Updated appointment ${apptId} status to "${status}"`);
+    res.json({ success: true, appointment: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* 6. VACCINATIONS & FRONT DESK / ASSISTANT LOGGING */
+clinicRouter.post("/vaccinations", async (req, res) => {
+  const {
+    id, petId, cardId, vaccine, brand, batch, date,
+    nextDue, doseNo, doseOf, done, automated, protocolType,
+    notes, vetId, recordedBy, actorName, actorRole
+  } = req.body;
+  const vaccId = id || ("v_" + Math.random().toString(36).slice(2, 8));
+
+  try {
+    const result = await query(
+      `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, notes, vet_id, recorded_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       ON CONFLICT (id) DO UPDATE SET
+         vaccine = EXCLUDED.vaccine,
+         brand = EXCLUDED.brand,
+         batch = EXCLUDED.batch,
+         date = EXCLUDED.date,
+         next_due = EXCLUDED.next_due,
+         dose_no = EXCLUDED.dose_no,
+         dose_of = EXCLUDED.dose_of,
+         done = EXCLUDED.done,
+         notes = EXCLUDED.notes,
+         recorded_by = EXCLUDED.recorded_by
+       RETURNING *`,
+      [vaccId, petId, cardId || "VACC-DEFAULT", vaccine, brand || "", batch || "", date, nextDue || null, doseNo || 1, doseOf || 1, done !== undefined ? done : true, Boolean(automated), protocolType || "", notes || "", vetId || "", recordedBy || actorName || "Front Desk Assistant"]
+    );
+
+    await recordAudit(actorName, actorRole, `Logged vaccination ${vaccine} (${batch || "No lot#"}) for pet ${petId}`);
+    res.json({ success: true, vaccination: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+clinicRouter.delete("/vaccinations/:id", async (req, res) => {
+  const { id } = req.params;
+  const { actorName, actorRole } = req.body;
+  try {
+    await query("DELETE FROM vaccinations WHERE id = $1", [id]);
+    await recordAudit(actorName, actorRole, `Deleted vaccination record ${id}`);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* 7. CONSULTATIONS (SOAP MEDICAL NOTES) */
+clinicRouter.post("/consultations", async (req, res) => {
+  const { id, petId, vetId, apptId, date, symptoms, objective, diagnosis, treatment, prescription, actorName, actorRole } = req.body;
+  const consultId = id || ("c_" + Math.random().toString(36).slice(2, 8));
+
+  try {
+    const result = await query(
+      `INSERT INTO consultations (id, pet_id, vet_id, appt_id, date, symptoms, objective, diagnosis, treatment, prescription)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING *`,
+      [consultId, petId, vetId, apptId || "", date, symptoms, objective, diagnosis, treatment, prescription || ""]
+    );
+
+    // If linked to an appointment, mark appointment completed
+    if (apptId) {
+      await query("UPDATE appointments SET status = 'Completed' WHERE id = $1", [apptId]);
+    }
+
+    await recordAudit(actorName, actorRole, `Recorded SOAP consultation notes for pet ${petId} (${diagnosis})`);
+    res.json({ success: true, consultation: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* 8. AUDIT LOGS RETRIEVAL & MANUAL LOGGING */
+clinicRouter.get("/logs", async (req, res) => {
+  try {
+    const result = await query("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 200");
+    res.json({ success: true, logs: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+clinicRouter.post("/logs", async (req, res) => {
+  const { userName, userRole, action } = req.body;
+  try {
+    await recordAudit(userName, userRole, action);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+

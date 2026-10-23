@@ -815,6 +815,39 @@ function findRoute(method, route) {
 }
 
 async function call(method, path, body) {
+  // If path is an API endpoint, try real network fetch first:
+  if (path.startsWith("/api/")) {
+    try {
+      const fetchOpts = {
+        method,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include"
+      };
+      if (body && method !== "GET") {
+        fetchOpts.body = JSON.stringify(body);
+      }
+      const res = await fetch(path, fetchOpts);
+      const isJson = res.headers.get("content-type")?.includes("application/json");
+      const data = isJson ? await res.json() : await res.text();
+
+      if (res.ok) {
+        return data.data !== undefined ? data.data : data;
+      }
+      // If server responded with error status, propagate the server's error
+      const err = new Error(data?.error || `Request failed with status ${res.status}`);
+      if (data?.errors) err.fields = data.errors;
+      if (data?.remainingCooldown) err.remainingCooldown = data.remainingCooldown;
+      if (data?.limit) err.limit = true;
+      if (data?.lockout) err.lockout = true;
+      throw err;
+    } catch (networkOrApiErr) {
+      if (networkOrApiErr.fields || networkOrApiErr.remainingCooldown || networkOrApiErr.lockout || (networkOrApiErr.message && !networkOrApiErr.message.includes("fetch"))) {
+        throw networkOrApiErr;
+      }
+      // Server offline / not responding on this endpoint: fallback to in-memory
+    }
+  }
+
   await wait(180);
   const [route, qs] = path.split("?"),
     q = Object.fromEntries(new URLSearchParams(qs || ""));

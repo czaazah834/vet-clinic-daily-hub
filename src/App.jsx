@@ -18,6 +18,25 @@ export default function App() {
   const [db, setDb] = useState(SEED), [me, setMe] = useState(null), [view, setView] = useState("landing"), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
   const dbRef = useRef(db); dbRef.current = db;
   useEffect(() => { bindStore(() => dbRef.current, setDb); }, []);   // lets the sign-in "server" (api.js) read and update the same data
+  useEffect(() => {
+    fetch("/api/state")
+      .then(r => r.json())
+      .then(res => {
+        if (res.success && res.data) {
+          setDb(p => ({
+            ...p,
+            owners: res.data.owners?.length ? res.data.owners : p.owners,
+            pets: res.data.pets?.length ? res.data.pets : p.pets,
+            appts: res.data.appts?.length ? res.data.appts : p.appts,
+            vaccs: res.data.vaccs?.length ? res.data.vaccs : p.vaccs,
+            consults: res.data.consults?.length ? res.data.consults : p.consults,
+            petRequests: res.data.petRequests?.length ? res.data.petRequests : p.petRequests,
+            log: res.data.log?.length ? res.data.log : p.log
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
   useEffect(() => { setDb(p => { const late = p.appts.filter(a => ["Scheduled", "Confirmed"].includes(a.status) && a.date < TODAY); if (!late.length) return p; return { ...p, appts: p.appts.map(a => late.includes(a) ? { ...a, status: "No-show" } : a), log: addLog(p, { name: "System" }, `${late.length} past appointment(s) marked No-show`) }; }); }, []);
   /* Log out here and on the server. A message (e.g. idle timeout) sends the person to Log in with that notice. */
   const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } setMe(null); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
