@@ -2,24 +2,13 @@ import nodemailer from 'nodemailer';
 
 const E = process.env;
 
-let transporter = null;
-if (E.SMTP_USER && E.SMTP_PASS) {
-  transporter = nodemailer.createTransport({
-    host: E.SMTP_HOST || 'smtp.gmail.com',
-    port: Number(E.SMTP_PORT) || 587,
-    secure: Number(E.SMTP_PORT) === 465,
-    auth: {
-      user: E.SMTP_USER,
-      pass: E.SMTP_PASS,
-    },
-  });
-}
-
 // Global in-memory outbox for dev/testing when SMTP is not set
 export const serverOutbox = [];
 
 export async function sendMail(to, subject, text, html) {
-  const from = E.MAIL_FROM || 'PawCare Veterinary Clinic <noreply@pawcare.com>';
+  const senderEmail = E.BREVO_SENDER_EMAIL || E.SMTP_USER || 'noreply@pawcare.com';
+  const senderName = E.BREVO_SENDER_NAME || 'PawCare Veterinary Clinic';
+  const from = `${senderName} <${senderEmail}>`;
 
   const record = {
     id: Math.random().toString(36).substring(2, 9),
@@ -33,10 +22,53 @@ export async function sendMail(to, subject, text, html) {
   serverOutbox.unshift(record);
   if (serverOutbox.length > 50) serverOutbox.pop();
 
-  if (transporter) {
+  // 1. Try Brevo REST API v3 if BREVO_API_KEY is available
+  if (E.BREVO_API_KEY) {
     try {
-      await transporter.sendMail({ from, to, subject, text, html });
-      console.log(`Email sent via SMTP to ${to}: "${subject}"`);
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'api-key': E.BREVO_API_KEY,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: senderName, email: senderEmail },
+          to: [{ email: to }],
+          subject: subject,
+          textContent: text,
+          htmlContent: html || `<p>${text}</p>`,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.log(`Email successfully sent via Brevo API to ${to} (MessageId: ${data.messageId || 'ok'})`);
+        return { ok: true, via: 'brevo_api', messageId: data.messageId };
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.warn('Brevo REST API notice:', errData.message || res.statusText, '- attempting SMTP fallback...');
+      }
+    } catch (brevoErr) {
+      console.warn('Brevo API request failed:', brevoErr.message);
+    }
+  }
+
+  // 2. Try SMTP via Nodemailer (works with Brevo smtp-relay.brevo.com)
+  const smtpPass = (E.SMTP_PASS && E.SMTP_PASS !== 'your_master_smtp_password') ? E.SMTP_PASS : E.BREVO_API_KEY;
+  if (E.SMTP_USER && smtpPass) {
+    try {
+      const transport = nodemailer.createTransport({
+        host: E.SMTP_HOST || 'smtp-relay.brevo.com',
+        port: Number(E.SMTP_PORT) || 587,
+        secure: Number(E.SMTP_PORT) === 465,
+        auth: {
+          user: E.SMTP_USER,
+          pass: smtpPass,
+        },
+      });
+      await transport.sendMail({ from, to, subject, text, html });
+      console.log(`Email sent via SMTP (${E.SMTP_HOST || 'smtp-relay.brevo.com'}) to ${to}: "${subject}"`);
       return { ok: true, via: 'smtp' };
     } catch (err) {
       console.error('SMTP send failed:', err.message);
@@ -56,29 +88,30 @@ export async function sendSms(phone, message) {
   };
   serverOutbox.unshift(record);
 
-  if (E.PHILSMS_API_TOKEN && E.PHILSMS_API_TOKEN.startsWith('http') === false) {
+  if (E.PHILSMS_TOKEN || E.PHILSMS_API_TOKEN) {
+    const token = E.PHILSMS_TOKEN || E.PHILSMS_API_TOKEN;
     try {
-      const res = await fetch('https://dashboard.philsms.com/api/v3/sms/send', {
+      const res = await fetch('https://app.philsms.com/api/v3/sms/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${E.PHILSMS_API_TOKEN}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           recipient: phone,
-          sender_id: E.PHILSMS_SENDER_ID || 'PhilSMS',
+          sender_id: 'PhilSMS',
           type: 'plain',
-          message,
+          message: message,
         }),
       });
-      console.log('SMS sent via PhilSMS:', await res.json());
+      const data = await res.json();
+      console.log('PhilSMS sent:', data);
       return { ok: true, via: 'philsms' };
     } catch (err) {
-      console.error('PhilSMS send failed:', err.message);
+      console.error('PhilSMS failed:', err.message);
     }
   }
 
-  console.log(`[Dev SMS Delivery] To: ${phone} | Body: ${message}`);
+  console.log(`[Dev SMS Delivery] To: ${phone} | Msg: ${message}`);
   return { ok: true, via: 'dev_outbox' };
 }
-

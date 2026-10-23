@@ -11,6 +11,19 @@ import {
 } from '../security.js';
 import { sendMail, sendSms, serverOutbox } from '../services.js';
 
+export function getAppUrl(req) {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/+$/, '');
+  if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/+$/, '');
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  if (req) {
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    if (host && !host.includes('localhost:3000')) return `${proto}://${host}`;
+  }
+  return 'http://localhost:5173';
+}
+
 const router = express.Router();
 const G = 'Invalid email or password.';
 
@@ -171,7 +184,7 @@ router.post('/register', async (req, res) => {
     );
 
     // Send verification email
-    const siteUrl = process.env.SITE_URL || 'http://localhost:5173';
+    const siteUrl = getAppUrl(req);
     const verifyLink = `${siteUrl}/?verify=${rawToken}`;
     await sendMail(
       em,
@@ -311,7 +324,46 @@ router.post('/logout', async (req, res) => {
   res.json({ status: 'ok', message: 'Logged out successfully.' });
 });
 
-// 5. VERIFY EMAIL LINK
+// 5. RESEND VERIFICATION EMAIL
+router.post('/resend-verification', async (req, res) => {
+  const { email } = req.body;
+  const em = String(email || '').trim().toLowerCase();
+  if (!em) return res.status(400).json({ error: 'Email is required.' });
+
+  try {
+    const r = await query('SELECT * FROM users WHERE email = $1', [em]);
+    if (!r.rows.length) {
+      return res.json({ status: 'ok', message: 'If an account exists, a verification link has been sent.' });
+    }
+    const u = r.rows[0];
+    if (u.email_verified_at) {
+      return res.json({ status: 'ok', message: 'Email address is already verified.' });
+    }
+
+    const rawToken = randomHex(24);
+    await query('DELETE FROM verification_tokens WHERE user_id = $1 AND type = \'email_verify\'', [u.id]);
+    await query(
+      `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at)
+       VALUES ($1, $2, 'email_verify', NOW() + INTERVAL '24 hours')`,
+      [u.id, sha256(rawToken)]
+    );
+
+    const siteUrl = getAppUrl(req);
+    const verifyLink = `${siteUrl}/?verify=${rawToken}`;
+    await sendMail(
+      em,
+      'PawCare - Verify your email address',
+      `Please verify your email address:\n${verifyLink}`,
+      `<p>Please verify your email address to activate your PawCare account:</p><p><a href="${verifyLink}" style="background:#0b3a5b;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Verify My Account</a></p>`
+    );
+
+    res.json({ status: 'ok', message: 'Verification link sent to your email.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to resend verification link.' });
+  }
+});
+
+// 6. VERIFY EMAIL LINK
 router.post('/verify-email', async (req, res) => {
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'Token is required.' });
