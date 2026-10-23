@@ -70,3 +70,22 @@
 .lg.auth .chips .btn.sm{font-size:12px}
 .auth-ok{text-align:center;padding:10px 0}.auth-ok h2{margin:10px 0}
 .auth-dev{background:#fff8dc;border:1px dashed #d9b84a;border-radius:10px;padding:6px 10px;font-size:12px;color:#5c4a00;margin:0 0 14px}
+
+/* ---------- verification, mobile code, unlock countdown ---------- */
+.auth-note.bad{background:#fdecec;border-color:#f3c4c4;color:#8a1f1f}
+.auth-count{font-size:44px;font-weight:700;line-height:1.1;letter-spacing:.04em;font-variant-numeric:tabular-nums;margin:6px 0 10px;color:var(--ink)}
+.lg.auth .lgr.auth-ok{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;max-width:none}
+.lg.auth .lgr.auth-ok p{max-width:420px;margin:0}
+.lg.auth .lgr.auth-ok .btn.wide{max-width:320px;width:100%}
+.otp-field input{font-size:22px;font-weight:600;letter-spacing:.5em;text-align:center;font-variant-numeric:tabular-nums}
+
+/* ---------- dev inbox (mock email / SMS), bottom-right ---------- */
+.devbox{position:fixed;right:16px;bottom:16px;z-index:1000;width:min(360px,calc(100vw - 32px));max-height:70vh;overflow:auto;background:#fff8dc;border:1px dashed #d9b84a;border-radius:12px;padding:10px 12px;color:#5c4a00;font-size:12px;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.devbox header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.devbox header button{background:none;border:0;color:#5c4a00;text-decoration:underline;cursor:pointer;font-size:12px;padding:0 0 0 8px}
+.devbox .devnote{margin:6px 0 8px}
+.devbox ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.devbox li{border-top:1px solid #e6d58a;padding-top:8px;display:grid;gap:4px}
+.devbox li small{opacity:.75}
+.devbox pre{white-space:pre-wrap;word-break:break-word;font:inherit;margin:0}
+.devbox .btn.sm{justify-self:start}

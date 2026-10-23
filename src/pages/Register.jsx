@@ -12,7 +12,7 @@ const LABEL = ["Too weak", "Okay", "Good", "Strong", "Very strong"], COLOR = ["#
    browser and the server can never disagree. Server answers (taken username, etc.) show on the field. */
 export default function Register({ onDone, onBack, go }) {
   const f = useLive({ name: "", email: "", phone: "", address: "", username: "", password: "", confirm: "", agree: false }, validateRegistration), v = f.v;
-  const [srv, setSrv] = useState({}), [busy, setBusy] = useState(false), [top, setTop] = useState(""), [showPw, setShowPw] = useState(false);
+  const [srv, setSrv] = useState({}), [busy, setBusy] = useState(false), [top, setTop] = useState(""), [showPw, setShowPw] = useState(false), [capped, setCapped] = useState(false);
   const set = (k, x) => { f.set(k, x); if (srv[k]) setSrv(s => ({ ...s, [k]: "" })); };
   const err = (k, eager) => f.show(k, eager) || srv[k] || "";
 
@@ -30,14 +30,13 @@ export default function Register({ onDone, onBack, go }) {
   const rulesOk = PW_RULES.every(([t]) => t(v.password)), s = pwStrength(v.password);
   const submit = async e => {
     e.preventDefault(); setTop(""); f.submit();
-    if (!f.valid || busy || srv.username || srv.email) return;
+    if (!f.valid || busy || capped || srv.username || srv.email) return;
     setBusy(true);
     try {
       const r = await auth.register({ name: clean(v.name), email: normEmail(v.email), phone: normPhone(v.phone), address: clean(v.address), username: v.username.trim(), password: v.password, agree: true });
-      if (r && r.user) return onDone(r.user);   // signed in right away
-      return go("login");
+      return onDone((r && r.email) || normEmail(v.email));   // not signed in yet: "check your email" comes next
     } catch (x) {
-      if (x.offline) setTop(OFFLINE_MSG); else if (x.fields) setSrv(x.fields); else setTop(x.message || "We couldn’t create your account. Please try again.");
+      if (x.limit) { setCapped(true); setTop(x.message); } else if (x.offline) setTop(OFFLINE_MSG); else if (x.fields) setSrv(x.fields); else setTop(x.message || "We couldn’t create your account. Please try again.");
     }
     setBusy(false);
   };
@@ -47,7 +46,7 @@ export default function Register({ onDone, onBack, go }) {
       <form className="lgr" onSubmit={submit} noValidate>
         <button type="button" className="lnk" onClick={onBack}>← Back to home</button>
         <h2>Create your account</h2>
-        <p className="auth-note">Your pets are added by the clinic front desk at your first visit. Once they’re on file, they appear here.</p>
+        <p className="auth-note">Your pets are added by the clinic front desk at your first visit. Once they’re on file, they appear here. After you register we email you a link to verify your address, then text a code to your mobile number.</p>
         <div className="auth-grid">
           <Field id="rname" label="Full name" req value={v.name} filter={onlyLetters} filterMsg="Letters, spaces, . ' - only" maxLen={60} onChange={x => set("name", x)} onBlur={() => f.blur("name")} error={err("name")} valid={f.ok("name")} autoComplete="name" />
           <Field id="ruser" label="Username" req value={v.username} filter={lowerUser} filterMsg="Lowercase letters, numbers and _ only" maxLen={20} onChange={x => set("username", x)} onBlur={() => f.blur("username")} error={err("username")} valid={f.ok("username") && !srv.username} hint="3–20 characters: lowercase letters, numbers or _" autoComplete="username" />
@@ -69,7 +68,7 @@ export default function Register({ onDone, onBack, go }) {
         </div>
         {top && <p className="err" role="alert">{top}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix the {f.count} highlighted item{f.count > 1 ? "s" : ""} above.</p>}
-        <button className="btn gold wide" disabled={busy}>{busy ? "Creating account…" : "Create account"}</button>
+        <button className="btn gold wide" disabled={busy || capped} title={capped ? "Registration is paused for this connection. Try again in an hour." : undefined}>{busy ? "Creating account…" : "Create account"}</button>
         <div className="auth-links"><span>Already registered?</span><button type="button" className="lnk" onClick={() => go("login")}>Log in</button></div>
       </form>
     </div>
