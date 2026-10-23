@@ -20,9 +20,9 @@ export default function OwnerHeader({ db, setDb, me, say, onLogout }) {
         <Avatar src={o.photo} fallback={me.name[0]} size={34} /><span className="t">{me.name}<small>{ROLES[me.role][0]}</small></span><span aria-hidden="true">▾</span>
       </button>
       {open && <div className="ow-menu" role="menu">
-        <button role="menuitem" onClick={() => to("profile")}>👤 My Profile</button>
-        <button role="menuitem" onClick={() => to("password")}>🔒 Change Password</button>
-        <hr /><button role="menuitem" onClick={() => { setOpen(false); onLogout(); }}>↪ Log out</button>
+        <button role="menuitem" onClick={() => to("profile")}>My Profile</button>
+        <button role="menuitem" onClick={() => to("password")}>Change Password</button>
+        <hr /><button role="menuitem" onClick={() => { setOpen(false); onLogout(); }}>Log out</button>
       </div>}
       {dlg && <Modal title={dlg === "profile" ? "My Profile" : "Change Password"} onClose={() => setDlg(null)}>
         {dlg === "profile" ? <ProfileBody db={db} setDb={setDb} me={me} say={say} /> : <PasswordBody db={db} setDb={setDb} me={me} say={say} />}

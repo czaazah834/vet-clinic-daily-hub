@@ -107,7 +107,7 @@ function Dash({ db, setDb, me, go, say }) {
 }
 const P = (k, l, i, sub, Page) => ({ k, l, i, sub, Page });
 export const owner = { portal: "Pet Owner Portal", Dash, Header: OwnerHeader, menu: [
-  { k: "home", l: "My Pets", i: "🐾", dash: 1, sub: "Your pets, their profiles, next vaccines and visits." },
-  P("appts", "My Appointments", "📅", "Book, change or cancel a visit. Switch between the list and the calendar.", OwnerAppts),
-  P("vacc", "Vaccination Cards", "💉", "Pick a pet to see its vaccination card.", OwnerVacc),
-  P("records", "Visit History", "📋", "Diagnoses and treatments from past visits.", OwnerVisits)] };
+  { k: "home", l: "My Pets", i: "paw", dash: 1, sub: "Your pets, their profiles, next vaccines and visits." },
+  P("appts", "My Appointments", "calendar", "Book, change or cancel a visit. Switch between the list and the calendar.", OwnerAppts),
+  P("vacc", "Vaccination Cards", "syringe", "Pick a pet to see its vaccination card.", OwnerVacc),
+  P("records", "Visit History", "file", "Diagnoses and treatments from past visits.", OwnerVisits)] };

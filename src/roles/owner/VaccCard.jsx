@@ -82,6 +82,19 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
     setIsFlipped(true); // Flip smoothly to Page 2 (Immunization Log) where this record is detailed
   };
 
+  const petIndex = pets.findIndex(x => x.id === sel);
+  const selectPet = id => {
+    setSel(id);
+    setSt("");
+    setQ("");
+    setPic(false);
+    setIsFlipped(false);
+  };
+  const movePet = step => {
+    const idx = Math.max(0, Math.min(pets.length - 1, petIndex + step));
+    if (pets[idx] && pets[idx].id !== sel) selectPet(pets[idx].id);
+  };
+
   return (
     <>
       {over.length > 0 && (
@@ -97,53 +110,58 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
         </div>
       )}
 
-      <div className="ow-split">
-        {/* Pet selection sidebar */}
-        <div className="ow-petlist" role="listbox" aria-label="Choose a pet">
-          {pets.map(x => (
-            <button
-              key={x.id}
-              role="option"
-              aria-selected={x.id === sel}
-              className={`ow-sq${x.id === sel ? " on" : ""}`}
-              onClick={() => { setSel(x.id); setSt(""); setQ(""); setPic(false); setIsFlipped(false); }}
-            >
-              <Avatar src={x.photo} fallback={<Icon n="paw" size={28} />} size={56} />
-              <b>{x.name}</b>
-              <small>{formatSpeciesLabel(x.species)}</small>
-              {badge(x.id)}
-            </button>
-          ))}
-        </div>
+      {p && (
+        <section className="ow-vc vc-card-shell" style={{ border: "none", background: "transparent", overflow: "visible" }} aria-label={`${p.name}’s vaccination card`}>
+          <div className="vc-toolbar vc-noprint">
+            <div className="vc-pet-pager" role="group" aria-label="Pet card navigation">
+              <button
+                type="button"
+                className="vc-pager-btn"
+                onClick={() => movePet(-1)}
+                disabled={petIndex <= 0}
+                aria-label="Previous pet"
+                title="Previous pet"
+              >
+                ‹
+              </button>
 
-        {p && (
-          <section className="ow-vc" style={{ border: "none", background: "transparent", overflow: "visible" }} aria-label={`${p.name}’s vaccination card`}>
-            
-            {/* Top Toolbar */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: "1.2rem", fontWeight: 700, color: "var(--navy)" }}>
-                  {p.name}’s Health Passport
-                </span>
-                <span className="vc-passport-stamp verified">
-                  ✓ Verified Digital Card #{cardIdFormatted}
-                </span>
+              <div className="vc-pager-center">
+                <div className="vc-pager-title">{String(p.name || "Pet").toUpperCase()}’S VACCINATION CARD</div>
+                <div className="vc-pager-sub">
+                  <span>{pets.length > 1 ? `Pet ${petIndex + 1} of ${pets.length}` : formatSpeciesLabel(p.species)}</span>
+                  <span className="vc-pager-sep">•</span>
+                  {badge(sel)}
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="btn gold sm vc-noprint"
-                  onClick={() => setIsFlipped(prev => !prev)}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
-                  title="Flip between Cover/Profile and Immunization Log"
-                >
-                  🔄 Flip Card ({isFlipped ? "Page 2 ➜ Page 1" : "Page 1 ➜ Page 2"})
-                </button>
-                <button className="btn ghost sm vc-noprint" onClick={() => window.print()}>
-                  <Icon n="print" size={14} /> Print Card
-                </button>
-              </div>
+
+              <button
+                type="button"
+                className="vc-pager-btn"
+                onClick={() => movePet(1)}
+                disabled={petIndex >= pets.length - 1}
+                aria-label="Next pet"
+                title="Next pet"
+              >
+                ›
+              </button>
             </div>
+
+            <div className="vc-toolbar-actions">
+              <span className="vc-passport-stamp verified">Verified Digital Card #{cardIdFormatted}</span>
+              <button
+                type="button"
+                className="btn gold sm"
+                onClick={() => setIsFlipped(prev => !prev)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
+                title="Switch between Page 1 and Page 2"
+              >
+                {isFlipped ? "View Page 1" : "View Page 2"}
+              </button>
+              <button className="btn ghost sm" onClick={() => window.print()}>
+                <Icon n="print" size={14} /> Print Card
+              </button>
+            </div>
+          </div>
 
             {/* =========================================================================
                 AUTHENTIC 3D FLIP PHYSICAL VACCINATION CARD BOOKLET
@@ -197,7 +215,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                           </button>
                         </div>
                         <div style={{ marginTop: 6, fontSize: "10px", color: "#059669", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                          ✓ Patient Verified
+                          Patient Verified
                         </div>
                       </div>
 
@@ -232,7 +250,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                         {/* Allergies / Health Notes alert */}
                         {(p.allergies || []).length > 0 && (
                           <div style={{ marginTop: 10, background: "#fef2f2", border: "1px solid #fecaca", padding: "6px 10px", borderRadius: "8px", fontSize: "12px", color: "#991b1b" }}>
-                            <b>⚠️ Clinical Allergy Alert:</b> {(p.allergies || []).join(", ")}
+                            <b>Clinical Allergy Alert:</b> {(p.allergies || []).join(", ")}
                           </div>
                         )}
                       </div>
@@ -266,8 +284,8 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                           boxShadow: "0 4px 12px rgba(37,99,235,0.25)"
                         }}
                       >
-                        <span>📖 Turn to Page 2 (Immunization Log)</span>
-                        <span style={{ fontSize: "1.1rem" }}>➔</span>
+                        <span>Turn to Page 2 (Immunization Log)</span>
+                        <span style={{ fontSize: "1.1rem" }}>›</span>
                       </button>
                     </div>
                   </div>
@@ -314,7 +332,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                         gap: 6
                       }}
                     >
-                      <span>⬅ Flip back to Page 1</span>
+                      <span>Back to Page 1</span>
                     </button>
                   </div>
 
@@ -371,7 +389,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                 </td>
                                 <td style={{ padding: "8px" }}>
                                   <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0", padding: "2px 6px", borderRadius: "6px", fontSize: "11px", fontWeight: 700 }}>
-                                    ✓ {vetOf(v)}
+                                    {vetOf(v)}
                                   </span>
                                 </td>
                                 <td style={{ padding: "8px" }}>
@@ -451,7 +469,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                   </div>
 
                   <p className="ow-hint vc-noprint" style={{ marginBottom: 8 }}>
-                    💡 <b>Tip:</b> Click any row below to open and inspect that vaccine record on the physical card above.
+                    <b>Tip:</b> Click any row below to open and inspect that vaccine record on the physical card above.
                   </p>
 
                   {/* Interactive Table with Single-Click Open */}
@@ -541,7 +559,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <Badge v={stateOf(det) === "No next dose" ? "Completed" : stateOf(det)} />
               <span className="vc-passport-stamp verified">
-                ✓ Recorded on Card #{cardIdFormatted}
+                Recorded on Card #{cardIdFormatted}
               </span>
             </div>
 
