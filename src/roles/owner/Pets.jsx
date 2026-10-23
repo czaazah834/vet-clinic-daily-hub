@@ -1,12 +1,33 @@
 import { useState } from "react";
 import { TODAY, scope, uid, addLog, dueState } from "../../lib.jsx";
 import { useLive, Field, Modal, petAge, fmt12, onlyDecimal, Icon } from "./ui.jsx";
-import { computeAgeDetails, getPreventiveSchedule, getNextMilestone } from "../../preventiveSchedule.js";
+import { computeAgeDetails, getPreventiveSchedule, getNextMilestone, computeWeightBracket } from "../../preventiveSchedule.js";
 
 /* ---------- validation rules for the Add-pet form ---------- */
 /* Rules for the "Add my pet" form. Plain JS with no React, so the same file can move to the Node server later. */
 export const SPECIES = ["Dog", "Cat", "Rabbit", "Bird", "Other"];
 export const NEUTERED = ["Yes", "No", "Not sure"];
+export const PET_COLORS = [
+  "Black",
+  "White",
+  "Brown / Chocolate",
+  "Tan / Fawn",
+  "Golden / Yellow",
+  "Cream / Blonde",
+  "Red / Ginger / Orange",
+  "Gray / Blue / Silver",
+  "Tricolor (Black, White & Tan)",
+  "Bicolor / Tuxedo (Black & White)",
+  "Brown & White",
+  "Brindle (Tiger-striped)",
+  "Merle / Dapple (Marbled)",
+  "Calico (Tri-color patches)",
+  "Tortoiseshell (Tortie)",
+  "Tabby (Striped / Swirls)",
+  "Sable",
+  "Spotted",
+  "Other / Custom markings (type below)"
+];
 export const MAX_PETS = 10;      // approved pets + requests on one account
 export const MAX_PENDING = 3;    // requests waiting for the clinic at one time
 export const MAX_NOTES = 200;
@@ -196,6 +217,10 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
   const [breedChoice, setBreedChoice] = useState(isCustomInitial ? "Other / Mixed (type your own)" : (e0.breed || ""));
   const [customBreed, setCustomBreed] = useState(isCustomInitial ? e0.breed : "");
 
+  const isCustomColorInitial = e0.color && !PET_COLORS.includes(e0.color);
+  const [colorChoice, setColorChoice] = useState(isCustomColorInitial ? "Other / Custom markings (type below)" : (e0.color || ""));
+  const [customColor, setCustomColor] = useState(isCustomColorInitial ? e0.color : "");
+
   const handleSpeciesChange = newSpecies => {
     f.set("species", newSpecies);
     setBreedChoice("");
@@ -215,6 +240,20 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
   const handleCustomBreedChange = text => {
     setCustomBreed(text);
     f.set("breed", text);
+  };
+
+  const handleColorChoiceChange = choice => {
+    setColorChoice(choice);
+    if (choice === "Other / Custom markings (type below)") {
+      f.set("color", customColor || "");
+    } else {
+      f.set("color", choice);
+    }
+  };
+
+  const handleCustomColorChange = text => {
+    setCustomColor(text);
+    f.set("color", text);
   };
 
   const submit = ev => {
@@ -237,11 +276,13 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
 
   const availableBreeds = BREEDS_BY_SPECIES[v.species] || [];
   const showCustomBreedField = v.species === "Other" || breedChoice.startsWith("Other");
+  const showCustomColorField = colorChoice.startsWith("Other");
   const petCalculatedAge = v.birth && !f.errs.birth ? petAge(v.birth) : "";
   const isOlderThanSixMonths = v.birth && !f.errs.birth && petCalculatedAge && !petCalculatedAge.includes("mo") && !petCalculatedAge.includes("under");
   const [showSchedule, setShowSchedule] = useState(false);
   const nextFormMilestone = v.birth && !f.errs.birth ? getNextMilestone(v.birth, v.species) : null;
   const fullFormSchedule = v.birth && !f.errs.birth ? getPreventiveSchedule(v.birth, v.species) : [];
+  const weightBracket = computeWeightBracket(v.weight, v.species, v.birth);
 
   return (
     <Modal title={editing ? "Edit pet request" : "Add my pet"} onClose={onClose}>
@@ -289,9 +330,65 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
             )}
           </div>
 
-          <Field id="pc" label="Color or markings (optional)" value={v.color} filter={petText} filterMsg="Letters, numbers and basic punctuation only" maxLen={40} onChange={x => f.set("color", x)} onBlur={() => f.blur("color")} error={f.show("color")} valid={f.ok("color")} hint="For example brown with a white chest" />
+          <Field id="pc-sel" label="Color / Coat pattern" req={false} type="select" value={colorChoice} onChange={handleColorChoiceChange} options={PET_COLORS.map(c => [c, c])} error={f.show("color")} valid={f.ok("color")} hint="Select primary color or coat pattern" />
+
+          {showCustomColorField && (
+            <Field id="pc" label="Specific color or unique markings" value={v.color} filter={petText} filterMsg="Letters, numbers and basic punctuation only" maxLen={40} onChange={handleCustomColorChange} onBlur={() => f.blur("color")} error={f.show("color")} valid={f.ok("color")} hint="For example brown with a white chest, white socks" />
+          )}
+
           <div className="full"><Field id="pm" label="Anything the clinic should know (optional)" type="textarea" rows={2} max={200} value={v.notes} onChange={x => f.set("notes", x)} onBlur={() => f.blur("notes")} error={f.show("notes")} valid={f.ok("notes")} hint="Health problems, behavior or past treatments" /></div>
         </div>
+
+        {weightBracket && v.species === "Dog" && (
+          <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: "12px", padding: "14px", marginTop: "12px", marginBottom: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+              <span style={{ fontSize: "1.1rem" }}>⚖️</span>
+              <b style={{ fontSize: "0.85rem", color: "#92400e", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                Automated Maintenance Weight Bracket ({weightBracket.kg} kg)
+              </b>
+            </div>
+
+            {weightBracket.alert && (
+              <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", padding: "8px 12px", borderRadius: "8px", fontSize: "0.82rem", fontWeight: 600, marginBottom: "8px" }}>
+                {weightBracket.alert}
+              </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "0.82rem" }}>
+              <div style={{ background: "#fff", padding: "8px 10px", borderRadius: "8px", border: "1px solid #fef3c7" }}>
+                <div style={{ color: "#78350f", fontWeight: 700 }}>NexGard Spectra Chewables:</div>
+                {weightBracket.nexgard && (
+                  <div style={{ marginTop: "3px" }}>
+                    <span style={{ display: "inline-block", background: weightBracket.nexgard.color, color: "#fff", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                      {weightBracket.nexgard.box}
+                    </span>
+                    <div style={{ fontSize: "0.76rem", color: "#64748b", marginTop: "3px" }}>
+                      {weightBracket.nexgard.note}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ background: "#fff", padding: "8px 10px", borderRadius: "8px", border: "1px solid #fef3c7" }}>
+                <div style={{ color: "#78350f", fontWeight: 700 }}>Simparica Trio Range:</div>
+                {weightBracket.simparica && (
+                  <div style={{ marginTop: "3px" }}>
+                    <span style={{ display: "inline-block", background: "#3b82f6", color: "#fff", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                      {weightBracket.simparica.box}
+                    </span>
+                    <div style={{ fontSize: "0.76rem", color: "#64748b", marginTop: "3px" }}>
+                      {weightBracket.simparica.note || `Matches ${weightBracket.kg} kg bracket.`}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: "8px", fontSize: "0.76rem", color: "#92400e", lineHeight: 1.35 }}>
+              <b>Strict Rule:</b> Never use left-over medication from an older dog or split a larger pill in half for a puppy. Active ingredients are not mixed evenly inside tablets. Weigh puppy monthly on digital scale before giving.
+            </div>
+          </div>
+        )}
 
         {nextFormMilestone && (
           <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "12px", padding: "14px", marginTop: "14px", marginBottom: "10px" }}>
@@ -409,6 +506,7 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
 
   const petSchedule = p.birth ? getPreventiveSchedule(p.birth, p.species, V) : [];
   const nextMilestone = p.birth ? getNextMilestone(p.birth, p.species, V) : null;
+  const petWeightBracket = computeWeightBracket(p.weight, p.species, p.birth);
 
   return (
     <Modal title={p.name} onClose={onClose}>
@@ -421,6 +519,54 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
         <p className="op-line"><Icon n="syringe" size={16} /> {V.length ? <>{V.length} vaccine record{V.length > 1 ? "s" : ""}{over ? <span className="op-chip no">{over} overdue</span> : soon ? <span className="op-chip wait">{soon} due soon</span> : <span className="op-chip ok">Up to date</span>}</> : "No vaccine records yet"}</p>
         <p className="op-line"><Icon n="calendar" size={16} /> {next ? `Next visit: ${next.date} at ${fmt12(next.time)} (${next.status})` : "No visit booked"}</p>
       </div>
+
+      {petWeightBracket && p.species === "Dog" && (
+        <div className="op-sec">
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+            <h4 style={{ margin: 0 }}>Medication & Weight Brackets ({petWeightBracket.kg} kg)</h4>
+          </div>
+
+          {petWeightBracket.alert && (
+            <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", padding: "8px 12px", borderRadius: "8px", fontSize: "0.82rem", fontWeight: 600, marginBottom: "8px" }}>
+              {petWeightBracket.alert}
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "0.82rem" }}>
+            <div style={{ background: "#f8fafc", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--ln)" }}>
+              <div style={{ color: "#0f172a", fontWeight: 700 }}>NexGard Spectra Chewables:</div>
+              {petWeightBracket.nexgard && (
+                <div style={{ marginTop: "4px" }}>
+                  <span style={{ display: "inline-block", background: petWeightBracket.nexgard.color, color: "#fff", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                    {petWeightBracket.nexgard.box}
+                  </span>
+                  <div style={{ fontSize: "0.76rem", color: "var(--mu)", marginTop: "3px" }}>
+                    {petWeightBracket.nexgard.note}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: "#f8fafc", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--ln)" }}>
+              <div style={{ color: "#0f172a", fontWeight: 700 }}>Simparica Trio Bracket:</div>
+              {petWeightBracket.simparica && (
+                <div style={{ marginTop: "4px" }}>
+                  <span style={{ display: "inline-block", background: "#2563eb", color: "#fff", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                    {petWeightBracket.simparica.box}
+                  </span>
+                  <div style={{ fontSize: "0.76rem", color: "var(--mu)", marginTop: "3px" }}>
+                    {petWeightBracket.simparica.note || `Calculated for ${petWeightBracket.kg} kg body weight.`}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ marginTop: "8px", fontSize: "0.76rem", color: "#b45309", lineHeight: 1.35 }}>
+            <b>Strict Dosage Rule:</b> Never use leftover medication from an older dog or split a larger pill in half for a puppy. Active ingredients are not mixed evenly inside tablets. Weigh puppy monthly on digital scale before dosing.
+          </div>
+        </div>
+      )}
 
       {p.birth && petSchedule.length > 0 && (
         <div className="op-sec">

@@ -324,3 +324,118 @@ export function getNextMilestone(birthDate, species = "Dog", completedVaccs = []
   const upcoming = schedule.find(s => s.status === "Upcoming" && !s.isDone);
   return upcoming || schedule[schedule.length - 1];
 }
+
+/* Automated Weight Bracket and Safety Checker for Maintenance Medications */
+export function computeWeightBracket(weightKg, species = "Dog", birthDate = null) {
+  const kg = parseFloat(weightKg);
+  if (isNaN(kg) || kg <= 0) return null;
+
+  const age = birthDate ? computeAgeDetails(birthDate) : null;
+  const isPuppy = age ? age.months < 12 : null;
+  const underAgeFloor = age ? age.weeks < 8 : false;
+
+  let nexgard = null;
+  let simparica = null;
+  let alert = null;
+
+  if (species === "Dog") {
+    // NexGard Spectra Brackets
+    if (kg < 2.0) {
+      nexgard = {
+        box: "Under 2.0 kg",
+        color: "#64748b",
+        range: "< 2.0 kg",
+        safe: false,
+        note: "Under minimum weight (2.0 kg). Never split larger tablets in half! Pediatric topical spot-on required."
+      };
+    } else if (kg <= 3.5) {
+      nexgard = {
+        box: "Orange Box (Extra Small)",
+        color: "#ea580c",
+        range: "2.0 – 3.5 kg",
+        safe: true,
+        note: "Chewable tablet for Extra Small dogs (2.0 to 3.5 kg)."
+      };
+    } else if (kg <= 7.5) {
+      nexgard = {
+        box: "Yellow Box (Small)",
+        color: "#ca8a04",
+        range: "3.6 – 7.5 kg",
+        safe: true,
+        note: "Chewable tablet for Small dogs (3.6 to 7.5 kg)."
+      };
+    } else if (kg <= 15.0) {
+      nexgard = {
+        box: "Green Box (Medium)",
+        color: "#16a34a",
+        range: "7.6 – 15.0 kg",
+        safe: true,
+        note: "Chewable tablet for Medium dogs (7.6 to 15.0 kg)."
+      };
+    } else if (kg <= 30.0) {
+      nexgard = {
+        box: "Purple Box (Large)",
+        color: "#9333ea",
+        range: "15.1 – 30.0 kg",
+        safe: true,
+        note: "Chewable tablet for Large dogs (15.1 to 30.0 kg)."
+      };
+    } else if (kg <= 60.0) {
+      nexgard = {
+        box: "Red Box (Extra Large)",
+        color: "#dc2626",
+        range: "30.1 – 60.0 kg",
+        safe: true,
+        note: "Chewable tablet for Extra Large dogs (30.1 to 60.0 kg)."
+      };
+    } else {
+      nexgard = {
+        box: "Combination Dosing (> 60 kg)",
+        color: "#0f172a",
+        range: "> 60.0 kg",
+        safe: true,
+        note: "Dogs over 60 kg require an appropriate combination of whole chewable tablets under veterinary instruction."
+      };
+    }
+
+    // Simparica Trio Brackets
+    if (kg < 1.25) {
+      simparica = {
+        box: "Under 1.25 kg",
+        range: "< 1.25 kg",
+        safe: false,
+        note: "Under minimum weight (1.25 kg) for Simparica Trio."
+      };
+    } else if (kg <= 2.5) {
+      simparica = { box: "Gold Box (1.25 to 2.5 kg)", range: "1.25 – 2.5 kg", safe: true };
+    } else if (kg <= 5.0) {
+      simparica = { box: "Purple Box (2.6 to 5.0 kg)", range: "2.6 – 5.0 kg", safe: true };
+    } else if (kg <= 10.0) {
+      simparica = { box: "Green Box (5.1 to 10.0 kg)", range: "5.1 – 10.0 kg", safe: true };
+    } else if (kg <= 20.0) {
+      simparica = { box: "Blue Box (10.1 to 20.0 kg)", range: "10.1 – 20.0 kg", safe: true };
+    } else if (kg <= 40.0) {
+      simparica = { box: "Brown Box (20.1 to 40.0 kg)", range: "20.1 – 40.0 kg", safe: true };
+    } else if (kg <= 60.0) {
+      simparica = { box: "Red Box (40.1 to 60.0 kg)", range: "40.1 – 60.0 kg", safe: true };
+    } else {
+      simparica = { box: "Combination Dosing (> 60 kg)", range: "> 60.0 kg", safe: true };
+    }
+
+    // Strict safety rules
+    if (underAgeFloor) {
+      alert = `⚠️ Age Floor Rule: At ${age?.formatted || "under 8 weeks"}, this puppy is too young for oral flea/tick/heartworm combo chews (requires min. 8 weeks of age and 1.25–2.0 kg). Please ask the clinic for a pediatric topical spot-on.`;
+    } else if (kg < 2.0) {
+      alert = `⚠️ Minimum Weight Notice: At ${kg} kg, this dog is below 2.0 kg. Never split a larger pill in half—the active ingredients are not mixed evenly inside tablets. Use an exact pediatric dose.`;
+    }
+  }
+
+  return {
+    kg,
+    isPuppy,
+    underAgeFloor,
+    nexgard,
+    simparica,
+    alert
+  };
+}
