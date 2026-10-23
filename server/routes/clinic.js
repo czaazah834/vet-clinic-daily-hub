@@ -174,6 +174,12 @@ clinicRouter.get("/state", async (req, res) => {
 /* 2. OWNERS CRUD */
 clinicRouter.post("/owners", async (req, res) => {
   const { id, name, email, phone, address, actorName, actorRole } = req.body;
+
+  // RBAC check: Assistants cannot edit existing client accounts
+  if (id && actorRole === "assistant") {
+    return res.status(403).json({ error: "Vet Assistants cannot edit registered pet owner accounts." });
+  }
+
   const ownerId = id || ("o_" + Math.random().toString(36).slice(2, 8));
 
   try {

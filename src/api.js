@@ -833,13 +833,17 @@ async function call(method, path, body) {
       if (res.ok) {
         return data.data !== undefined ? data.data : data;
       }
-      // If server responded with error status, propagate the server's error
-      const err = new Error(data?.error || `Request failed with status ${res.status}`);
-      if (data?.errors) err.fields = data.errors;
-      if (data?.remainingCooldown) err.remainingCooldown = data.remainingCooldown;
-      if (data?.limit) err.limit = true;
-      if (data?.lockout) err.lockout = true;
-      throw err;
+      // If Vite proxy returned 500/502/504 because backend is starting up or unreachable, fallback
+      if (res.status >= 500 && typeof data === "string" && (data.includes("proxy error") || data.includes("ECONNREFUSED"))) {
+        // Fallback to in-memory below
+      } else {
+        const err = new Error(data?.error || `Request failed with status ${res.status}`);
+        if (data?.errors) err.fields = data.errors;
+        if (data?.remainingCooldown) err.remainingCooldown = data.remainingCooldown;
+        if (data?.limit) err.limit = true;
+        if (data?.lockout) err.lockout = true;
+        throw err;
+      }
     } catch (networkOrApiErr) {
       if (networkOrApiErr.fields || networkOrApiErr.remainingCooldown || networkOrApiErr.lockout || (networkOrApiErr.message && !networkOrApiErr.message.includes("fetch"))) {
         throw networkOrApiErr;

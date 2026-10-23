@@ -128,7 +128,7 @@ export const petName = (db, id) => (db.pets.find(p => p.id === id) || {}).name |
 
 /* ---------- entity config ---------- */
 export const E = {
-  owners: { title: "Pet Owners", sub: "Keep owner contact details in one place.", one: "owner", cols: ["name", "email", "phone", "address"], perm: { admin: "crud", vet: "r", assistant: "cru" },
+  owners: { title: "Pet Owners", sub: "Keep owner contact details in one place.", one: "owner", cols: ["name", "email", "phone", "address"], perm: { admin: "crud", vet: "r", assistant: "cr" },
     f: [{ k: "name", l: "Full name", req: 1, min: 2, max: 60, pat: NM, msg: "Letters, spaces, . ' - only" }, { k: "email", l: "Email", t: "email", req: 1 }, { k: "phone", l: "Mobile number", t: "tel", req: 1, pat: PH, msg: "Use 09XXXXXXXXX or +639XXXXXXXXX" }, { k: "address", l: "Address", req: 1, min: 5, max: 120 }],
     chk: (d, id, db) => db.owners.some(o => o.id !== id && o.email.toLowerCase() === d.email.toLowerCase()) ? { email: "Another owner already uses this email" } : {} },
   pets: { title: "Pets", sub: "Every furry, feathery and fluffy patient.", one: "pet", cols: ["name", "ownerId", "species", "breed", "weight"], perm: { admin: "crud", vet: "cru", assistant: "cru", owner: "r" },
@@ -187,14 +187,14 @@ export function Cell({ db, x, k }) {
   if (k === "name" && x.species) return <span className="who"><span className="av"><I e={ICON[x.species]} size={16} /></span>{t}</span>;
   return t === "" ? "—" : t;
 }
-export function Table({ db, ent, list, acts, me, onEdit, onDel, onMove }) {
-  const c = E[ent], showActs = acts && (can(ent, me, "u") || can(ent, me, "d"));
+export function Table({ db, ent, list, acts, me, onEdit, onDel, onMove, onView }) {
+  const c = E[ent], showActs = acts && (can(ent, me, "u") || can(ent, me, "d") || (ent === "owners" && onView));
   if (!list.length) return <div className="empty"><div><I e="🐾" size={34} /></div>No {c.title.toLowerCase()} found yet.</div>;
   return (
     <div className="tw"><table><thead><tr>{c.cols.map(k => <th key={k}>{LAB[k] || (c.f.find(f => f.k === k) || {}).l || k}</th>)}{showActs && <th />}</tr></thead>
       <tbody>{list.map(x => (
         <tr key={x.id}>{c.cols.map(k => <td key={k}><Cell db={db} x={x} k={k} /></td>)}
-          {showActs && <td className="act">{ent === "appts" && onMove && (me.role === "vet" && x.status === "In consultation" ? <button className="btn sm" onClick={() => onMove(x, "WRITE")}>Write consultation</button> : nextSteps(x, me).map(s => <button key={s} className={s === "Cancelled" || s === "No-show" ? "btn danger sm" : "btn sm"} onClick={() => onMove(x, s)}>{LABEL[s]}</button>))} {can(ent, me, "u") && (ent !== "appts" || ["Scheduled", "Confirmed"].includes(x.status)) && <button className="btn ghost sm" onClick={() => onEdit(x)}>Edit</button>} {can(ent, me, "d") && <button className="btn danger sm" onClick={() => onDel(x)}>Delete</button>}</td>}
+          {showActs && <td className="act">{ent === "owners" && onView && <button className="btn ghost sm" onClick={() => onView(x)}>View</button>} {ent === "appts" && onMove && (me.role === "vet" && x.status === "In consultation" ? <button className="btn sm" onClick={() => onMove(x, "WRITE")}>Write consultation</button> : nextSteps(x, me).map(s => <button key={s} className={s === "Cancelled" || s === "No-show" ? "btn danger sm" : "btn sm"} onClick={() => onMove(x, s)}>{LABEL[s]}</button>))} {can(ent, me, "u") && (ent !== "appts" || ["Scheduled", "Confirmed"].includes(x.status)) && <button className="btn ghost sm" onClick={() => onEdit(x)}>Edit</button>} {can(ent, me, "d") && <button className="btn danger sm" onClick={() => onDel(x)}>Delete</button>}</td>}
         </tr>))}</tbody></table></div>
   );
 }

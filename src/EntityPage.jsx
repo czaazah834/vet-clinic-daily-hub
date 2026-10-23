@@ -1,12 +1,124 @@
 import { useState } from "react";
+import {
+  Search,
+  Plus,
+  UserPlus,
+  User,
+  PawPrint,
+  Mail,
+  Phone,
+  MapPin,
+  ShieldAlert,
+  X,
+  CalendarPlus,
+  Sparkles
+} from "lucide-react";
 import { E, can, scope, cellText, Table, FormModal, uid, TODAY, petName, moveAppt, addLog, LABEL } from "./lib.jsx";
 import SoapConsultationModal from "./roles/SoapConsultationModal.jsx";
+import InClinicRegistration from "./roles/InClinicRegistration.jsx";
+
+function ViewOwnerModal({ owner, db, onClose }) {
+  const pets = (db.pets || []).filter(p => p.ownerId === owner.id);
+  return (
+    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: "560px", width: "100%", padding: "24px", borderRadius: "16px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ width: "46px", height: "46px", borderRadius: "12px", background: "rgba(30, 58, 138, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--navy, #1e3a8a)" }}>
+              <User size={24} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: "18px", color: "var(--navy, #0f172a)", fontWeight: 700 }}>{owner.name}</h3>
+              <span style={{ fontSize: "12px", color: "#64748b" }}>Registered Client ID: {owner.id}</span>
+            </div>
+          </div>
+          <button className="btn ghost sm" onClick={onClose} style={{ padding: "6px" }} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Contact Details Card */}
+        <div style={{ background: "#f8fafc", borderRadius: "12px", padding: "14px", border: "1px solid #e2e8f0", marginBottom: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "13px" }}>
+            <div>
+              <span style={{ color: "#64748b", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>Email Address</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "3px", fontWeight: 500, color: "#1e293b" }}>
+                <Mail size={14} color="#64748b" />
+                <span>{owner.email}</span>
+              </div>
+            </div>
+            <div>
+              <span style={{ color: "#64748b", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>Mobile Number</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "3px", fontWeight: 500, color: "#1e293b" }}>
+                <Phone size={14} color="#64748b" />
+                <span>{owner.phone}</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px dashed #cbd5e1", fontSize: "13px" }}>
+            <span style={{ color: "#64748b", display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>Primary Address</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "3px", fontWeight: 500, color: "#1e293b" }}>
+              <MapPin size={14} color="#64748b" />
+              <span>{owner.address || "No address provided"}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Registered Patients */}
+        <div style={{ marginBottom: "16px" }}>
+          <h4 style={{ margin: "0 0 10px", fontSize: "14px", fontWeight: 600, color: "var(--navy, #0f172a)", display: "flex", alignItems: "center", gap: "6px" }}>
+            <PawPrint size={16} color="#d97706" />
+            <span>Registered Patients ({pets.length})</span>
+          </h4>
+          {pets.length === 0 ? (
+            <div style={{ padding: "14px", textAlign: "center", background: "#f8fafc", borderRadius: "10px", fontSize: "13px", color: "#64748b", border: "1px dashed #cbd5e1" }}>
+              No pets registered under this owner yet.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "180px", overflowY: "auto" }}>
+              {pets.map(p => (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#ffffff", padding: "10px 14px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                  <div>
+                    <b style={{ color: "var(--navy, #0f172a)", fontSize: "14px" }}>{p.name}</b>
+                    <span style={{ fontSize: "12px", color: "#64748b", marginLeft: "8px" }}>
+                      {p.species} • {p.breed} • {p.weight} kg
+                    </span>
+                  </div>
+                  {p.vaccinationCardId && (
+                    <span style={{ fontSize: "11px", background: "rgba(16, 185, 129, 0.1)", color: "#065f46", padding: "3px 8px", borderRadius: "99px", fontWeight: 600 }}>
+                      💳 {p.vaccinationCardId}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Security / RBAC Banner */}
+        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px 14px", fontSize: "12px", color: "#1e40af", display: "flex", alignItems: "center", gap: "10px", marginBottom: "18px" }}>
+          <ShieldAlert size={20} style={{ flexShrink: 0 }} />
+          <span>
+            <b>Account Security:</b> Pet owner personal credentials and contact settings are strictly managed by the client or Clinic Administrator. Front desk staff have read-only access to client account records.
+          </span>
+        </div>
+
+        <div className="row end">
+          <button className="btn" onClick={onClose} style={{ minWidth: "90px" }}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EntityPage({ ent, db, setDb, me, say }) {
   const c = E[ent], [q, setQ] = useState(""), [modal, setModal] = useState(null);
   let list = [...scope(db, me, ent)];
   if (c.sort) list.sort(c.sort);
   if (q) list = list.filter(x => c.cols.some(k => String(cellText(db, x, k)).toLowerCase().includes(q.toLowerCase())));
+
   const deny = m => { say(m); setModal(null); };
+
   const save = d => {
     if (!can(ent, me, modal.init ? "u" : "c")) return deny("You don’t have permission to do that");
     if (me.role === "owner" && ent === "appts" && !scope(db, me, "pets").some(p => p.id === d.petId)) return deny("You can only book for your own pets");
@@ -20,16 +132,19 @@ export default function EntityPage({ ent, db, setDb, me, say }) {
     });
     say(`${modal.init ? "Updated" : "Added"} ${c.one}`); setModal(null);
   };
+
   const move = (a, s) => {
     if (s === "WRITE") return setModal({ consult: a });
     moveAppt(setDb, a.id, s, me); say(s === "In consultation" ? "Consultation started" : `${LABEL[s]} done`);
     if (s === "In consultation") setModal({ consult: a });
   };
+
   const saveConsult = d => {
     const a = modal.consult; if (!can("records", me, "c")) return deny("Only veterinarians can record consultations");
     setDb(p => ({ ...p, records: [...p.records, { id: uid(), ...d, vetId: me.vetId || "v1", apptId: a.id }], appts: p.appts.map(r => r.id === a.id ? { ...r, status: "Completed" } : r), log: addLog(p, me, `Consultation saved for ${petName(p, d.petId)}; visit completed`) }));
     say("Consultation saved. Visit completed."); setModal(null);
   };
+
   const del = x => {
     if (!can(ent, me, "d")) return deny("You don’t have permission to delete");
     if (ent === "users" && x.id === me.id) return deny("You can’t delete your own account");
@@ -39,25 +154,167 @@ export default function EntityPage({ ent, db, setDb, me, say }) {
       n[ent] = p[ent].filter(r => r.id !== x.id); n.log = addLog(p, me, `Deleted ${c.one}`); return n; });
     setModal(null); say("Deleted");
   };
-  return (<>
-    <div className="bar"><input type="search" placeholder={`Search ${c.title.toLowerCase()}…`} value={q} onChange={e => setQ(e.target.value)} aria-label="Search" />{can(ent, me, "c") && <button className="btn" onClick={() => setModal({})}>+ Add {c.one}</button>}</div>
-    <Table db={db} ent={ent} list={list} acts me={me} onEdit={x => setModal({ init: x })} onDel={x => setModal({ del: x })} onMove={ent === "appts" ? move : null} />
-    {modal && !modal.del && !modal.consult && <FormModal ent={ent} init={modal.init} db={db} me={me} onSave={save} onClose={() => setModal(null)} />}
-    {modal && modal.consult && (
-      me.role === "vet" ? (
-        <SoapConsultationModal
-          appt={modal.consult}
-          pet={db.pets.find(p => p.id === modal.consult.petId) || { id: modal.consult.petId, name: petName(db, modal.consult.petId) }}
+
+  // Helper for action icon
+  const getAddIcon = () => {
+    if (ent === "owners") return <UserPlus size={16} />;
+    if (ent === "pets") return <PawPrint size={16} />;
+    if (ent === "appts") return <CalendarPlus size={16} />;
+    return <Plus size={16} />;
+  };
+
+  return (
+    <>
+      {/* Modernized Search & Action Toolbar */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "16px",
+        marginBottom: "18px",
+        flexWrap: "wrap",
+        background: "#ffffff",
+        padding: "12px 18px",
+        borderRadius: "14px",
+        border: "1px solid #e2e8f0",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.03)"
+      }}>
+        <div style={{ position: "relative", flex: "1 1 300px", maxWidth: "420px" }}>
+          <Search size={17} style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }} />
+          <input
+            type="search"
+            placeholder={`Search ${c.title.toLowerCase()}...`}
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            aria-label="Search"
+            style={{
+              width: "100%",
+              padding: "10px 14px 10px 42px",
+              borderRadius: "10px",
+              border: "1px solid #cbd5e1",
+              fontSize: "14px",
+              background: "#f8fafc",
+              outline: "none",
+              color: "#1e293b",
+              boxSizing: "border-box"
+            }}
+          />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {can(ent, me, "c") && (
+            <button
+              className="btn gold"
+              onClick={() => {
+                if (ent === "owners" && me.role === "assistant") {
+                  setModal({ walkIn: true });
+                } else {
+                  setModal({});
+                }
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 20px",
+                borderRadius: "10px",
+                fontWeight: 600,
+                fontSize: "14px",
+                boxShadow: "0 2px 4px rgba(245, 158, 11, 0.25)",
+                whiteSpace: "nowrap",
+                cursor: "pointer"
+              }}
+            >
+              {getAddIcon()}
+              <span>Add {c.one}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <Table
+        db={db}
+        ent={ent}
+        list={list}
+        acts
+        me={me}
+        onEdit={x => setModal({ init: x })}
+        onDel={x => setModal({ del: x })}
+        onMove={ent === "appts" ? move : null}
+        onView={x => setModal({ viewOwner: x })}
+      />
+
+      {/* In-Clinic Walk-in Registration (Assistant Mode) */}
+      {modal && modal.walkIn && (
+        <InClinicRegistration
           db={db}
           setDb={setDb}
           me={me}
           onClose={() => setModal(null)}
-          onSaved={() => { say("SOAP Consultation saved. Visit completed."); setModal(null); }}
+          onRegistered={({ owner, pet, cardId }) => {
+            say(`Successfully registered ${owner.name} & patient ${pet.name}!`);
+            setModal(null);
+          }}
         />
-      ) : (
-        <FormModal ent="records" init={{ petId: modal.consult.petId, date: TODAY }} db={db} me={me} onSave={saveConsult} onClose={() => setModal(null)} />
-      )
-    )}
-    {modal && modal.del && <div className="scrim"><div className="modal"><h3>Delete this {c.one}?</h3><p>{ent === "owners" ? "This also removes their pets and all linked records." : ent === "pets" ? "This also removes its appointments, vaccines and consultations." : "This can’t be undone."}</p><div className="row end"><button className="btn ghost" onClick={() => setModal(null)}>Keep it</button><button className="btn danger" onClick={() => del(modal.del)}>Delete</button></div></div></div>}
-  </>);
+      )}
+
+      {/* View Owner Details Modal */}
+      {modal && modal.viewOwner && (
+        <ViewOwnerModal
+          owner={modal.viewOwner}
+          db={db}
+          onClose={() => setModal(null)}
+        />
+      )}
+
+      {/* Standard Form Modal (for other entities or Admin) */}
+      {modal && !modal.del && !modal.consult && !modal.walkIn && !modal.viewOwner && (
+        <FormModal
+          ent={ent}
+          init={modal.init}
+          db={db}
+          me={me}
+          onSave={save}
+          onClose={() => setModal(null)}
+        />
+      )}
+
+      {/* Consultation Modal */}
+      {modal && modal.consult && (
+        me.role === "vet" ? (
+          <SoapConsultationModal
+            appt={modal.consult}
+            pet={db.pets.find(p => p.id === modal.consult.petId) || { id: modal.consult.petId, name: petName(db, modal.consult.petId) }}
+            db={db}
+            setDb={setDb}
+            me={me}
+            onClose={() => setModal(null)}
+            onSaved={() => { say("SOAP Consultation saved. Visit completed."); setModal(null); }}
+          />
+        ) : (
+          <FormModal ent="records" init={{ petId: modal.consult.petId, date: TODAY }} db={db} me={me} onSave={saveConsult} onClose={() => setModal(null)} />
+        )
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {modal && modal.del && (
+        <div className="scrim">
+          <div className="modal">
+            <h3>Delete this {c.one}?</h3>
+            <p>
+              {ent === "owners"
+                ? "This also removes their pets and all linked records."
+                : ent === "pets"
+                ? "This also removes its appointments, vaccines and consultations."
+                : "This can’t be undone."}
+            </p>
+            <div className="row end">
+              <button className="btn ghost" onClick={() => setModal(null)}>Keep it</button>
+              <button className="btn danger" onClick={() => del(modal.del)}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
