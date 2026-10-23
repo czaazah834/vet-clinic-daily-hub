@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { E, can, scope, cellText, Table, FormModal, uid, TODAY, petName, moveAppt, addLog, LABEL } from "./lib.jsx";
+import SoapConsultationModal from "./roles/SoapConsultationModal.jsx";
 export default function EntityPage({ ent, db, setDb, me, say }) {
   const c = E[ent], [q, setQ] = useState(""), [modal, setModal] = useState(null);
   let list = [...scope(db, me, ent)];
@@ -42,7 +43,21 @@ export default function EntityPage({ ent, db, setDb, me, say }) {
     <div className="bar"><input type="search" placeholder={`Search ${c.title.toLowerCase()}…`} value={q} onChange={e => setQ(e.target.value)} aria-label="Search" />{can(ent, me, "c") && <button className="btn" onClick={() => setModal({})}>+ Add {c.one}</button>}</div>
     <Table db={db} ent={ent} list={list} acts me={me} onEdit={x => setModal({ init: x })} onDel={x => setModal({ del: x })} onMove={ent === "appts" ? move : null} />
     {modal && !modal.del && !modal.consult && <FormModal ent={ent} init={modal.init} db={db} me={me} onSave={save} onClose={() => setModal(null)} />}
-    {modal && modal.consult && <FormModal ent="records" init={{ petId: modal.consult.petId, date: TODAY }} db={db} me={me} onSave={saveConsult} onClose={() => setModal(null)} />}
+    {modal && modal.consult && (
+      me.role === "vet" ? (
+        <SoapConsultationModal
+          appt={modal.consult}
+          pet={db.pets.find(p => p.id === modal.consult.petId) || { id: modal.consult.petId, name: petName(db, modal.consult.petId) }}
+          db={db}
+          setDb={setDb}
+          me={me}
+          onClose={() => setModal(null)}
+          onSaved={() => { say("SOAP Consultation saved. Visit completed."); setModal(null); }}
+        />
+      ) : (
+        <FormModal ent="records" init={{ petId: modal.consult.petId, date: TODAY }} db={db} me={me} onSave={saveConsult} onClose={() => setModal(null)} />
+      )
+    )}
     {modal && modal.del && <div className="scrim"><div className="modal"><h3>Delete this {c.one}?</h3><p>{ent === "owners" ? "This also removes their pets and all linked records." : ent === "pets" ? "This also removes its appointments, vaccines and consultations." : "This can’t be undone."}</p><div className="row end"><button className="btn ghost" onClick={() => setModal(null)}>Keep it</button><button className="btn danger" onClick={() => del(modal.del)}>Delete</button></div></div></div>}
   </>);
 }

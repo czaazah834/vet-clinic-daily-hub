@@ -647,5 +647,3 @@ export default function Register({ onDone, onBack, go, limited }) {
     </div>
   );
 }
-
-}

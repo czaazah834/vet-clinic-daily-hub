@@ -33,5 +33,3 @@ export const auth = {
 };
 
 export const OFFLINE_MSG = "We can’t reach the clinic server. Please try again in a moment.";
-
-export const OFFLINE_MSG = "We can’t reach the clinic server. Please try again in a moment.";

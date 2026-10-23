@@ -186,5 +186,3 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
     </div>
   );
 }
-
-}
