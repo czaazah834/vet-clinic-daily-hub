@@ -818,9 +818,18 @@ async function call(method, path, body) {
   // If path is an API endpoint, try real network fetch first:
   if (path.startsWith("/api/")) {
     try {
+      const headers = { "Content-Type": "application/json" };
+      try {
+        const storedTok = (typeof sessionStorage !== "undefined" && sessionStorage.getItem("pawcare_token")) ||
+                          (typeof localStorage !== "undefined" && localStorage.getItem("pawcare_token"));
+        if (storedTok) {
+          headers["Authorization"] = `Bearer ${storedTok}`;
+        }
+      } catch (_) {}
+
       const fetchOpts = {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include"
       };
       if (body && method !== "GET") {
@@ -831,6 +840,9 @@ async function call(method, path, body) {
       const data = isJson ? await res.json() : await res.text();
 
       if (res.ok) {
+        if (data?.token && typeof sessionStorage !== "undefined") {
+          try { sessionStorage.setItem("pawcare_token", data.token); } catch (_) {}
+        }
         return data.data !== undefined ? data.data : data;
       }
       // If endpoint 404 or backend unreachable / proxy error (>= 500), fallback to in-memory
@@ -842,10 +854,11 @@ async function call(method, path, body) {
         if (data?.remainingCooldown) err.remainingCooldown = data.remainingCooldown;
         if (data?.limit) err.limit = true;
         if (data?.lockout) err.lockout = true;
+        err.isApiError = true;
         throw err;
       }
     } catch (networkOrApiErr) {
-      if (networkOrApiErr.fields || networkOrApiErr.remainingCooldown || networkOrApiErr.lockout) {
+      if (networkOrApiErr.isApiError || networkOrApiErr.fields || networkOrApiErr.remainingCooldown || networkOrApiErr.lockout) {
         throw networkOrApiErr;
       }
       // Server offline / not responding on this endpoint: fallback to in-memory below
