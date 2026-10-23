@@ -677,11 +677,18 @@ router.post(['/otp/verify', '/verify-otp'], async (req, res) => {
     );
     res.cookie('sid', newSid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
 
+    if (!userObj || !userObj.email) {
+      const uRes = await query('SELECT * FROM users WHERE id = $1', [userId]);
+      if (uRes.rows.length) {
+        userObj = uRes.rows[0];
+      }
+    }
+
     const safeUser = {
       id: userId,
-      email: userObj.email,
-      name: `${userObj.first_name || ''} ${userObj.last_name || ''}`.trim(),
-      role: userObj.role,
+      email: userObj?.email || '',
+      name: `${userObj?.first_name || ''} ${userObj?.last_name || ''}`.trim(),
+      role: userObj?.role || 'owner',
       mobileVerified: true,
       mobile_verified: true,
       emailVerified: true

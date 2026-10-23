@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
   mobile_number VARCHAR(30) NOT NULL,
   email_verified_at TIMESTAMPTZ,
   mobile_verified BOOLEAN NOT NULL DEFAULT false,
+  mobile_verified_at TIMESTAMP WITH TIME ZONE,
   failed_login_attempts INT NOT NULL DEFAULT 0,
   is_locked BOOLEAN NOT NULL DEFAULT false,
   lockout_until TIMESTAMPTZ,
