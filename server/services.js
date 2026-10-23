@@ -54,21 +54,32 @@ export async function sendMail(to, subject, text, html) {
     }
   }
 
-  // 2. Try SMTP via Nodemailer (works with Brevo smtp-relay.brevo.com)
+  // 2. Try SMTP via Nodemailer (supports Gmail & custom SMTP relays)
   const smtpPass = (E.SMTP_PASS && E.SMTP_PASS !== 'your_master_smtp_password') ? E.SMTP_PASS : E.BREVO_API_KEY;
   if (E.SMTP_USER && smtpPass) {
     try {
-      const transport = nodemailer.createTransport({
-        host: E.SMTP_HOST || 'smtp-relay.brevo.com',
-        port: Number(E.SMTP_PORT) || 587,
-        secure: Number(E.SMTP_PORT) === 465,
-        auth: {
-          user: E.SMTP_USER,
-          pass: smtpPass,
-        },
-      });
+      const isGmail = (E.SMTP_HOST || '').includes('gmail') || (E.SMTP_USER || '').endsWith('@gmail.com');
+      const transportConfig = isGmail
+        ? {
+            service: 'gmail',
+            auth: {
+              user: E.SMTP_USER,
+              pass: smtpPass.replace(/\s+/g, ''), // Automatically strips spaces from 16-char App Password
+            },
+          }
+        : {
+            host: E.SMTP_HOST || 'smtp-relay.brevo.com',
+            port: Number(E.SMTP_PORT) || 587,
+            secure: Number(E.SMTP_PORT) === 465,
+            auth: {
+              user: E.SMTP_USER,
+              pass: smtpPass,
+            },
+          };
+
+      const transport = nodemailer.createTransport(transportConfig);
       await transport.sendMail({ from, to, subject, text, html });
-      console.log(`Email sent via SMTP (${E.SMTP_HOST || 'smtp-relay.brevo.com'}) to ${to}: "${subject}"`);
+      console.log(`Email sent via SMTP (${isGmail ? 'Gmail' : E.SMTP_HOST}) to ${to}: "${subject}"`);
       return { ok: true, via: 'smtp' };
     } catch (err) {
       console.error('SMTP send failed:', err.message);
