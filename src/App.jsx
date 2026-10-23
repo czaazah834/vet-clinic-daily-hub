@@ -28,8 +28,29 @@ function getInitialView() {
   return "landing";
 }
 
+// Display-only snapshot: backend API remains the authority for authenticated access.
+// Saved in this tab only, so F5 does not flash a full-page authentication screen.
+const SESSION_USER_KEY = "pawcare_last_session_user";
+function getCachedUser() {
+  if (typeof window === "undefined" || getInitialView() !== "landing") return null;
+  try {
+    const token = localStorage.getItem("pawcare_token") || sessionStorage.getItem("pawcare_token");
+    if (!token) return null;
+    const saved = JSON.parse(sessionStorage.getItem(SESSION_USER_KEY) || "null");
+    return saved && saved.id != null && typeof saved.name === "string" &&
+      typeof saved.role === "string" && CFG[saved.role] ? saved : null;
+  } catch (_) { return null; }
+}
+function saveCachedUser(user) {
+  try {
+    if (user && user.id != null && typeof user.name === "string" && CFG[user.role]) {
+      sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify({ id: user.id, name: user.name, role: user.role }));
+    } else sessionStorage.removeItem(SESSION_USER_KEY);
+  } catch (_) { /* storage may be disabled */ }
+}
+
 export default function App() {
-  const [db, setDb] = useState(SEED), [me, setMe] = useState(null), [restoring, setRestoring] = useState(true), [view, setView] = useState(getInitialView), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
+  const [db, setDb] = useState(SEED), [me, setMe] = useState(getCachedUser), [restoring, setRestoring] = useState(() => !getCachedUser()), [view, setView] = useState(getInitialView), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
   const dbRef = useRef(db); dbRef.current = db;
   useEffect(() => { bindStore(() => dbRef.current, setDb); }, []);
   // Restore an existing SERVER-VALIDATED session on reload. Never trust a saved user/role.
@@ -41,14 +62,16 @@ export default function App() {
     auth.me()
       .then(result => {
         if (!active) return;
-        if (result?.user?.role && CFG[result.user.role]) setMe(result.user);
-        else setView("login");
+        if (result?.user?.role && CFG[result.user.role]) { setMe(result.user); saveCachedUser(result.user); }
+        else { setMe(null); saveCachedUser(null); setView("login"); }
       })
       .catch(error => {
         if (!active) return;
+        if (error.status === 401 || error.status === 403) { setMe(null); saveCachedUser(null); setView("login"); }
         // No stored session: normal landing. A temporary server failure: allow retry.
         if (error.status !== 401 && error.status !== 403 &&
             (localStorage.getItem("pawcare_token") || sessionStorage.getItem("pawcare_token"))) {
+          setMe(null); saveCachedUser(null);
           setNotice("Could not restore your session. Check your connection and log in again if needed.");
           setBad(true);
           setView("login");
@@ -98,7 +121,7 @@ export default function App() {
   }, []);
   useEffect(() => { setDb(p => { const late = p.appts.filter(a => ["Scheduled", "Confirmed"].includes(a.status) && a.date < TODAY); if (!late.length) return p; return { ...p, appts: p.appts.map(a => late.includes(a) ? { ...a, status: "No-show" } : a), log: addLog(p, { name: "System" }, `${late.length} past appointment(s) marked No-show`) }; }); }, []);
   /* Log out here and on the server. A message (e.g. idle timeout) sends the person to Log in with that notice. */
-  const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } try { localStorage.removeItem("pawcare_token"); sessionStorage.removeItem("pawcare_token"); } catch (_) {} setMe(null); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
+  const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } try { localStorage.removeItem("pawcare_token"); sessionStorage.removeItem("pawcare_token"); } catch (_) {} setMe(null); saveCachedUser(null); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
   /* Idle timeout: 15 minutes with no mouse, key or touch activity ends the session. */
   useEffect(() => {
     if (!me) return;
@@ -180,9 +203,9 @@ export default function App() {
     else if (u) openLink({ type: "unlock", token: u });
     else if (v) openLink({ type: "verify", token: v });
   }, []); // eslint-disable-line
-  const onLogin = r => { if (r.needsOtp) { setNotice(""); setView("otp"); } else setMe(r.user); };   // password right but mobile not verified yet: ask for the SMS code first
+  const onLogin = r => { if (r.needsOtp) { setNotice(""); setView("otp"); } else { setMe(r.user); saveCachedUser(r.user); } };   // password right but mobile not verified yet: ask for the SMS code first
 
-  if (restoring) return <div className="lg auth" role="status" aria-live="polite" style={{ display: "grid", placeItems: "center", minHeight: "100vh" }}><p>Restoring your clinic session…</p></div>;
+  // Render the normal app instead of an intrusive full-screen restoring view.
   if (me) return <Portal cfg={CFG[me.role]} me={me} db={db} setDb={setDb} onLogout={() => logout()} />;
   const screen =
     view === "verifying" ? (
@@ -194,10 +217,10 @@ export default function App() {
       </div>
     )
     : view === "login" ? <Login role={role} notice={notice} bad={bad} onLogin={onLogin} onBack={() => go("landing")} go={go} />
-    : view === "staff-setup" ? <StaffSetup token={flow.inviteToken} onDone={r => { if (r.needsOtp) { setNotice(""); setView("otp"); } else setMe(r.user); }} onCancel={() => go("landing")} />
+    : view === "staff-setup" ? <StaffSetup token={flow.inviteToken} onDone={r => { if (r.needsOtp) { setNotice(""); setView("otp"); } else { setMe(r.user); saveCachedUser(r.user); } }} onCancel={() => go("landing")} />
     : view === "register" ? <Register onDone={email => { setFlow({ email }); setView("checkemail"); }} onBack={() => go("landing")} go={go} limited={() => toLogin("Registration limit reached. To prevent bot spam, each IP address can make at most 5 registration attempts per hour. Please try again later, or log in if you already have an account.", true)} />
     : view === "checkemail" ? <CheckEmail email={flow.email} go={go} />
-    : view === "otp" ? <Otp onDone={u => u ? setMe(u) : toLogin("Mobile number verified. Please log in to continue.")} onBack={async () => { try { await auth.logout(); } catch { /* nothing to sign out */ } go("login"); }} />
+    : view === "otp" ? <Otp onDone={u => { if (u) { setMe(u); saveCachedUser(u); } else toLogin("Mobile number verified. Please log in to continue."); }} onBack={async () => { try { await auth.logout(); } catch { /* nothing to sign out */ } go("login"); }} />
     : view === "unlock" ? <Unlock token={flow.token} onDone={(msg, isBad) => toLogin(msg, isBad)} />
     : view === "forgot" ? <Forgot onBack={() => go("login")} go={go} />
     : <Landing onLogin={r => { setRole(r || ""); setView("login"); }} onRegister={() => setView("register")} />;
