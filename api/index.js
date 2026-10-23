@@ -40,6 +40,7 @@ app.get("/api/health", async (req, res) => {
 
 // Mount Routes
 app.use("/api/auth", authRouter);
+app.use("/api", authRouter);
 app.use("/api", clinicRouter);
 
 // Fallback 404 for unknown API endpoints

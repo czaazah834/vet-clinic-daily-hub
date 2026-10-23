@@ -88,19 +88,20 @@ export function requireRole(...roles) {
 // 1. REGISTER
 router.post('/register', async (req, res) => {
   try {
-    const {
-      firstName,
-      lastName,
-      middleInitial,
-      birthday,
-      email,
-      password,
-      mobile,
-      address,
-      role = 'owner',
-    } = req.body;
+    const fn = (req.body.firstName || req.body.first_name || 'Pet').trim();
+    const ln = (req.body.lastName || req.body.last_name || 'Owner').trim();
+    const mi = (req.body.middleInitial || req.body.middle_initial || '').trim().toUpperCase() || null;
+    const bd = req.body.birthday || '1995-01-01';
+    const mob = (req.body.mobile || req.body.mobileNumber || req.body.phone || '+639170000000').trim();
 
-    const em = String(email || '').trim().toLowerCase();
+    const houseStreet = req.body.house_street || req.body.address?.houseStreet || (typeof req.body.address === 'string' ? req.body.address : 'Street');
+    const country = req.body.country || req.body.address?.country || 'Philippines';
+    const state = req.body.state || req.body.address?.state || 'Metro Manila';
+    const city = req.body.city || req.body.address?.city || 'Quezon City';
+    const zipCode = req.body.zip_code || req.body.address?.zipCode || '1100';
+    const fullAddress = `${houseStreet}, ${city}, ${state} ${zipCode}, ${country}`;
+
+    const em = String(req.body.email || '').trim().toLowerCase();
     if (!em) return res.status(400).json({ error: 'Email address is required.' });
 
     // Strict RBAC: Public registration is strictly restricted to Pet Owners only!
@@ -117,13 +118,12 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'An account with this email already exists.' });
     }
 
-    const pwErr = validatePasswordComplexity(password);
+    const pwErr = validatePasswordComplexity(req.body.password);
     if (pwErr) return res.status(400).json({ error: pwErr });
 
-    const pwHash = await hashPassword(password);
+    const pwHash = await hashPassword(req.body.password);
     const userId = 'u_' + randomHex(8);
-    const ownerId = role === 'owner' ? 'o_' + randomHex(8) : null;
-    const vetId = role === 'vet' ? 'v_' + randomHex(8) : null;
+    const ownerId = 'o_' + randomHex(8);
 
     // Insert user
     await query(
@@ -134,54 +134,36 @@ router.post('/register', async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         userId,
-        firstName.trim(),
-        lastName.trim(),
-        middleInitial ? middleInitial.trim().toUpperCase() : null,
-        birthday,
+        fn,
+        ln,
+        mi,
+        bd,
         pwHash,
         em,
-        role,
-        vetId,
+        'owner',
+        null,
         ownerId,
-        mobile.trim(),
+        mob,
         null,
         false,
       ]
     );
 
-    // Insert address if present
-    if (address) {
-      await query(
-        `INSERT INTO addresses (user_id, house_street, country, state, city, zip_code)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          userId,
-          address.houseStreet || address.street || 'Default Street',
-          address.country || 'Philippines',
-          address.state || 'Metro Manila',
-          address.city || 'Quezon City',
-          address.zipCode || '1100',
-        ]
-      );
-    }
+    // Insert address
+    await query(
+      `INSERT INTO addresses (user_id, house_street, country, state, city, zip_code)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [userId, houseStreet, country, state, city, zipCode]
+    );
 
-    // Insert into owners table if owner role
-    if (role === 'owner') {
-      const fullName = `${firstName}${middleInitial ? ' ' + middleInitial + '.' : ''} ${lastName}`.trim();
-      await query(
-        `INSERT INTO owners (id, user_id, name, email, phone, address)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (id) DO NOTHING`,
-        [
-          ownerId,
-          userId,
-          fullName,
-          em,
-          mobile.trim(),
-          address ? `${address.houseStreet}, ${address.city}` : 'Metro Manila',
-        ]
-      );
-    }
+    // Insert into owners table
+    const fullName = `${fn}${mi ? ' ' + mi + '.' : ''} ${ln}`.trim();
+    await query(
+      `INSERT INTO owners (id, user_id, name, email, phone, address)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (id) DO NOTHING`,
+      [ownerId, userId, fullName, em, mob, fullAddress]
+    );
 
     // Generate email verification token
     const rawToken = randomHex(24);
@@ -197,8 +179,8 @@ router.post('/register', async (req, res) => {
     await sendMail(
       em,
       'Welcome to PawCare - Verify your email address',
-      `Hello ${firstName}!\n\nPlease verify your email for your PawCare account:\n${verifyLink}\n\nWarm regards,\nPawCare Team`,
-      `<p>Hello <b>${firstName}</b>!</p><p>Please verify your email address to activate your PawCare account:</p><p><a href="${verifyLink}" style="background:#0b3a5b;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Verify My Account</a></p>`
+      `Hello ${fn}!\n\nPlease verify your email for your PawCare account:\n${verifyLink}\n\nWarm regards,\nPawCare Team`,
+      `<p>Hello <b>${fn}</b>!</p><p>Please verify your email address to activate your PawCare account:</p><p><a href="${verifyLink}" style="background:#0b3a5b;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Verify My Account</a></p>`
     );
 
     res.json({
