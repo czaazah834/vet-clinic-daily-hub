@@ -4,6 +4,7 @@
 import { api } from "./api.js";
 
 export const auth = {
+  me: () => api.get("/api/auth/me"),
   login: (email, password) => api.post("/api/auth/login", { email, password }),
   register: (d) => api.post("/api/auth/register", d),
   resendVerification: (email) => api.post("/api/auth/resend-verification", { email }),

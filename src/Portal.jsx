@@ -13,9 +13,16 @@ function Reports({ db, me }) {
   </>);
 }
 export default function Portal({ cfg, me, db, setDb, onLogout }) {
-  const [page, setPage] = useState(cfg.menu[0].k), [open, setOpen] = useState(false), [toast, setToast] = useState("");
+  // Per-account last screen is preserved across reloads; a different user cannot inherit it.
+  const pageKey = `pawcare_page_${me.id}`;
+  const [page, setPage] = useState(() => {
+    try {
+      const previous = sessionStorage.getItem(pageKey);
+      return cfg.menu.some(m => m.k === previous && !m.hide) ? previous : cfg.menu[0].k;
+    } catch (_) { return cfg.menu[0].k; }
+  }), [open, setOpen] = useState(false), [toast, setToast] = useState("");
   const say = m => { setToast(m); setTimeout(() => setToast(""), 2200); };
-  const cur = cfg.menu.find(m => m.k === page), go = k => { setPage(k); setOpen(false); }, Dash = cfg.Dash;
+  const cur = cfg.menu.find(m => m.k === page) || cfg.menu[0], go = k => { setPage(k); try { sessionStorage.setItem(pageKey, k); } catch (_) {} setOpen(false); }, Dash = cfg.Dash;
   return (
     <div className={`shell th-${me.role}`}>
       <aside className={open ? "side open" : "side"}>

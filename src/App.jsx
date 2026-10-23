@@ -29,9 +29,35 @@ function getInitialView() {
 }
 
 export default function App() {
-  const [db, setDb] = useState(SEED), [me, setMe] = useState(null), [view, setView] = useState(getInitialView), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
+  const [db, setDb] = useState(SEED), [me, setMe] = useState(null), [restoring, setRestoring] = useState(true), [view, setView] = useState(getInitialView), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
   const dbRef = useRef(db); dbRef.current = db;
-  useEffect(() => { bindStore(() => dbRef.current, setDb); }, []);   // lets the sign-in "server" (api.js) read and update the same data
+  useEffect(() => { bindStore(() => dbRef.current, setDb); }, []);
+  // Restore an existing SERVER-VALIDATED session on reload. Never trust a saved user/role.
+  // Verification, invite and password recovery URLs must keep their own screens.
+  useEffect(() => {
+    let active = true;
+    const specialLink = getInitialView() !== "landing";
+    if (specialLink) { setRestoring(false); return; }
+    auth.me()
+      .then(result => {
+        if (!active) return;
+        if (result?.user?.role && CFG[result.user.role]) setMe(result.user);
+        else setView("login");
+      })
+      .catch(error => {
+        if (!active) return;
+        // No stored session: normal landing. A temporary server failure: allow retry.
+        if (error.status !== 401 && error.status !== 403 &&
+            (localStorage.getItem("pawcare_token") || sessionStorage.getItem("pawcare_token"))) {
+          setNotice("Could not restore your session. Check your connection and log in again if needed.");
+          setBad(true);
+          setView("login");
+        }
+      })
+      .finally(() => { if (active) setRestoring(false); });
+    return () => { active = false; };
+  }, []);
+   // lets the sign-in "server" (api.js) read and update the same data
   useEffect(() => {
     fetch("/api/state")
       .then(r => r.json())
@@ -72,7 +98,7 @@ export default function App() {
   }, []);
   useEffect(() => { setDb(p => { const late = p.appts.filter(a => ["Scheduled", "Confirmed"].includes(a.status) && a.date < TODAY); if (!late.length) return p; return { ...p, appts: p.appts.map(a => late.includes(a) ? { ...a, status: "No-show" } : a), log: addLog(p, { name: "System" }, `${late.length} past appointment(s) marked No-show`) }; }); }, []);
   /* Log out here and on the server. A message (e.g. idle timeout) sends the person to Log in with that notice. */
-  const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } setMe(null); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
+  const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } try { localStorage.removeItem("pawcare_token"); sessionStorage.removeItem("pawcare_token"); } catch (_) {} setMe(null); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
   /* Idle timeout: 15 minutes with no mouse, key or touch activity ends the session. */
   useEffect(() => {
     if (!me) return;
@@ -156,6 +182,7 @@ export default function App() {
   }, []); // eslint-disable-line
   const onLogin = r => { if (r.needsOtp) { setNotice(""); setView("otp"); } else setMe(r.user); };   // password right but mobile not verified yet: ask for the SMS code first
 
+  if (restoring) return <div className="lg auth" role="status" aria-live="polite" style={{ display: "grid", placeItems: "center", minHeight: "100vh" }}><p>Restoring your clinic session…</p></div>;
   if (me) return <Portal cfg={CFG[me.role]} me={me} db={db} setDb={setDb} onLogout={() => logout()} />;
   const screen =
     view === "verifying" ? (

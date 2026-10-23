@@ -892,6 +892,7 @@ async function call(method, path, body) {
         const err = new Error(data?.error || `Request failed with status ${res.status}`);
         if (data?.errors) err.fields = data.errors;
         if (data?.remainingCooldown) err.remainingCooldown = data.remainingCooldown;
+        err.status = res.status;
         if (data?.limit) err.limit = true;
         if (data?.lockout) err.lockout = true;
         err.isApiError = true;
