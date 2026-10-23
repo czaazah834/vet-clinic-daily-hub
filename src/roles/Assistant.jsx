@@ -3,10 +3,12 @@ import { M, Stats, Hero, TODAY, plus, moveAppt, petName, ownerName, Badge, dueSt
 import InClinicRegistration from "./InClinicRegistration.jsx";
 import BillingModal from "./BillingModal.jsx";
 import ClinicCalendar from "./ClinicCalendar.jsx";
+import CheckInModal from "./CheckInModal.jsx";
 
 function Dash({ db, setDb, me, go, say }) {
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [billingAppt, setBillingAppt] = useState(null);
+  const [checkInAppt, setCheckInAppt] = useState(null);
 
   const q = db.appts.filter(a => a.date === TODAY && a.status !== "Cancelled").sort((a, b) => a.time.localeCompare(b.time));
   const waiting = q.filter(a => a.status === "Checked-in");
@@ -58,14 +60,59 @@ function Dash({ db, setDb, me, go, say }) {
                 const pet = db.pets.find(p => p.id === a.petId) || {};
                 const owner = db.owners.find(o => o.id === pet.ownerId) || {};
                 const isPaid = a.billingStatus === "Paid";
+                const iv = a.intakeVitals;
 
                 return (
-                  <div className="li" key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: "10px", background: a.status === "Checked-in" ? "#f0fdf4" : a.status === "In consultation" ? "#eff6ff" : "#fff" }}>
+                  <div className="li" key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", border: "1px solid #e2e8f0", borderRadius: "10px", background: a.status === "Checked-in" ? "#f0fdf4" : a.status === "In consultation" ? "#eff6ff" : "#fff" }}>
                     <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
                       <b style={{ color: "var(--navy)", minWidth: "48px" }}>{a.time}</b>
                       <div>
-                        <b>{pet.name}</b> <span style={{ color: "#64748b", fontSize: "12.5px" }}>({owner.name})</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                          <b>{pet.name}</b> <span style={{ color: "#64748b", fontSize: "12.5px" }}>({owner.name})</span>
+                          {iv?.triageLevel && iv.triageLevel !== "Routine" && (
+                            <span style={{
+                              background: iv.triageLevel === "Emergency" ? "#fee2e2" : "#fef3c7",
+                              color: iv.triageLevel === "Emergency" ? "#991b1b" : "#92400e",
+                              fontWeight: 700,
+                              fontSize: "11px",
+                              padding: "2px 6px",
+                              borderRadius: "4px"
+                            }}>
+                              🚨 {iv.triageLevel}
+                            </span>
+                          )}
+                        </div>
                         <small style={{ display: "block", color: "#475569" }}>{a.reason}</small>
+
+                        {iv && (
+                          <div style={{ marginTop: "4px", display: "flex", gap: "6px", flexWrap: "wrap", fontSize: "11px" }}>
+                            <span style={{
+                              background: iv.tempAnalysis?.status === "normal" ? "#ecfdf5" : "#fef2f2",
+                              color: iv.tempAnalysis?.status === "normal" ? "#047857" : "#b91c1c",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              fontWeight: 600,
+                              border: "1px solid rgba(0,0,0,0.06)"
+                            }}>
+                              🌡️ {iv.temp}°C · {iv.tempAnalysis?.label || "Normal"}
+                            </span>
+                            <span style={{
+                              background: iv.weightAnalysis?.status === "ideal" ? "#ecfdf5" : "#fffbeb",
+                              color: iv.weightAnalysis?.status === "ideal" ? "#047857" : "#b45309",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              fontWeight: 600,
+                              border: "1px solid rgba(0,0,0,0.06)"
+                            }}>
+                              ⚖️ {iv.weight} kg · {iv.weightAnalysis?.label || "Normal"}
+                            </span>
+                            {iv.weightDelta && (
+                              <span style={{ background: "#f8fafc", color: "#475569", padding: "2px 6px", borderRadius: "4px" }}>
+                                {iv.weightDelta}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -87,13 +134,20 @@ function Dash({ db, setDb, me, go, say }) {
                       {["Scheduled", "Confirmed"].includes(a.status) && (
                         <button
                           className="btn sm gold"
-                          title="Arrival Check-in: moves patient directly into Veterinarian's clinical queue"
-                          onClick={() => {
-                            moveAppt(setDb, a.id, "Checked-in", me);
-                            say(`${pet.name} checked in! Moved to Veterinarian queue.`);
-                          }}
+                          title="Arrival Check-in & Automated Vitals Intake"
+                          onClick={() => setCheckInAppt(a)}
                         >
                           Check in
+                        </button>
+                      )}
+
+                      {a.status === "Checked-in" && (
+                        <button
+                          className="btn sm ghost"
+                          title="Review or adjust patient intake vitals"
+                          onClick={() => setCheckInAppt(a)}
+                        >
+                          Edit Vitals
                         </button>
                       )}
 
@@ -174,6 +228,20 @@ function Dash({ db, setDb, me, go, say }) {
           me={me}
           onClose={() => setBillingAppt(null)}
           onPaid={(amt) => say(`Payment of ₱${amt} recorded!`)}
+        />
+      )}
+
+      {checkInAppt && (
+        <CheckInModal
+          appt={checkInAppt}
+          db={db}
+          setDb={setDb}
+          me={me}
+          onClose={() => setCheckInAppt(null)}
+          onCheckedIn={(vitals) => {
+            setCheckInAppt(null);
+            say(`Patient checked in with vitals! Moved to Doctor Queue.`);
+          }}
         />
       )}
     </>

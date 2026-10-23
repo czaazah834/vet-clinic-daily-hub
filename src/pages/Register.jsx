@@ -225,6 +225,46 @@ export default function Register({ onDone, onBack, go, limited }) {
     setAx((a) => ({ ...a, [n]: m }));
   };
 
+  // Live debounced check as you type for Email
+  useEffect(() => {
+    const v = f.email.trim();
+    if (!v) {
+      setAx((a) => ({ ...a, email: "" }));
+      return;
+    }
+    if (!emOk(v)) return;
+    let on = true;
+    const t = setTimeout(async () => {
+      const r = await api("check/email", { email: v });
+      if (!on) return;
+      setAx((a) => ({ ...a, email: r.ok && r.d.ok ? "" : (r.d?.error || "Could not check this email.") }));
+    }, 450);
+    return () => {
+      on = false;
+      clearTimeout(t);
+    };
+  }, [f.email]);
+
+  // Live debounced check as you type for Mobile
+  useEffect(() => {
+    const v = f.mobile.trim();
+    if (!CUR || !v) {
+      setAx((a) => ({ ...a, mobile: "" }));
+      return;
+    }
+    if (v.length < 6) return;
+    let on = true;
+    const t = setTimeout(async () => {
+      const r = await api("check/mobile", { country: CUR.code, mobile: v });
+      if (!on) return;
+      setAx((a) => ({ ...a, mobile: r.d?.ok ? "" : (r.d?.error || "Could not check this number.") }));
+    }, 400);
+    return () => {
+      on = false;
+      clearTimeout(t);
+    };
+  }, [f.mobile, CUR?.code]);
+
   useEffect(() => {
     const z = f.zip_code.trim();
     if (!CUR || !z || !f.state || !f.city.trim() || val("zip_code", z)) return;

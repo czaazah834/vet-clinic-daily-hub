@@ -27,9 +27,31 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
   const [errs, setErrs] = useState({});
   const [success, setSuccess] = useState(null);
 
+  const validateField = (k, v) => {
+    let msg = "";
+    if (k === "name") {
+      if (!clean(v)) msg = "Owner full name is required";
+      else if (clean(v).length < 2) msg = "Name must be at least 2 characters";
+    } else if (k === "phone") {
+      if (!String(v).trim()) msg = "Contact number is required";
+    } else if (k === "email") {
+      const em = String(v).trim();
+      if (!em) msg = "Email address is required";
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) msg = "Enter a valid email address";
+      else if (db.owners.some(o => o.email.toLowerCase() === em.toLowerCase())) msg = "An owner with this email already exists";
+    } else if (k === "address") {
+      if (!clean(v)) msg = "Address is required";
+    } else if (k === "petName") {
+      if (!clean(v)) msg = "Pet name is required";
+    } else if (k === "weight") {
+      if (!v || isNaN(+v) || +v <= 0) msg = "Valid weight in kg required";
+    }
+    setErrs(p => ({ ...p, [k]: msg }));
+  };
+
   const set = (k, v) => {
     setF(p => ({ ...p, [k]: v }));
-    if (errs[k]) setErrs(p => ({ ...p, [k]: "" }));
+    validateField(k, v);
   };
 
   const validateForm = () => {

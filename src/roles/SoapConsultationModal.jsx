@@ -7,15 +7,22 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const prevRecords = db.records.filter(r => r.petId === pet.id).sort((a, b) => b.date.localeCompare(a.date));
   const prevVaccs = db.vacc.filter(v => v.petId === pet.id).sort((a, b) => b.date.localeCompare(a.date));
 
-  // SOAP fields
+  // SOAP fields initialized with Assistant's Intake Vitals if present
+  const iv = appt?.intakeVitals;
+  const initialWeight = iv?.weight ? String(iv.weight) : pet.weight ? String(pet.weight) : "";
+  const initialTemp = iv?.temp ? `${iv.temp}°C` : "38.5°C";
+  const tempRemark = iv?.tempAnalysis ? ` (${iv.tempAnalysis.label})` : "";
+  const weightRemark = iv?.weightAnalysis ? ` (${iv.weightAnalysis.label})` : "";
+  const triageRemark = iv?.triageLevel && iv.triageLevel !== "Routine" ? ` [TRIAGE: ${iv.triageLevel.toUpperCase()}]` : "";
+
   const [f, setF] = useState({
     date: TODAY,
-    symptoms: appt?.reason ? `Chief Complaint: ${appt.reason}` : "",
-    objective: `Temp: 38.5°C, Weight: ${pet.weight || ""} kg. Heart rate and respiration normal.`,
+    symptoms: appt?.reason ? `Chief Complaint: ${appt.reason}${triageRemark}` : "",
+    objective: `Temp: ${initialTemp}${tempRemark}, Weight: ${initialWeight ? `${initialWeight} kg` : "—"}${weightRemark}. Heart rate and respiration normal.`,
     diagnosis: "",
     treatment: "",
     prescription: "",
-    weight: pet.weight ? String(pet.weight) : "",
+    weight: initialWeight,
     // Vaccine administration
     giveVaccine: false,
     vaccine: "Anti-rabies",
@@ -214,6 +221,46 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
           </div>
         ) : (
           <form onSubmit={handleSubmit} noValidate>
+            {iv && (
+              <div style={{
+                background: iv.tempAnalysis?.status === "high-fever" || iv.tempAnalysis?.status === "hypothermia" || iv.triageLevel === "Emergency"
+                  ? "#fef2f2"
+                  : "#f0fdf4",
+                border: "1px solid " + (iv.triageLevel === "Emergency" ? "#fca5a5" : "#bbf7d0"),
+                borderRadius: "10px",
+                padding: "10px 14px",
+                marginBottom: "14px",
+                fontSize: "13px"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                  <b style={{ color: "var(--navy)" }}>🛎️ Front Desk Intake Vitals</b>
+                  {iv.triageLevel && (
+                    <span style={{
+                      fontWeight: 700,
+                      fontSize: "11px",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                      background: iv.triageLevel === "Emergency" ? "#fee2e2" : iv.triageLevel === "Priority" ? "#fef3c7" : "#e2e8f0",
+                      color: iv.triageLevel === "Emergency" ? "#991b1b" : iv.triageLevel === "Priority" ? "#92400e" : "#334155"
+                    }}>
+                      Triage: {iv.triageLevel.toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", color: "#334155" }}>
+                  <span><b>Temperature:</b> {iv.temp}°C ({iv.tempAnalysis?.label || "Normal"})</span>
+                  <span><b>Weight:</b> {iv.weight} kg ({iv.weightAnalysis?.label || "Ideal"})</span>
+                  {iv.weightDelta && <span><b>Change:</b> {iv.weightDelta}</span>}
+                  {iv.recordedAt && <span style={{ color: "#64748b" }}>Logged at: {iv.recordedAt}</span>}
+                </div>
+                {iv.triageNotes && (
+                  <div style={{ marginTop: "4px", fontSize: "12px", color: "#475569" }}>
+                    <b>Assistant Notes:</b> &ldquo;{iv.triageNotes}&rdquo;
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
                 <label>

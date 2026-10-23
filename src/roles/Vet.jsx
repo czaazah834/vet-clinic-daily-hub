@@ -79,6 +79,7 @@ function Dash({ db, setDb, me, go, say }) {
               const p = db.pets.find(x => x.id === a.petId) || {};
               const o = db.owners.find(x => x.id === p.ownerId) || {};
               const hasAllergy = p.allergies && p.allergies.length > 0;
+              const iv = a.intakeVitals;
 
               return (
                 <div
@@ -89,25 +90,96 @@ function Dash({ db, setDb, me, go, say }) {
                     alignItems: "center",
                     padding: "12px 16px",
                     borderRadius: "12px",
-                    border: a.status === "Checked-in" ? "2px solid #93c5fd" : "1px solid #e2e8f0",
-                    background: a.status === "Checked-in" ? "#eff6ff" : a.status === "In consultation" ? "#fffbeb" : "#fff",
+                    border: iv?.triageLevel === "Emergency"
+                      ? "2px solid #ef4444"
+                      : a.status === "Checked-in"
+                      ? "2px solid #93c5fd"
+                      : "1px solid #e2e8f0",
+                    background: iv?.triageLevel === "Emergency"
+                      ? "#fff5f5"
+                      : a.status === "Checked-in"
+                      ? "#eff6ff"
+                      : a.status === "In consultation"
+                      ? "#fffbeb"
+                      : "#fff",
                   }}
                 >
-                  <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
-                    <b style={{ color: "var(--navy)", fontSize: "16px", minWidth: "50px" }}>{a.time}</b>
-                    <span style={{ fontSize: "24px" }}><I e={ICON[p.species] || "🐾"} size={24} /></span>
+                  <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+                    <b style={{ color: "var(--navy)", fontSize: "16px", minWidth: "50px", marginTop: "4px" }}>{a.time}</b>
+                    <span style={{ fontSize: "24px", marginTop: "2px" }}><I e={ICON[p.species] || "🐾"} size={24} /></span>
                     <div>
-                      <div style={{ fontWeight: "700", fontSize: "15px" }}>
-                        {p.name} <span style={{ fontWeight: "400", color: "#64748b", fontSize: "13px" }}>({p.breed} &bull; Owner: {o.name})</span>
+                      <div style={{ fontWeight: "700", fontSize: "15px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <span>{p.name}</span>
+                        <span style={{ fontWeight: "400", color: "#64748b", fontSize: "13px" }}>({p.breed || p.species} &bull; Owner: {o.name})</span>
                         {hasAllergy && (
-                          <span style={{ marginLeft: "8px", fontSize: "11px", background: "#fef2f2", color: "#dc2626", padding: "2px 6px", borderRadius: "4px", fontWeight: "700" }}>
-                            ⚠ ALLERGY
+                          <span style={{ fontSize: "11px", background: "#fef2f2", color: "#dc2626", padding: "2px 6px", borderRadius: "4px", fontWeight: "700" }}>
+                            ⚠ ALLERGIC: {p.allergies.join(", ")}
+                          </span>
+                        )}
+                        {iv?.triageLevel && iv.triageLevel !== "Routine" && (
+                          <span style={{
+                            fontSize: "11px",
+                            background: iv.triageLevel === "Emergency" ? "#fee2e2" : "#fef3c7",
+                            color: iv.triageLevel === "Emergency" ? "#991b1b" : "#92400e",
+                            padding: "2px 7px",
+                            borderRadius: "4px",
+                            fontWeight: "700"
+                          }}>
+                            🚨 TRIAGE: {iv.triageLevel.toUpperCase()}
                           </span>
                         )}
                       </div>
                       <div style={{ fontSize: "12.5px", color: "#475569", marginTop: "2px" }}>
-                        <b>Chief Complaint:</b> {a.reason} &bull; <b>Weight:</b> {p.weight ? `${p.weight} kg` : "Not weighed"}
+                        <b>Chief Complaint:</b> {a.reason}
                       </div>
+
+                      {/* Automated Intake Vitals from Front Desk */}
+                      {iv ? (
+                        <div style={{ marginTop: "6px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", fontSize: "12px" }}>
+                          {/* Temperature badge */}
+                          <span style={{
+                            padding: "3px 8px",
+                            borderRadius: "6px",
+                            fontWeight: 600,
+                            background: iv.tempAnalysis?.status === "normal"
+                              ? "#ecfdf5"
+                              : iv.tempAnalysis?.status === "high-fever" || iv.tempAnalysis?.status === "hypothermia"
+                              ? "#fee2e2"
+                              : "#fffbeb",
+                            color: iv.tempAnalysis?.status === "normal"
+                              ? "#047857"
+                              : iv.tempAnalysis?.status === "high-fever" || iv.tempAnalysis?.status === "hypothermia"
+                              ? "#991b1b"
+                              : "#b45309",
+                            border: "1px solid rgba(0,0,0,0.06)"
+                          }}>
+                            🌡️ {iv.temp}°C &bull; {iv.tempAnalysis?.label || "Normal"}
+                          </span>
+
+                          {/* Weight badge */}
+                          <span style={{
+                            padding: "3px 8px",
+                            borderRadius: "6px",
+                            fontWeight: 600,
+                            background: iv.weightAnalysis?.status === "ideal" ? "#ecfdf5" : "#fffbeb",
+                            color: iv.weightAnalysis?.status === "ideal" ? "#047857" : "#b45309",
+                            border: "1px solid rgba(0,0,0,0.06)"
+                          }}>
+                            ⚖️ {iv.weight} kg &bull; {iv.weightAnalysis?.label || "Normal"}
+                            {iv.weightDelta && ` (${iv.weightDelta})`}
+                          </span>
+
+                          {iv.triageNotes && (
+                            <span style={{ color: "#64748b", fontStyle: "italic" }}>
+                              &ldquo;{iv.triageNotes}&rdquo;
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: "11.5px", color: "#94a3b8", marginTop: "3px" }}>
+                          <i>Awaiting front desk intake vitals</i>
+                        </div>
+                      )}
                     </div>
                   </div>
 
