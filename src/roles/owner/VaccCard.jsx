@@ -179,8 +179,8 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                   </div>
 
                   {/* Patient Profile Content */}
-                  <div style={{ padding: "20px 24px", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: "20px", alignItems: "start" }}>
+                  <div className="vc-profile-body" style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div className="vc-profile-layout" style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: "20px", alignItems: "start" }}>
                       
                       {/* Photo Box with Stamp */}
                       <div style={{ textAlign: "center" }}>
@@ -210,7 +210,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                           </span>
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "8px 14px", fontSize: "13px" }}>
+                        <div className="vc-patient-fields" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "8px 14px", fontSize: "13px" }}>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Breed:</span> <b>{p.breed || "Mixed Breed"}</b></div>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Sex:</span> <b>{p.sex || "—"}</b></div>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Birth Date:</span> <b>{p.birth ? fmtDate(p.birth) : "—"}</b> {p.birth && <small style={{ color: "#0284c7" }}>({petAge(p.birth)})</small>}</div>
@@ -221,8 +221,8 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                         </div>
 
                         {/* Owner Information */}
-                        <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed #cbd5e1", fontSize: "12.5px" }}>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 20px" }}>
+                        <div className="vc-owner-details" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed #cbd5e1", fontSize: "12.5px" }}>
+                          <div className="vc-owner-fields" style={{ display: "flex", flexWrap: "wrap", gap: "10px 20px" }}>
                             <div><span style={{ color: "#64748b" }}>Registered Owner:</span> <b>{o.name || me.name}</b></div>
                             <div><span style={{ color: "#64748b" }}>Contact:</span> <b>{o.phone || "—"}</b></div>
                             <div><span style={{ color: "#64748b" }}>Address:</span> <b>{o.address || o.city || "Metro Manila, PH"}</b></div>
@@ -239,7 +239,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                     </div>
 
                     {/* Summary Row inside Card */}
-                    <div style={{ marginTop: 18, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                    <div className="vc-profile-summary" style={{ marginTop: 4, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                       <div style={{ display: "flex", gap: 16 }}>
                         <div><div style={{ fontSize: "10.5px", color: "#64748b", textTransform: "uppercase" }}>Total Records</div><b style={{ fontSize: "14px", color: "#0f172a" }}>{mine.length}</b></div>
                         <div><div style={{ fontSize: "10.5px", color: "#166534", textTransform: "uppercase" }}>On Track</div><b style={{ fontSize: "14px", color: "#166534" }}>{count("On track")}</b></div>
