@@ -491,3 +491,24 @@ New arrivals require a saved patient/owner and a veterinarian in the current
 directory. Saving blocks repeated submissions, keeps the form on failure and
 opens measured intake only after the server confirms that patient's appointment.
 No new appointment is needed to review an existing arrival.
+
+
+### Intake changes and concurrent staff work
+
+Intake forms keep a snapshot of the visit they opened. A change to the patient,
+veterinarian, date/time, reason, status or saved vitals requires reception to
+close the form, refresh clinic records and reopen intake. The server checks
+this optional `expectedVisit` snapshot inside the locked status transaction,
+so two current intake forms cannot overwrite each other's measurements.
+Existing API callers without a snapshot retain their status-transition rules.
+
+The form retains measurements after a failed request and allows retry; a
+conflict or unconfirmed success requires reopening. Local patient weight, intake
+and the completion callback use the acknowledged server record.
+Status changes and their audit entries now commit together. An audit failure
+rolls back the status, intake and patient weight; the previous audit helper
+silently ignored that failure.
+
+Checks: `node --test tests/intake-visit.test.js`, `npm run test:clinic`,
+`npm run test:scheduling:postgres` with a disposable local database, and
+`npm run build`.

@@ -22,9 +22,15 @@ import { addLog, ICON, petName, ownerName, I } from "../lib.jsx";
 import { assessWeight, assessTemp, SPECIES_DEFAULTS } from "./vitals.js";
 import { computeWeightBracket, normalizeSpecies } from "../preventiveSchedule.js";
 import { today, nowHM } from "../booking.js";
+import { intakeVisitSnapshot, sameIntakeVisit, savedIntakeVisit } from "../intakeVisit.js";
 import { api } from "../api.js";
 
 export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn }) {
+  const baseline = useRef(intakeVisitSnapshot(appt));
+  const currentVisit = (db.appts || []).find(a => a.id === appt?.id);
+  const [conflict, setConflict] = useState(false);
+  const stale = conflict || !currentVisit || !sameIntakeVisit(baseline.current, currentVisit)
+    || !sameIntakeVisit(baseline.current, appt) || !["Scheduled", "Confirmed", "Checked-in"].includes(currentVisit.status);
   const pet = (db.pets && appt ? db.pets.find(p => p.id === appt.petId) : null) || {};
   const owner = (db.owners && pet.ownerId ? db.owners.find(o => o.id === pet.ownerId) : null) || {};
 
@@ -71,6 +77,10 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const submit = async (e) => {
     e.preventDefault();
     if (inFlight.current) return;
+    if (stale || !pet.id || !owner.id) {
+      setValErr("This visit or patient record has changed. Close this form, refresh clinic records and reopen intake.");
+      return;
+    }
     const w = parseFloat(weight);
     const t = parseFloat(temp);
 
@@ -102,6 +112,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
     const patchPayload = {
       status: "Checked-in",
+      expectedVisit: baseline.current,
       reason: serviceReason.trim() || appt.reason,
       intakeVitals,
       actorName: me?.name || "Assistant",
@@ -114,11 +125,15 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
     inFlight.current = true;
     setSaving(true);
-    // 1. Persist directly to PostgreSQL Neon DB
+    // Use only the acknowledged server record for the local handoff.
+    let savedVisit;
     try {
-      await api.patch(`/api/appointments/${appt.id}/status`, patchPayload);
+      const response = await api.patch(`/api/appointments/${appt.id}/status`, patchPayload);
+      try { savedVisit = savedIntakeVisit(response, baseline.current); }
+      catch (error) { setConflict(true); throw error; }
     } catch (err) {
       setValErr(err.message);
+      if (err.status === 409) setConflict(true);
       inFlight.current = false;
       setSaving(false);
       return;
@@ -130,11 +145,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
         a.id === appt.id
           ? {
               ...a,
-              date: isEarlyArrival ? arrivalDate : a.date,
-              time: isEarlyArrival ? arrivalTime : a.time,
-              status: "Checked-in",
-              reason: serviceReason.trim() || a.reason,
-              intakeVitals,
+              ...savedVisit,
             }
           : a
       );
@@ -146,8 +157,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
           x.id === pet.id
             ? {
                 ...x,
-                weight: w,
-                weights: [...(x.weights || []).filter(item => item.date !== arrivalDate), { date: arrivalDate, kg: w, by: "frontdesk_checkin" }],
+                weight: savedVisit.intakeVitals.weight,
+                weights: [...(x.weights || []).filter(item => item.date !== savedVisit.date), { date: savedVisit.date, kg: savedVisit.intakeVitals.weight, by: savedVisit.intakeVitals.checkedInBy || me?.name || "Assistant" }],
               }
             : x
         );
@@ -173,9 +184,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       };
     });
 
-    inFlight.current = false;
     setSaving(false);
-    onCheckedIn && onCheckedIn(intakeVitals);
+    onCheckedIn && onCheckedIn(savedVisit.intakeVitals);
   };
 
   return (
@@ -194,6 +204,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
           </div>
           <button className="btn ghost sm" onClick={onClose}><X size={16} /></button>
         </div>
+
+        {stale && <p className="err" role="alert">This visit or its saved intake has changed. Close this form, refresh clinic records and reopen intake.</p>}
 
         {/* Allergy Alert if any */}
         {pet.allergies && pet.allergies.length > 0 && (
@@ -513,9 +525,9 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
             </p>
           )}
 
-          <div className="row end" style={{ marginTop: "20px", gap: "10px" }}>
+          <div className="row end" style={{ marginTop: "20px", gap: "10px", flexWrap: "wrap" }}>
             <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn gold" disabled={saving}>
+            <button type="submit" className="btn gold" disabled={saving || stale || !pet.id || !owner.id}>
               Complete Check-In &amp; Send to Doctor Queue
             </button>
           </div>

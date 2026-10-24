@@ -322,3 +322,39 @@ test('follow-up links enforce ownership and pet, survive reschedule/cancellation
  assert.ok(state.consults.find(c=>c.id==='care-followup')); // survives newer routine consultation
  assert.equal((await req('assistant','POST','/appointments',{...b,time:'14:00'})).status,409);
 });
+
+test('intake snapshots reject stale parallel measurements and changed assignments',async()=>{
+ const {intakeVisitSnapshot}=await import('../../src/intakeVisit.js');
+ const id='intake_conflict';
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,'p6','v1',$2,'09:00','Intake examination','Scheduled')",[id,clinicClock().date]);
+ const original=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+ const body={status:'Checked-in',expectedVisit:intakeVisitSnapshot(original),intakeVitals:{weight:5.25,temp:38.6,notes:'First measured intake'}};
+ const results=await Promise.all([req('assistant','PATCH',`/appointments/${id}/status`,body),req('assistant','PATCH',`/appointments/${id}/status`,{...body,intakeVitals:{weight:6,temp:38.4}})]);
+ assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+ const saved=results.find(r=>r.status===200).data.appointment;
+ assert.equal((await query('SELECT COUNT(*)::int n FROM pet_weights WHERE pet_id=\'p6\'')).rows[0].n,1);
+ const edit={status:'Checked-in',expectedVisit:intakeVisitSnapshot(saved),intakeVitals:{weight:5.5,temp:38.5,notes:'Remeasured'}};
+ await query("UPDATE appointments SET vet_id='different_vet', reason='Veterinarian updated reason' WHERE id=$1",[id]);
+ assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,edit)).status,409);
+ const latest=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+ assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,{...edit,expectedVisit:intakeVisitSnapshot(latest)})).status,200);
+ assert.equal(Number((await query('SELECT weight FROM pets WHERE id=\'p6\'')).rows[0].weight),5.5);
+});
+test('status audit failure rolls back intake, patient weight and weight history',async()=>{
+ const id='intake_audit';
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,'p7','v1',$2,'09:10','Audit rollback intake','Scheduled')",[id,clinicClock().date]);
+ const before=(await query("SELECT weight FROM pets WHERE id='p7'")).rows[0];
+ await query(`CREATE FUNCTION reject_intake_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Updated appointment intake_audit%' THEN RAISE EXCEPTION 'synthetic intake audit failure'; END IF; RETURN NEW; END $$`);
+ await query('CREATE TRIGGER reject_intake_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_intake_audit()');
+ const body={status:'Checked-in',intakeVitals:{weight:7.75,temp:38.6},actorName:'Forged actor',actorRole:'admin'};
+ try {
+  assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,body)).status,500);
+  const row=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+  assert.equal(row.status,'Scheduled');assert.equal(row.intake_vitals,null);
+  assert.deepEqual((await query("SELECT weight FROM pets WHERE id='p7'")).rows[0],before);
+  assert.equal((await query("SELECT COUNT(*)::int n FROM pet_weights WHERE pet_id='p7'")).rows[0].n,0);
+ } finally { await query('DROP TRIGGER reject_intake_audit ON audit_logs'); }
+ assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,body)).status,200);
+ const audit=(await query("SELECT * FROM audit_logs WHERE action LIKE 'Updated appointment intake_audit%'")).rows;
+ assert.equal(audit.length,1);assert.equal(audit[0].user_name,'Test assistant');assert.equal(audit[0].user_role,'assistant');
+});
