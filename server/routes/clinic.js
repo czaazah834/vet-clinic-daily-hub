@@ -67,7 +67,7 @@ clinicRouter.get("/state", async (req, res) => {
       query("SELECT * FROM consultations ORDER BY date DESC"),
       query("SELECT * FROM pet_requests ORDER BY created_at DESC"),
       query("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100"),
-      query("SELECT id, first_name, last_name, role FROM users WHERE role = 'vet' ORDER BY first_name ASC")
+      query("SELECT id, vet_id, first_name, last_name, role FROM users WHERE role = 'vet' ORDER BY first_name ASC")
     ]);
 
     // Attach weights to pets
@@ -225,6 +225,10 @@ clinicRouter.get("/state", async (req, res) => {
     res.json({
       success: true,
       data: {
+        vets: vetsRes.rows.map(v => ({
+          id: v.vet_id || v.id,
+          name: `Dr. ${[v.first_name, v.last_name].filter(Boolean).join(" ")}`
+        })),
         owners,
         pets,
         appts,
