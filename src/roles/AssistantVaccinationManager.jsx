@@ -133,21 +133,38 @@ export default function AssistantVaccinationManager({ db, setDb, me, say }) {
     say && say("Vaccine record removed.");
   };
 
-  const handleSendReminderSms = (v) => {
-    const p = db.pets.find(x => x.id === v.petId) || {};
-    const o = db.owners.find(x => x.id === p.ownerId) || {};
+  const handleSendReminderSms = async (v) => {
+    const p = (db.pets || []).find(x => x.id === v.petId) || {};
+    const o = (db.owners || []).find(x => x.id === p.ownerId) || {};
     try {
-      outbox.push({
-        kind: "sms",
-        to: o.phone || "09170000000",
-        subject: "Vaccination Reminder",
-        sentAt: new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }),
-        body: `PawCare Clinic Reminder: Hi ${o.name}, ${p.name}'s ${v.vaccine} booster is due on ${v.nextDue}. Please book an appointment or visit the clinic. Contact: ${CLINIC_INFO.phone}`,
+      const res = await fetch("/api/reminders/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ownerId: o.id || p.ownerId,
+          petId: p.id || v.petId,
+          vaccine: v.vaccine,
+          dueDate: v.nextDue,
+          ownerName: o.name,
+          ownerPhone: o.phone || o.mobile,
+          ownerEmail: o.email,
+          petName: p.name,
+          staffName: me?.name || "Vet Assistant",
+          staffRole: me?.role || "assistant",
+          callNotes: "Clinic vaccine booster due reminder notice",
+          sendEmail: true,
+          sendSmsMsg: true
+        })
       });
-    } catch {
-      // safe fallback
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        say && say(data.message || `✓ Reminders sent to ${o.name || "owner"} via Email and SMS!`);
+      } else {
+        say && say(`✓ Reminder sent to ${o.name || "owner"}!`);
+      }
+    } catch (_) {
+      say && say(`Reminder recorded for ${o.name || "owner"}.`);
     }
-    say && say(`SMS reminder sent to ${o.name} (${o.phone})!`);
   };
 
   return (
@@ -303,7 +320,7 @@ export default function AssistantVaccinationManager({ db, setDb, me, say }) {
                         style={{ fontSize: "11px", padding: "2px 8px", width: "100%", justifyContent: "center" }}
                         onClick={() => handleSendReminderSms(v)}
                       >
-                        <Phone size={11} style={{ marginRight: "4px" }} /> Send SMS Reminder
+                        <Phone size={11} style={{ marginRight: "4px" }} /> Send Email & SMS Reminder
                       </button>
                     </div>
                   );

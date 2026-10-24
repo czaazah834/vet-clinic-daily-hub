@@ -1,6 +1,8 @@
 import express from "express";
 import { query, withTransaction } from "../db.js";
 import { sha256 } from "../security.js";
+import { sendMail, sendSms } from "../services.js";
+import { getAppUrl } from "./auth.js";
 
 export const clinicRouter = express.Router();
 
@@ -2254,4 +2256,168 @@ clinicRouter.post("/logs", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+/* 9. REMINDERS & LOG CALL (SEND VIA EMAIL & SMS) */
+async function handleSendReminder(req, res) {
+  try {
+    const {
+      ownerId,
+      petId,
+      vaccine,
+      dueDate,
+      ownerName,
+      ownerPhone,
+      ownerEmail,
+      petName,
+      staffName,
+      staffRole,
+      callNotes,
+      sendEmail = true,
+      sendSmsMsg = true,
+    } = req.body;
+
+    let targetOwnerName = ownerName || "Pet Parent";
+    let targetPhone = ownerPhone || "";
+    let targetEmail = ownerEmail || "";
+    let targetPetName = petName || "your pet";
+
+    // 1. Database lookups if IDs provided
+    if (ownerId) {
+      try {
+        const oRes = await query("SELECT * FROM owners WHERE id = $1", [ownerId]);
+        if (oRes.rows?.length) {
+          const o = oRes.rows[0];
+          targetOwnerName = o.name || targetOwnerName;
+          targetPhone = o.phone || o.mobile || targetPhone;
+          targetEmail = o.email || targetEmail;
+        } else {
+          // Check users table in case owner is stored as a user
+          const uRes = await query("SELECT * FROM users WHERE id = $1", [ownerId]);
+          if (uRes.rows?.length) {
+            const u = uRes.rows[0];
+            targetOwnerName = u.name || targetOwnerName;
+            targetPhone = u.phone || u.mobile || targetPhone;
+            targetEmail = u.email || targetEmail;
+          }
+        }
+      } catch (dbErr) {
+        console.warn("Owner lookup warning in reminder:", dbErr.message);
+      }
+    }
+
+    if (petId) {
+      try {
+        const pRes = await query("SELECT * FROM pets WHERE id = $1", [petId]);
+        if (pRes.rows?.length) {
+          targetPetName = pRes.rows[0].name || targetPetName;
+        }
+      } catch (dbErr) {
+        console.warn("Pet lookup warning in reminder:", dbErr.message);
+      }
+    }
+
+    const appUrl = getAppUrl(req);
+    const vaccineName = vaccine || "Vaccine Booster";
+    const dueStr = dueDate ? toDateStr(dueDate) : "soon";
+
+    let emailSent = false;
+    let smsSent = false;
+    const errors = [];
+
+    // 2. Dispatch SMS if requested and phone number available
+    if (sendSmsMsg && targetPhone) {
+      const smsText = `PawCare Clinic: Hi ${targetOwnerName}! This is a reminder that ${targetPetName}'s ${vaccineName} is due on ${dueStr}. Please contact us or book a visit online: ${appUrl} . Have a great day!`;
+      try {
+        const smsRes = await sendSms(targetPhone, smsText);
+        if (smsRes?.ok) smsSent = true;
+      } catch (err) {
+        errors.push("SMS failed: " + err.message);
+      }
+    }
+
+    // 3. Dispatch Email if requested and email address available
+    if (sendEmail && targetEmail) {
+      const emailSubject = `🐾 PawCare Vaccine Reminder: ${targetPetName}'s ${vaccineName} Due`;
+      const emailText = `Hello ${targetOwnerName}!\n\nThis is a friendly reminder from PawCare Veterinary Clinic that ${targetPetName} is due for their ${vaccineName} on ${dueStr}.\n\nBook your visit online: ${appUrl}\nClinic Phone: (02) 8920-1234 / 0917-123-4567\n\nWarm regards,\nPawCare Veterinary Team`;
+
+      const emailHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"></head>
+      <body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0f172a;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="padding:28px 14px;">
+          <tr>
+            <td align="center">
+              <table width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 10px 25px rgba(0,0,0,0.06);">
+                <tr>
+                  <td style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);padding:28px 24px;text-align:center;">
+                    <div style="font-size:36px;margin-bottom:6px;">🐾 💉</div>
+                    <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:800;">PawCare Veterinary Clinic</h1>
+                    <p style="margin:4px 0 0;color:#dbeafe;font-size:13px;">Health & Preventive Care Reminder</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:32px 28px;">
+                    <h2 style="margin:0 0 12px;color:#002B49;font-size:19px;">Hi ${targetOwnerName}!</h2>
+                    <p style="margin:0 0 18px;color:#475569;font-size:15px;line-height:1.6;">
+                      Our veterinary staff conducted a routine schedule check and noticed that <b>${targetPetName}</b> is due for their <b>${vaccineName}</b> on <b>${dueStr}</b>.
+                    </p>
+                    ${callNotes ? `<div style="background:#fffbeb;border-left:4px solid #f59e0b;padding:10px 14px;border-radius:6px;font-size:13px;color:#92400e;margin-bottom:20px;"><b>Staff Call Note:</b> ${callNotes}</div>` : ""}
+                    <div style="text-align:center;margin:28px 0 24px;">
+                      <a href="${appUrl}/#portals" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#ffe28a,#ffd24d);color:#002B49;font-size:15px;font-weight:800;padding:14px 32px;border-radius:99px;text-decoration:none;box-shadow:0 6px 18px rgba(255,200,60,0.4);">
+                        Book Booster Appointment →
+                      </a>
+                    </div>
+                    <div style="background:#f8fafc;padding:14px 16px;border-radius:12px;border:1px solid #e2e8f0;font-size:13px;color:#64748b;line-height:1.5;">
+                      📍 <b>Clinic Address:</b> 123 Samson Road, Caloocan City<br>
+                      📞 <b>Direct Line:</b> (02) 8920-1234 • 0917-123-4567<br>
+                      🕒 <b>Hours:</b> Monday to Sunday • 8:00 AM – 7:00 PM
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background:#f8fafc;padding:16px 24px;text-align:center;border-top:1px solid #e2e8f0;font-size:11.5px;color:#94a3b8;">
+                    PawCare Daily Hub • Helping keep your pets healthy and vaccinated.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+      `;
+
+      try {
+        const mailRes = await sendMail(targetEmail, emailSubject, emailText, emailHtml);
+        if (mailRes?.ok) emailSent = true;
+      } catch (err) {
+        errors.push("Email failed: " + err.message);
+      }
+    }
+
+    // 4. Record in audit_logs
+    const channels = [emailSent ? `Email (${targetEmail})` : null, smsSent ? `SMS (${targetPhone})` : null].filter(Boolean).join(" & ") || "None (no contact on file)";
+    const auditAction = `Logged reminder call for owner ${targetOwnerName} (${targetPetName} - ${vaccineName} due ${dueStr}). Dispatched reminders via: ${channels}.${callNotes ? ` Call Note: "${callNotes}"` : ""}`;
+    await recordAudit(staffName || "Vet Assistant", staffRole || "assistant", auditAction);
+
+    res.json({
+      success: true,
+      emailSent,
+      smsSent,
+      targetOwnerName,
+      targetPetName,
+      targetEmail,
+      targetPhone,
+      message: `Call logged successfully! Reminders dispatched: ${channels}`,
+      errors: errors.length ? errors : undefined,
+    });
+  } catch (err) {
+    console.error("Failed to log call and send reminder:", err);
+    res.status(500).json({ error: "Failed to process reminder call: " + err.message });
+  }
+}
+
+clinicRouter.post("/reminders/log-call", handleSendReminder);
+clinicRouter.post("/reminders/send", handleSendReminder);
 

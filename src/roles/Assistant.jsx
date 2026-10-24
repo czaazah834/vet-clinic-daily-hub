@@ -15,6 +15,7 @@ import PetCardModal from "./PetCardModal.jsx";
 import ClientsAndPatientsPage from "./ClientsAndPatientsPage.jsx";
 import DailySalesPage from "./DailySalesPage.jsx";
 import ConsultationsPage from "./ConsultationsPage.jsx";
+import LogCallModal from "./LogCallModal.jsx";
 
 // Owner ids can be "o1" or "o_1" depending on where the record came from.
 const sameOwner = (o, id) => !!id && (o.id === id || o.id === id.replace(/^o(\d+)/, "o_$1") || o.id?.replace(/^o_(\d+)/, "o$1") === id);
@@ -28,6 +29,7 @@ function Dash({ db, setDb, me, go, say }) {
   const [reviewReq, setReviewReq] = useState(null);
   const [cardPetId, setCardPetId] = useState(null);
   const [cardAppt, setCardAppt] = useState(null);
+  const [logCallTarget, setLogCallTarget] = useState(null);
 
   const pendingReqs = (db.petRequests || []).filter(r => r.status === "Pending");
   const q = db.appts.filter(a => a.date === TODAY && a.status !== "Cancelled").sort((a, b) => a.time.localeCompare(b.time));
@@ -228,7 +230,7 @@ function Dash({ db, setDb, me, go, say }) {
                       <Badge v={dueState(v.nextDue)} />
                       <button className="btn sm ghost" onClick={() => openCard(p.id || v.petId)}>Card</button>
                       <button className="btn sm gold" title="Book the booster visit in the clinic calendar" onClick={() => { go("cal"); say(`Booking booster for ${p.name || "patient"} (${v.vaccine}).`); }}>Book booster</button>
-                      <button className="btn ghost sm" onClick={() => say(`Reminder call logged for ${o.name || "owner"} (${p.name || "pet"}).`)}>Log call</button>
+                      <button className="btn ghost sm" onClick={() => setLogCallTarget({ v, p, o })} title="Log call notes and dispatch reminders via Email and SMS">Log call</button>
                     </div>
                   </div>
                 );
@@ -290,6 +292,18 @@ function Dash({ db, setDb, me, go, say }) {
           db={db} setDb={setDb} me={me} say={say}
           onClose={() => setShowExistingWalkIn(false)}
           onCheckIn={appt => { setShowExistingWalkIn(false); setCheckInAppt(appt); }}
+        />
+      )}
+
+      {logCallTarget && (
+        <LogCallModal
+          target={logCallTarget}
+          onClose={() => setLogCallTarget(null)}
+          onLogged={() => setLogCallTarget(null)}
+          me={me}
+          db={db}
+          setDb={setDb}
+          say={say}
         />
       )}
     </>
