@@ -1,12 +1,17 @@
 import { api } from "../api.js";
-import { useState } from "react";
-import { Syringe, CheckCircle2, ShieldCheck, PawPrint, X, Sparkles } from "lucide-react";
-import { TODAY, uid, addLog, ICON, I, petName, ownerName } from "../lib.jsx";
+import { useRef, useState } from "react";
+import { Syringe, CheckCircle2, X } from "lucide-react";
+import { addLog, I } from "../lib.jsx";
 import { assessWeight } from "./vitals.js";
-import { calculateAge, generateCardId, generateAutomatedVaccineSchedule, CLINICAL_PROTOCOLS } from "./vaccineProtocols.js";
-import { outbox } from "../devOutbox.js";
+import { calculateAge, generateAutomatedVaccineSchedule } from "./vaccineProtocols.js";
+import { approvedRegistration, reviewedRequest, registrationReviewChanged } from "../registrationReview.js";
 
 export default function PetApprovalModal({ request, db, setDb, me, onClose, onProcessed }) {
+  const inFlight = useRef(false);
+  const [conflict, setConflict] = useState(false);
+  const changed = registrationReviewChanged(request, db.petRequests);
+  const canReview = request.status === "Pending" && !changed && !conflict;
+  const close = () => { if (!inFlight.current) onClose(); };
   const [mode, setMode] = useState("review"); // 'review' | 'decline'
   const [declineReason, setDeclineReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -15,173 +20,73 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
   const owner = db.owners.find(o => o.id === request.ownerId) || {};
   const age = calculateAge(request.birth);
   const weightAnalysis = assessWeight(request.weight, request.species, request.breed);
-  const cardId = generateCardId();
-  const protocols = CLINICAL_PROTOCOLS[request.species] || CLINICAL_PROTOCOLS.Other;
+
 
   // Generate automated preview schedule
   const previewSchedule = generateAutomatedVaccineSchedule(
-    { ...request, vaccinationCardId: cardId },
+    {...request, vaccinationCardId:"preview"},
     "temp-id",
     me.name
   );
 
   const handleApprove = async () => {
-    if (submitting) return;
-    setSaveError("");
-    setSubmitting(true);
-    let assignedCardId = cardId;
-    let newPet = null;
-    let newVaccRecords = [];
-    let preScheduledAppt = null;
-
+    if (inFlight.current || !canReview) return;
+    inFlight.current = true;
+    setSaveError(""); setSubmitting(true);
+    let result;
     try {
       const data = await api.post(`/api/pet-requests/${request.id}/approve`, {revision:request.revision ?? 0});
-      if (!data?.pet) throw new Error("The clinic did not confirm approval.");
-      if (data.success) {
-        assignedCardId = data.cardId || assignedCardId;
-        if (data.appointment) preScheduledAppt = data.appointment;
-        const rawPet = data.pet;
-        if (rawPet) {
-          newPet = {
-            id: rawPet.id,
-            ownerId: rawPet.owner_id,
-            name: rawPet.name,
-            species: rawPet.species,
-            speciesOther: rawPet.species_other || "",
-            breed: rawPet.breed,
-            sex: rawPet.sex,
-            birth: rawPet.birth ? String(rawPet.birth).slice(0, 10) : "",
-            weight: parseFloat(rawPet.weight),
-            color: rawPet.color || "",
-            neutered: rawPet.neutered || "Not sure",
-            allergies: rawPet.allergies || [],
-            vaccinationCardId: rawPet.vaccination_card_id || assignedCardId,
-            notes: rawPet.notes || "",
-            photo: rawPet.photo || "",
-            dentalOcclusion: rawPet.dental_occlusion || "",
-            registeredAt: TODAY,
-            approvedBy: me.name,
-            weights: [{ date: TODAY, kg: parseFloat(rawPet.weight) }]
-          };
-        }
-        if (data.vaccs && data.vaccs.length) {
-          newVaccRecords = data.vaccs.map(v => ({
-            id: v.id,
-            petId: v.pet_id || v.petId,
-            cardId: v.card_id || v.cardId || assignedCardId,
-            vaccine: v.vaccine,
-            brand: v.brand || "",
-            batch: v.batch || "",
-            date: v.date ? String(v.date).slice(0, 10) : TODAY,
-            nextDue: v.next_due ? String(v.next_due).slice(0, 10) : (v.nextDue || null),
-            doseNo: v.dose_no || v.doseNo,
-            doseOf: v.dose_of || v.doseOf,
-            done: Boolean(v.done),
-            automated: Boolean(v.automated),
-            protocolType: v.protocol_type || v.protocolType || "",
-            notes: v.notes || "",
-            vetId: v.vet_id || v.vetId || "",
-            recordedBy: v.recorded_by || v.recordedBy || me.name
-          }));
-        }
-      }
+      result = approvedRegistration(data);
     } catch (err) {
       setSaveError(err.message);
-      setSubmitting(false);
+      if (err.status === 409) setConflict(true);
+      inFlight.current = false; setSubmitting(false);
       return;
     }
-
     setDb(p => {
-      // 1. Add pet
-      const nextPets = [...(p.pets || []).filter(x => x.id !== newPet.id), newPet];
-
-      // 2. Add automated vaccination records
-      const nextVacc = [...(newVaccRecords || []), ...(p.vacc || p.vaccs || [])];
-
-      // 3. Update request status to Approved
-      const nextReqs = (p.petRequests || []).map(r =>
-        r.id === request.id
-          ? { ...r, status: "Approved", approvedAt: TODAY, approvedBy: me.name, petId: newPet.id, cardId: assignedCardId }
-          : r
-      );
-
-      // 4. Log audit event
-      const nextLog = addLog(
-        p,
-        me,
-        `Front Desk Assistant ${me.name} approved online pet registration for "${newPet.name}" (${owner.name}). Issued Digital Vaccination Card #${assignedCardId} with ${newVaccRecords.length} automated scheduled vaccine protocols.`
-      );
-
-      const nextAppts = preScheduledAppt
-        ? [...(p.appts || []).filter(a => a.id !== preScheduledAppt.id), preScheduledAppt]
-        : (p.appts || []);
-
-      return {
-        ...p,
-        pets: nextPets,
-        vacc: nextVacc,
-        vaccs: nextVacc,
-        appts: nextAppts,
-        petRequests: nextReqs,
-        log: nextLog,
+      const ids = new Set(result.vacc.map(v => v.id));
+      const vacc = [...result.vacc, ...(p.vacc || p.vaccs || []).filter(v => !ids.has(v.id))];
+      return {...p,
+        pets:[...(p.pets || []).filter(pet => pet.id !== result.pet.id), result.pet],
+        vacc, vaccs:vacc,
+        appts:result.appointment ? [...p.appts.filter(a => a.id !== result.appointment.id), result.appointment] : p.appts,
+        petRequests:(p.petRequests || []).map(r => r.id === request.id && (r.revision ?? 0) <= result.request.revision ? result.request : r),
+        log:addLog(p, me, `Approved registration for ${result.pet.name}. Issued vaccination card ${result.cardId}; suggested protocols await veterinarian review.`)
       };
     });
-
-    // 5. Send automated SMS/Email notification to Pet Owner Portal
-    try {
-      outbox.push({
-        id: uid(),
-        to: owner.email || "owner@example.com",
-        phone: owner.phone || "",
-        type: "pet_approved",
-        subject: `${newPet.name}'s Digital Vaccination Card is Ready!`,
-        sentAt: new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }),
-        body: `Hello ${owner.name}! PawCare Front Desk has approved your pet ${newPet.name}. Your pet's official Digital Vaccination Card #${assignedCardId} has been generated with automated booster schedules. You can now book appointments and view vaccination history in your Pet Owner Portal.`,
-      });
-    } catch {
-      // safe fallback
-    }
-
-    setSubmitting(false);
-    onProcessed && onProcessed("approved", newPet, assignedCardId);
+    inFlight.current = false; setSubmitting(false);
+    onProcessed && onProcessed("approved", result.pet, result.cardId);
   };
 
-  const handleDecline = async (e) => {
+  const handleDecline = async e => {
     e.preventDefault();
-    if (!declineReason.trim()) return;
-
-    if (submitting) return;
-    setSaveError("");
-    setSubmitting(true);
+    if (inFlight.current || !canReview || !declineReason.trim()) return;
+    inFlight.current = true;
+    setSaveError(""); setSubmitting(true);
+    let result;
     try {
-      await api.post(`/api/pet-requests/${request.id}/decline`, { reason: declineReason.trim(), revision:request.revision ?? 0 });
+      const data = await api.post(`/api/pet-requests/${request.id}/decline`, {reason:declineReason.trim(),revision:request.revision ?? 0});
+      if (!data?.success || !data.request || data.request.status !== "Declined") throw new Error("The clinic did not confirm the decision. Refresh the request before continuing.");
+      result = reviewedRequest(data.request);
     } catch (err) {
       setSaveError(err.message);
-      setSubmitting(false);
+      if (err.status === 409) setConflict(true);
+      inFlight.current = false; setSubmitting(false);
       return;
     }
-
-    setDb(p => ({
-      ...p,
-      petRequests: (p.petRequests || []).map(r =>
-        r.id === request.id
-          ? { ...r, status: "Declined", declineReason: declineReason.trim(), revision:(r.revision ?? 0)+1, reviewedBy: me.name, reviewedAt: TODAY }
-          : r
-      ),
-      log: addLog(
-        p,
-        me,
-        `Front Desk Assistant ${me.name} declined pet request for "${request.name}" (${owner.name}). Reason: ${declineReason.trim()}`
-      ),
+    setDb(p => ({...p,
+      petRequests:(p.petRequests || []).map(r => r.id === request.id && (r.revision ?? 0) <= result.revision ? result : r),
+      log:addLog(p, me, `Declined registration for ${request.name}. Reason: ${result.declineReason}`)
     }));
-
-    setSubmitting(false);
+    inFlight.current = false; setSubmitting(false);
     onProcessed && onProcessed("declined", null, null);
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && close()}>
       <div className="modal" style={{ width: "min(720px, 100%)", maxHeight: "94vh" }}>
+        {(changed || conflict) && <p className="err" role="alert">This request changed or was already processed. Close this review and reopen the latest request before making a decision.</p>}
+        {request.status !== "Pending" && <section role="status"><b>Registration {request.status}</b>{request.declineReason && <p style={{whiteSpace:"pre-wrap"}}>{request.declineReason}</p>}<p>{request.status === "Declined" ? "The owner must correct and resubmit this request before it can be reviewed again." : "This registration has already been processed."}</p></section>}
         {saveError && <p className="err" role="alert">{saveError}</p>}
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px", marginBottom: "14px" }}>
@@ -191,10 +96,10 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
               <span>Online Pet Registration Review</span>
             </h3>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-              Submitted online by Pet Owner: <b>{owner.name}</b> ({owner.phone || "No phone"}) &bull; Requested: {request.requestedAt || TODAY}
+              Submitted online by Pet Owner: <b>{owner.name}</b> ({owner.phone || "No phone"}) &bull; Requested: {request.requestedAt || "Not recorded"}
             </p>
           </div>
-          <button className="btn ghost sm" onClick={onClose}><X size={16} /></button>
+          <button className="btn ghost sm" onClick={close}><X size={16} /></button>
         </div>
 
         {mode === "decline" ? (
@@ -202,7 +107,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
             <div style={{ background: "#fef2f2", padding: "14px", borderRadius: "10px", border: "1px solid #fecaca", marginBottom: "16px" }}>
               <h4 style={{ margin: "0 0 6px", color: "#991b1b", fontSize: "15px" }}>Decline Pet Registration</h4>
               <p style={{ margin: 0, fontSize: "13px", color: "#b91c1c" }}>
-                Provide a helpful reason to <b>{owner.name}</b> so they know what needs updating before resubmitting.
+                Provide a helpful reason to <b>{owner.name}</b>. The decision and correction instructions will appear in their portal.
               </p>
             </div>
 
@@ -213,6 +118,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                   rows={3}
                   value={declineReason}
                   onChange={e => setDeclineReason(e.target.value)}
+                  maxLength={500}
                   placeholder="e.g. Duplicate pet profile already exists; please verify birth date; phone number unverified..."
                   required
                 />
@@ -241,8 +147,8 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
 
             <div className="row end" style={{ gap: "10px" }}>
               <button type="button" className="btn ghost" onClick={() => setMode("review")}>Back to Review</button>
-              <button type="submit" className="btn danger" disabled={!declineReason.trim() || submitting}>
-                Confirm Decline &amp; Notify Owner
+              <button type="submit" className="btn danger" disabled={!declineReason.trim() || submitting || !canReview}>
+                Confirm decline
               </button>
             </div>
           </form>
@@ -286,7 +192,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
             {request.photo && <img src={request.photo} alt={`${request.name} submitted by owner`} style={{width:120,height:120,objectFit:"cover",borderRadius:12,marginBottom:16}} />}
 
             {/* Automated Vaccination Card Generation Box */}
-            <div style={{ background: "#f0fdf4", padding: "16px", borderRadius: "12px", border: "1px solid #86efac", marginBottom: "16px" }}>
+            {request.status === "Pending" && <div style={{ background: "#f0fdf4", padding: "16px", borderRadius: "12px", border: "1px solid #86efac", marginBottom: "16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <div style={{ background: "#dcfce7", padding: "6px", borderRadius: "8px", color: "#166534" }}>
@@ -295,12 +201,12 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                   <div>
                     <b style={{ color: "#166534", fontSize: "14px" }}>Automated Digital Vaccination Card Generation</b>
                     <small style={{ display: "block", color: "#15803d" }}>
-                      System automatically initializes official card ID and recommended vaccine protocols based on {request.species} guidelines.
+                      The server assigns the official card number after approval. These suggestions require veterinarian review and do not certify any administered dose or booster date.
                     </small>
                   </div>
                 </div>
                 <span style={{ background: "#dcfce7", color: "#15803d", fontWeight: "700", padding: "4px 8px", borderRadius: "6px", fontSize: "12px", border: "1px solid #86efac" }}>
-                  Card #{cardId}
+                  Card number assigned after approval
                 </span>
               </div>
 
@@ -323,7 +229,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                     <div>
                       <b style={{ color: "var(--navy)" }}>{v.vaccine}</b>
                       <span style={{ marginLeft: "8px", fontSize: "11px", background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px", color: "#475569" }}>
-                        {v.brand} &bull; {v.protocolType}
+                        Suggested protocol · Vet review needed
                       </span>
                       <small style={{ display: "block", color: "#64748b", marginTop: "2px" }}>
                         {v.notes.replace(/^Automatically scheduled upon online registration approval by [^.]+\. /, "")}
@@ -332,7 +238,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
 
                     <div style={{ textAlign: "right" }}>
                       <span style={{ fontWeight: "700", color: "#047857" }}>
-                        Due: {v.nextDue}
+                        Suggested date: {v.nextDue}
                       </span>
                       <small style={{ display: "block", color: "#64748b", fontSize: "11px" }}>
                         {v.doseOf > 1 ? `Dose ${v.doseNo} of ${v.doseOf}` : "Single/Annual dose"}
@@ -341,30 +247,31 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                   </div>
                 ))}
               </div>
-            </div>
+            </div>}
 
             {/* Modal Actions */}
             <div className="row end" style={{ gap: "10px", marginTop: "14px" }}>
-              <button
+              {request.status === "Pending" && <button
                 type="button"
                 className="btn ghost danger"
+                disabled={submitting || !canReview}
                 onClick={() => setMode("decline")}
               >
                 Decline Request...
-              </button>
-              <button type="button" className="btn ghost" onClick={onClose}>
+              </button>}
+              <button type="button" className="btn ghost" onClick={close}>
                 Close
               </button>
-              <button
+              {request.status === "Pending" && <button
                 type="button"
                 className="btn gold"
                 onClick={handleApprove}
-                disabled={submitting}
+                disabled={submitting || !canReview}
                 style={{ display: "flex", alignItems: "center", gap: "6px" }}
               >
                 <CheckCircle2 size={16} aria-hidden="true" />
                 <b>Approve pet and issue vaccination card</b>
-              </button>
+              </button>}
             </div>
           </div>
         )}
