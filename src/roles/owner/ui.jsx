@@ -122,7 +122,17 @@ export function PhotoUpload({ src, fallback, onSave, onRemove, size = 84, round 
     if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return setErr("Only JPG, PNG or WEBP pictures are allowed");
     if (file.size > 5 * 1024 * 1024) return setErr("That picture is too big. The limit is 5 MB");
     setErr(""); setBusy(true);
-    try { onSave(await toSquare(file)); } catch (x) { setErr(x.message === "small" ? "Picture is too small. Use at least 64 × 64 pixels" : "We couldn’t read that picture. Try another one"); }
+    let photo;
+    try { photo = await toSquare(file); }
+    catch (x) { setErr(x.message === "small" ? "Picture is too small. Use at least 64 × 64 pixels" : "We couldn’t read that picture. Try another one"); setBusy(false); return; }
+    try { await onSave(photo); }
+    catch (x) { setErr(x.message || "Your picture could not be saved. Please try again."); }
+    setBusy(false);
+  };
+  const remove = async () => {
+    setErr(""); setBusy(true);
+    try { await onRemove(); }
+    catch (x) { setErr(x.message || "Your picture could not be removed. Please try again."); }
     setBusy(false);
   };
   return (
@@ -131,7 +141,7 @@ export function PhotoUpload({ src, fallback, onSave, onRemove, size = 84, round 
       <div>
         <input ref={ref} type="file" accept="image/jpeg,image/png,image/webp" onChange={choose} hidden aria-label={label} />
         <button type="button" className="btn ghost sm" onClick={() => ref.current.click()} disabled={busy}>{busy ? "Working…" : src ? "Change picture" : label}</button>{" "}
-        {src && <button type="button" className="btn danger sm" onClick={onRemove}>Remove</button>}
+        {src && <button type="button" className="btn danger sm" onClick={remove} disabled={busy}>Remove</button>}
         <span className={err ? "err" : "ow-hint"} aria-live="polite">{err || "JPG, PNG or WEBP, up to 5 MB"}</span>
       </div>
     </div>

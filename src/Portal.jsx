@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Menu, LogOut } from "lucide-react";
 import { Logo, I, ROLES, E, scope, Table } from "./lib.jsx";
 import EntityPage from "./EntityPage.jsx";
+import { auth } from "./authApi.js";
+import { accountProfile, saveAccountProfile } from "./accountProfile.js";
+import { Avatar } from "./roles/owner/ui.jsx";
 import StaffHeader from "./roles/StaffHeader.jsx";
 import "./staff-modern.css";   // vet + vet assistant refresh, scoped to .th-vet / .th-assistant
 function Reports({ db, me }) {
@@ -16,6 +19,16 @@ function Reports({ db, me }) {
   </>);
 }
 export default function Portal({ cfg, me, db, setDb, onLogout }) {
+  const account = accountProfile(db, me);
+  useEffect(() => {
+    let active = true;
+    auth.profile().then(({ profile }) => {
+      if (active && profile) setDb(d => ({ ...saveAccountProfile(d, me.id, profile), accountProfileErrors: { ...d.accountProfileErrors, [me.id]: null } }));
+    }).catch(error => {
+      if (active) setDb(d => ({ ...d, accountProfileErrors: { ...d.accountProfileErrors, [me.id]: error.message } }));
+    });
+    return () => { active = false; };
+  }, [me.id, setDb]);
   // Per-account last screen is preserved across reloads; a different user cannot inherit it.
   const pageKey = `pawcare_page_${me.id}`;
   const [page, setPage] = useState(() => {
@@ -31,7 +44,7 @@ export default function Portal({ cfg, me, db, setDb, onLogout }) {
       <aside className={open ? "side open" : "side"}>
         <div className="brand"><Logo /><div><b>PawCare</b><small>{cfg.portal}</small></div></div>
         <nav aria-label="Main">{cfg.menu.filter(m => !m.hide).map(m => <button key={m.k} className={m.k === page ? "on" : ""} onClick={() => go(m.k)}><I e={m.i} size={19} />{m.l}</button>)}</nav>
-        <div className="sidefoot"><div className="me"><span className="av">{String(me.name || "U").replace(/^Dr\.?\s+/i, "")[0]}</span><div><b>{me.name}</b><small>{ROLES[me.role][0]}</small></div></div><button className="btn gold sm wide" onClick={onLogout}><LogOut size={15} aria-hidden="true" />Log out</button></div>
+        <div className="sidefoot"><div className="me"><Avatar src={account.photo} fallback={String(account.name || "U").replace(/^Dr\.?\s+/i, "")[0]} size={46} /><div><b>{me.name}</b><small>{ROLES[me.role][0]}</small></div></div><button className="btn gold sm wide" onClick={onLogout}><LogOut size={15} aria-hidden="true" />Log out</button></div>
       </aside>
       {open && <div className="veil" onClick={() => setOpen(false)} />}
       <div className="main">

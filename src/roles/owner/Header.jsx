@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { accountProfile } from "../../accountProfile.js";
 import { ROLES } from "../../lib.jsx";
 import { Avatar, Modal } from "./ui.jsx";
 import { ProfileBody, PasswordBody } from "./Profile.jsx";
@@ -6,7 +7,7 @@ import { ProfileBody, PasswordBody } from "./Profile.jsx";
 /* Owner-only header: picture + name opens a menu (Profile, Change password, Log out). */
 export default function OwnerHeader({ db, setDb, me, say, onLogout }) {
   const [open, setOpen] = useState(false), [dlg, setDlg] = useState(null), ref = useRef();
-  const o = db.owners.find(x => x.id === me.ownerId) || {};
+  const o = accountProfile(db, me);
   useEffect(() => {
     if (!open) return;
     const down = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }, key = e => { if (e.key === "Escape") setOpen(false); };

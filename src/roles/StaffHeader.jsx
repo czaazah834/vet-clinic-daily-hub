@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { User, KeyRound, LogOut, ChevronDown } from "lucide-react";
 import { ROLES } from "../lib.jsx";
-import { Modal } from "./owner/ui.jsx";
+import { accountProfile } from "../accountProfile.js";
+import { Avatar, Modal } from "./owner/ui.jsx";
 import { ProfileBody, PasswordBody } from "./owner/Profile.jsx";
 
-/* Account menu for the veterinarian and vet assistant portals.
+/* Account menu for the administrator, veterinarian and assistant portals.
    Styling lives in staff-modern.css (.sf-hd, .ow-hdbtn, .ow-menu). */
 export default function StaffHeader({ db, setDb, me, say, onLogout }) {
   const [open, setOpen] = useState(false);
@@ -24,6 +25,7 @@ export default function StaffHeader({ db, setDb, me, say, onLogout }) {
   }, [open]);
 
   const to = t => { setOpen(false); setDlg(t); };
+  const account = accountProfile(db, me);
   const roleLabel = (ROLES[me.role] && ROLES[me.role][0]) || me.role;
   const initial = String(me.name || me.firstName || "U").replace(/^Dr\.?\s+/i, "").charAt(0).toUpperCase();
 
@@ -37,14 +39,14 @@ export default function StaffHeader({ db, setDb, me, say, onLogout }) {
         aria-expanded={open}
         aria-label="Account menu"
       >
-        <span className="sf-ava" aria-hidden="true">{initial}</span>
+        <Avatar src={account.photo} fallback={initial} size={48} />
         <span className="t"><b>{me.name}</b><small>{roleLabel}</small></span>
         <ChevronDown className="sf-chev" size={16} aria-hidden="true" />
       </button>
 
       {open && (
         <div className="ow-menu" role="menu">
-          <div className="sf-who"><b>{me.name}</b><small>{me.email || me.username}</small></div>
+          <div className="sf-who"><b>{me.name}</b><small>{account.email || me.username}</small></div>
           <button type="button" role="menuitem" onClick={() => to("profile")}><User size={16} />My profile</button>
           <button type="button" role="menuitem" onClick={() => to("password")}><KeyRound size={16} />Change password</button>
           <hr />

@@ -207,3 +207,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS staff_inv_email_uniq ON staff_invitations(emai
 CREATE INDEX IF NOT EXISTS staff_inv_lookup ON staff_invitations(token_hash);
 
 
+
+-- Persistent account pictures shared by all four roles.
+CREATE TABLE IF NOT EXISTS account_photos (
+  user_id VARCHAR(50) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  photo TEXT NOT NULL DEFAULT ''
+);
