@@ -319,7 +319,7 @@ visit completion and checkout task commit in one transaction. Checkout claims
 return the persisted invoice directly, avoiding dependence on browser polling.
 The owner history and printed EMR/Rx use the generated prescription text.
 
-Reception confirms products actually dispensed, can reduce/remove invoice items,
+Reception confirms products actually dispensed, can reduce/remove prescription product invoice items,
 and can add services and retail products at fixed catalog prices. The signed
 prescription stays intact. Pet medicines, existing catalog antiparasitic tablets,
 and prescription diets require a structured order on the same visit; the server
@@ -332,3 +332,15 @@ implemented by this workflow.
 Checks: `node --test server/tests/care-workflow.test.js server/tests/prescriptions.test.js`,
 `npm run test:clinic`, `npm run test:scheduling:postgres` with a disposable local
 database, and `npm run build`.
+
+### Confirmed services, booster schedules and linked follow-ups
+
+Apply the updated `server/database/care-workflow.sql` after `schema.sql` on existing databases. It adds `consultations.performed_services` and `appointments.follow_up_id`, with a unique index allowing one booked/completed visit per request. Existing care plans remain individual requests; no historical appointment links are guessed. `npm run db:init` and the affected endpoints initialize these fields when DDL permission is available.
+
+Veterinarians confirm performed services in SOAP. Confirmed services and mapped administered vaccines are added once to the same transaction as the prescription, finalized visit and checkout task. Reception retains each confirmed service at quantity one; the server rejects removal or duplication at payment. Product dispensing quantities retain the existing prescription controls. Unsupported vaccine types remain recordable with a visible notice that no configured vaccine price was added; no price is invented.
+
+The former SOAP booster helper used today's date and assumed an annual interval for unknown vaccines. SOAP now requires the actual dose number/series length, an explicit interval, and veterinarian approval after reviewing the patient's birth date, species, prior doses and product. It calculates the due date from the administration date. Changing the date, product identity, dose or interval clears the approval. The server validates the calculation and saves the dose numbers, vet and approved interval. This intentionally requires updated clients to supply approval and dose information. Suggested registration protocols still do not generate reminders until administration is certified by a vet.
+
+Each consultation care plan remains visible even after later routine consultations. Owners and reception explicitly select its request when booking; pet/ownership checks and a database constraint prevent cross-pet links and duplicate bookings. Rescheduling retains the link; cancellation/no-show returns the request to Needs booking. Only completion of its linked visit marks it Completed. The linked instructions appear in the veterinarian's SOAP form.
+
+Additional checks: `node --test server/tests/clinical-process.test.js`; the PostgreSQL scheduling suite covers booking races, cancellation/rebooking, charge retention and approved booster dates.

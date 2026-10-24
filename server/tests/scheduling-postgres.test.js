@@ -275,3 +275,50 @@ test('unprescribed medicine and diets cannot be added at checkout; retail guide 
  const paid=await req('assistant','POST','/appointments/rx-retail/billing',{amount:350,paymentMethod:'Cash',cashTendered:350,invoiceItems:[{catalogId:product.id,name:product.name,price:350,qty:1}]});
  assert.equal(paid.status,200,JSON.stringify(paid));
 });
+
+test('confirmed services, vaccine schedule and Rx persist atomically and mandatory charges cannot be removed or doubled',async()=>{
+ await prepareVisit('service-atomic');
+ await query("UPDATE pets SET vaccination_card_id='VACC-PROCESS' WHERE id='p7'");
+ const administered=shiftDate(clinicClock().date,-2);
+ const vaccination={vaccine:'Anti-rabies',brand:'Synthetic',batch:'TEST-ONLY',doseNo:2,doseOf:3,intervalDays:28,scheduleApproved:true,nextDue:shiftDate(administered,28)};
+ const body={...consultation('service-atomic'),date:administered,performedServices:['srv_consult','srv_rabies'],vaccination,prescriptionItems:[{catalogId:'product_multivitamin',quantity:1,instructions:'Synthetic instructions'}]};
+ for(const patch of [{doseNo:0},{doseNo:4},{doseOf:1},{scheduleApproved:false},{intervalDays:0},{nextDue:shiftDate(clinicClock().date,28)}]) assert.equal((await req('vet','POST','/consultations',{...body,vaccination:{...vaccination,...patch}})).status,400);
+ const result=await req('vet','POST','/consultations',body);assert.equal(result.status,200,JSON.stringify(result));
+ assert.deepEqual(result.data.invoiceItems.map(i=>[i.catalogId,i.qty,i.price]),[['srv_consult',1,500],['srv_rabies',1,350],['product_multivitamin',1,250]]);
+ const dose=(await query("SELECT date,next_due,protocol_type,dose_no,dose_of FROM vaccinations WHERE pet_id='p7' AND batch='TEST-ONLY'")).rows[0];
+ assert.equal(dose.dose_no,2);assert.equal(dose.dose_of,3);assert.equal(dose.date,administered);assert.equal(dose.next_due,vaccination.nextDue);assert.match(dose.protocol_type,/28 days/);
+ const claim=await req('assistant','POST','/checkout-inbox/service-atomic/claim',{});assert.equal(claim.status,200);
+ const lines=claim.data.invoiceItems;assert.deepEqual(lines,result.data.invoiceItems);
+ const pay=items=>req('assistant','POST','/appointments/service-atomic/billing',{invoiceItems:items,amount:items.reduce((sum,i)=>sum+i.price*i.qty,0),paymentMethod:'Cash',cashTendered:3000,claimToken:claim.data.claimToken});
+ assert.equal((await pay(lines.slice(1))).status,400);
+ assert.equal((await pay([...lines,lines[0]])).status,400);
+ assert.equal((await query("SELECT billing_status FROM appointments WHERE id='service-atomic'")).rows[0].billing_status,'Unbilled');
+ assert.equal((await pay(lines)).status,200);
+});
+
+test('follow-up links enforce ownership and pet, survive reschedule/cancellation, prevent races and complete explicitly',async()=>{
+ // Existing care-followup belongs to p8/o2; the signed-in owner owns o1.
+ assert.equal((await req('owner','POST','/appointments',booking({petId:'p1',followUpId:'care-followup'}))).status,400);
+ assert.equal((await req('owner','POST','/appointments',booking({petId:'p8',followUpId:'care-followup'}))).status,404);
+ let target=shiftDate(date,1);while(holidayName(target))target=shiftDate(target,1);
+ const b=booking({petId:'p8',service:'checkup',date:target,followUpId:'care-followup'});
+ const results=await Promise.all([req('assistant','POST','/appointments',b),req('assistant','POST','/appointments',{...b,time:'11:00'})]);
+ assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+ const saved=results.find(r=>r.status===200).data.appointment;assert.equal(saved.followUpId,'care-followup');
+ // A linked visit cannot be transferred to a different pet or request.
+ assert.equal((await req('assistant','PUT',`/appointments/${saved.id}`,{...b,petId:'p1'})).status,400);
+ assert.equal((await req('assistant','PUT',`/appointments/${saved.id}`,{...b,followUpId:'unknown'})).status,400);
+ const moved=await req('assistant','PUT',`/appointments/${saved.id}`,{...b,time:'13:00'});assert.equal(moved.status,200,JSON.stringify(moved));assert.equal(moved.data.appointment.followUpId,'care-followup');
+ assert.equal((await req('assistant','PATCH',`/appointments/${saved.id}/status`,{status:'Cancelled',cancelReason:'Synthetic schedule change'})).status,200);
+ const rebook=await req('assistant','POST','/appointments',{...b,time:'13:00'});assert.equal(rebook.status,200,JSON.stringify(rebook));
+ const id=rebook.data.appointment.id;
+ // Exercise normal clinical transition; only this linked encounter completes the request.
+ assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',intakeVitals:{weight:10,temp:38}})).status,200);
+ assert.equal((await req('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation'})).status,200);
+ const note={...consultation(id),petId:'p8'};
+ assert.equal((await req('vet','POST','/consultations',note)).status,200);
+ const state=(await req('assistant','GET','/state')).data.data;
+ assert.equal(state.appts.find(a=>a.id===id).followUpId,'care-followup');assert.equal(state.appts.find(a=>a.id===id).status,'Completed');
+ assert.ok(state.consults.find(c=>c.id==='care-followup')); // survives newer routine consultation
+ assert.equal((await req('assistant','POST','/appointments',{...b,time:'14:00'})).status,409);
+});

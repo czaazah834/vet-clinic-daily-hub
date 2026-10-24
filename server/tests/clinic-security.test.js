@@ -49,6 +49,7 @@ const fakeQuery = async (sql, params = []) => {
   if (sql.startsWith('INSERT INTO appointments')) { const row = { id: params[0], pet_id: params[1], vet_id: params[2], date: params[3], time: params[4], reason: params[5], status: 'Scheduled', amount: params[6] }; db.appts.push(row); return rows([row]); }
   if (sql.startsWith('INSERT INTO consultations')) { const row = Object.fromEntries(['id', 'pet_id', 'vet_id', 'appt_id', 'date', 'symptoms', 'objective', 'diagnosis', 'treatment', 'prescription'].map((k, i) => [k, params[i]])); db.consults.push(row); return rows([row]); }
   if (sql.startsWith('UPDATE consultations SET care_status')) { const row = db.consults.find(c => c.id === params[3]); Object.assign(row, {care_status:params[0], follow_up_date:params[1], follow_up_reason:params[2]}); return rows([row]); }
+  if (sql.startsWith('UPDATE consultations SET performed_services')) { const row = db.consults.find(c => c.id === params[1]); row.performed_services=JSON.parse(params[0]); return rows([row]); }
   if (sql.startsWith('UPDATE consultations SET prescription_items')) { const row = db.consults.find(c => c.id === params[1]); row.prescription_items=JSON.parse(params[0]); return rows([row]); }
   if (sql.startsWith('INSERT INTO vaccinations')) { const row = { id: params[0], pet_id: params[1], card_id: params[2], vaccine: params[3], brand: params[4], batch: params[5], done: true, vet_id: params[9], recorded_by: params[10] }; db.vaccs.push(row); return rows([row]); }
   if (sql.startsWith('INSERT INTO pet_requests')) { const row = { id: params[12], owner_id: params[13], name: params[0], status: 'Pending',revision:0 }; db.requests.push(row); return rows([row]); }
@@ -153,7 +154,7 @@ test('only assigned doctor starts consultation; no direct completion bypass', as
   assert.equal((await request('vet', 'PATCH', '/appointments/a1/status', { status: 'In consultation' })).status, 200);
   assert.equal((await request('vet', 'PATCH', '/appointments/a1/status', { status: 'Completed' })).status, 409);
 });
-const soap = () => ({ id: 'c1', petId: 'p1', apptId: 'a1', vetId: 'spoofed', date: '2026-10-24', symptoms: 'Complaint', objective: 'Exam', diagnosis: 'Assessment', treatment: 'Plan', prescription: '', vaccination: { id: 'v-new', vaccine: 'Anti-rabies', brand: 'Synthetic brand', batch: 'SYNTHETIC', nextDue: '2027-10-24' } });
+const soap = () => ({ id: 'c1', petId: 'p1', apptId: 'a1', vetId: 'spoofed', date: '2026-10-24', symptoms: 'Complaint', objective: 'Exam', diagnosis: 'Assessment', treatment: 'Plan', prescription: '', vaccination: { id: 'v-new', vaccine: 'Anti-rabies', brand: 'Synthetic brand', batch: 'SYNTHETIC', nextDue: '2027-10-24', intervalDays:365, scheduleApproved:true, doseNo:1, doseOf:1 } });
 test('SOAP requires clinical fields and an assigned encounter', async () => {
   db.appts[0].status = 'In consultation';
   assert.equal((await request('vet', 'POST', '/consultations', { ...soap(), diagnosis: '' })).status, 400);
