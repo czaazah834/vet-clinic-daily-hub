@@ -1,3 +1,5 @@
+import { completedVisitRecord } from "../vetQueue.js";
+import { ConsultationDetailModal } from "./ConsultationsPage.jsx";
 import { canBookAppointments } from "../appointmentPermissions.js";
 import { prefill } from "./owner/ui.jsx";
 import { openFollowUps } from "../clinicalWorkflow.js";
@@ -92,6 +94,9 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const confirmingRef = useRef(new Set());
   const [confirming, setConfirming] = useState({});
   const [actionError, setActionError] = useState("");
+  const [startingId, setStartingId] = useState(null);
+  const starting = useRef(false);
+  const [selectedRecord, setSelectedRecord] = useState(null);
 
   const canGoPrevMonth = cur.y > curYearMin || (cur.y === curYearMin && cur.m > curMonthMin);
   const canGoNextMonth = cur.y < curYearMin + 1 || (cur.y === curYearMin + 1 && cur.m < 11);
@@ -161,6 +166,35 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
     if (saved) say && say(`${LABEL[action] || action} updated`);
   };
 
+  const startConsultation = async (visit, pet) => {
+    if (starting.current || !isDoctor) return;
+    setActionError("");
+    if (!pet?.id) return setActionError("Patient record not found. Refresh clinic records before retrying.");
+    starting.current = true;
+    setStartingId(visit.id);
+    try {
+      if (await moveAppt(setDb, visit.id, "In consultation", me, setActionError, visit)) {
+        setActiveSoap({ appt: { ...visit, status: "In consultation" }, pet });
+      }
+    } finally {
+      starting.current = false;
+      setStartingId(null);
+    }
+  };
+
+  const doctorActions = (visit, pet) => {
+    if (!isDoctor) return null;
+    if (visit.status === "Checked-in") return <button className="btn sm gold" disabled={!!startingId} onClick={() => startConsultation(visit, pet)}>{startingId === visit.id ? "Starting…" : "Start consultation"}</button>;
+    if (visit.status === "In consultation") return <button className="btn sm gold" disabled={!!startingId} onClick={() => setActiveSoap({ appt: visit, pet })}>Resume SOAP notes</button>;
+    if (visit.status === "Completed") return <button className="btn sm ghost" onClick={() => {
+      setActionError("");
+      const record = completedVisitRecord(db.records || [], visit);
+      if (!record) return setActionError("Saved notes for this completed visit are unavailable. Refresh clinic records and try again.");
+      setSelectedRecord(record);
+    }}>View saved notes</button>;
+    return null;
+  };
+
   // Quick booking submit saved to PostgreSQL backend
   const handleQuickBook = async (petId, serviceName, reasonText, targetVetId, targetDate, targetTime, followUpId) => {
     if (!canBook) throw new Error("Only owners and reception can book visits.");
@@ -220,6 +254,8 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 
   return (
     <div className="clinic-calendar">
+      {startingId && <p role="status">Starting consultation… Please wait for confirmation.</p>}
+      {selectedRecord && <ConsultationDetailModal record={selectedRecord} db={db} setDb={setDb} me={me} onClose={() => setSelectedRecord(null)} />}
       {actionError && <p className="err" role="alert">{actionError}</p>}
       {/* Top Header Card */}
       <div className="card cc-toolbar">
@@ -587,29 +623,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                     </button>
                                   )}
 
-                                  {/* Veterinarian Actions */}
-                                  {me.role === "vet" && apptMatch.status === "Checked-in" && (
-                                    <button
-                                      className="btn sm gold"
-                                      onClick={async () => {
-                                        if (!await moveAppt(setDb, apptMatch.appt.id, "In consultation", me, say, apptMatch.appt)) return;
-                                        setActiveSoap({ appt: apptMatch.appt, pet: apptMatch.petObj });
-                                      }}
-                                      style={{ fontSize: "12px", padding: "4px 8px" }}
-                                    >
-                                      Consult
-                                    </button>
-                                  )}
-
-                                  {isDoctor && apptMatch.status === "In consultation" && (
-                                    <button
-                                      className="btn sm gold"
-                                      onClick={() => setActiveSoap({ appt: apptMatch.appt, pet: apptMatch.petObj })}
-                                      style={{ fontSize: "12px", padding: "4px 8px" }}
-                                    >
-                                      SOAP Notes
-                                    </button>
-                                  )}
+                                  {doctorActions(apptMatch.appt, apptMatch.petObj)}
                                 </div>
                               </div>
                             </td>
@@ -735,14 +749,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                       {me.role === "assistant" && ["Scheduled", "Confirmed"].includes(e.status) && (
                         <button className="btn sm gold" onClick={() => setCheckInAppt(e.appt)}>Check in</button>
                       )}
-                      {isDoctor && e.status === "Checked-in" && (
-                        <button className="btn sm gold" onClick={async () => {
-                          if (!await moveAppt(setDb, e.appt.id, "In consultation", me, say, e.appt)) return;
-                          setActiveSoap({ appt: e.appt, pet: e.petObj });
-                        }}>
-                          Start Consultation
-                        </button>
-                      )}
+                      {doctorActions(e.appt, e.petObj)}
                     </div>
                   </div>
                 );
@@ -820,7 +827,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
             return (
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", padding: "8px 14px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12.5px", color: "#475569" }}>
-                  <span><b>Tip:</b> Click any appointment row to open the pet&rsquo;s official Digital Vaccination Card and manage visit actions.</span>
+                  <span><b>Tip:</b> Click any appointment row to open the pet&rsquo;s official Digital Vaccination Card and review visit details.</span>
                   <span style={{ fontWeight: 600 }}>{filtered.length} appointment(s)</span>
                 </div>
 
@@ -835,6 +842,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                         <th style={{ padding: "10px 10px" }}>Service / Reason</th>
                         <th style={{ padding: "10px 10px" }}>Status</th>
                         <th style={{ padding: "10px 10px" }}>Billing</th>
+                        {isDoctor && <th style={{ padding: "10px 10px" }}>Patient care</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -842,7 +850,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                         const pet = db.pets.find(p => p.id === a.petId) || {};
                         const owner = db.owners.find(o => o.id === pet.ownerId || o.userId === pet.ownerId) || {};
                         const isPaid = a.billingStatus === "Paid";
-                        const vetName = (doctors.find(v => v[0] === a.vetId) || [])[1] || "Dr. Cruz";
+                        const vetName = (doctors.find(v => v[0] === a.vetId) || [])[1] || "Veterinarian not recorded";
 
                         return (
                           <tr
@@ -912,7 +920,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                   background: "#fef3c7",
                                   color: "#92400e"
                                 }}>
-                                  Ready for Billing (₱{a.amount || 600})
+                                  Ready for Billing{Number.isFinite(a.amount) ? ` (₱${a.amount})` : " · Amount not recorded"}
                                 </span>
                               ) : (
                                 <span style={{ color: "#94a3b8", fontSize: "12px" }}>
@@ -920,6 +928,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                 </span>
                               )}
                             </td>
+                            {isDoctor && <td style={{ padding: "11px 10px" }} onClick={e => e.stopPropagation()}>{doctorActions(a, pet)}</td>}
                           </tr>
                         );
                       })}

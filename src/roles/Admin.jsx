@@ -1,7 +1,7 @@
 import AdminStaff, { useAdminStaff, AdminAudit } from "./AdminStaff.jsx";
 import ReminderStatus from "./ReminderStatus.jsx";
 import { currentVaccinationDue } from "../vaccinationDue.js";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Send,
   Copy,
@@ -46,14 +46,16 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
   const [err, setErr] = useState("");
   const [success, setSuccess] = useState(null);
   const [copied, setCopied] = useState(false);
+  const inviting = useRef(false);
 
   const submit = async (e) => {
     e.preventDefault();
     setErr("");
-    if (loading) return;
+    if (inviting.current) return;
     if (!f.name.trim()) return setErr("Staff full name is required");
     if (!f.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) return setErr("Valid staff email required");
 
+    inviting.current = true;
     setLoading(true);
     try {
       const res = await auth.inviteStaff({
@@ -64,6 +66,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
 
       if (res.status === "ok") {
         setSuccess(res);
+        onCreated?.();
         setDb(p => ({
           ...p,
           log: addLog(p, me, `Administrator ${me.name} created staff invitation for ${f.name} (${f.role}).`)
@@ -74,6 +77,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
     } catch (err) {
       setErr(err.message || "Failed to connect to clinic server.");
     } finally {
+      inviting.current = false;
       setLoading(false);
     }
   };
@@ -88,18 +92,18 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
   const roleName = f.role === "vet" ? "Veterinarian" : "Vet Assistant";
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ width: "min(540px, 100%)", borderRadius: "18px", padding: "26px" }}>
+    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !loading && onClose()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="staff-invite-title" style={{ width: "min(540px, 100%)", borderRadius: "18px", padding: "26px", overflowWrap: "anywhere" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
           <div>
-            <h3 style={{ margin: "0 0 4px", fontSize: "19px", color: "var(--navy, #0f172a)", fontWeight: 700 }}>
+            <h3 id="staff-invite-title" style={{ margin: "0 0 4px", fontSize: "19px", color: "var(--navy, #0f172a)", fontWeight: 700 }}>
               Invite Staff Member
             </h3>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
               Invite staff to set their password and verify their mobile number
             </p>
           </div>
-          <button className="btn ghost sm" onClick={onClose} style={{ padding: "6px" }} aria-label="Close">
+          <button className="btn ghost sm" onClick={onClose} style={{ padding: "6px" }} aria-label="Close" disabled={loading}>
             <X size={18} />
           </button>
         </div>
@@ -114,7 +118,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
             </h4>
             <p style={{ margin: "0 0 18px", color: "#475569", fontSize: "13px", lineHeight: 1.5 }}>
               {success.delivery === "accepted" ? <>The email provider accepted the invitation for <b>{f.email}</b>.</> : <>Email delivery is unconfirmed. Use the secure activation link below and check the configured email service.</>}<br />
-              The activation link lets staff set their password and verify their phone number via <b>TextBee SMS OTP</b>.
+              The activation link lets staff set their password and verify their phone number by SMS.
             </p>
 
             <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "20px", textAlign: "left" }}>
@@ -126,7 +130,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
                   type="text"
                   readOnly
                   value={success.inviteLink}
-                  style={{ flex: 1, fontSize: "12px", padding: "8px 10px", background: "#ffffff", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+                  style={{ flex: 1, minWidth: 0, fontSize: "12px", padding: "8px 10px", background: "#ffffff", borderRadius: "8px", border: "1px solid #cbd5e1" }}
                 />
                 <button
                   type="button"
@@ -147,24 +151,26 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
           </div>
         ) : (
           <form onSubmit={submit}>
+            <fieldset disabled={loading} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
             {err && (
-              <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: "10px", padding: "10px 14px", fontSize: "13px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+              <div role="alert" style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: "10px", padding: "10px 14px", fontSize: "13px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
                 <AlertCircle size={16} style={{ flexShrink: 0 }} />
                 <span>{err}</span>
               </div>
             )}
 
             <div className="fld">
-              <label>Staff Role<i> *</i></label>
-              <select value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>
+              <label htmlFor="staff-invite-role">Staff Role<i> *</i></label>
+              <select id="staff-invite-role" value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>
                 <option value="assistant">Vet Assistant (Front Desk &amp; Operations)</option>
                 <option value="vet">Veterinarian (Clinical Queue &amp; EMR)</option>
               </select>
             </div>
 
             <div className="fld">
-              <label>Full Name<i> *</i></label>
+              <label htmlFor="staff-invite-name">Full Name<i> *</i></label>
               <input
+                id="staff-invite-name"
                 type="text"
                 placeholder={f.role === "vet" ? "e.g. Dr. Roberto Santos" : "e.g. Liza Ramos"}
                 value={f.name}
@@ -174,8 +180,9 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
             </div>
 
             <div className="fld">
-              <label>Staff Email Address<i> *</i></label>
+              <label htmlFor="staff-invite-email">Staff Email Address<i> *</i></label>
               <input
+                id="staff-invite-email"
                 type="email"
                 placeholder="staff@pawcare.com"
                 value={f.email}
@@ -188,10 +195,10 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
             </div>
 
             <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px 14px", fontSize: "12px", color: "#1e40af", marginTop: "14px", marginBottom: "18px", lineHeight: 1.5 }}>
-              <b>Security Protocol:</b> Only Pet Owners can self-register online. Staff logins are strictly authorized by you (the Administrator). The invited staff member will set their own password and verify their phone number via TextBee SMS OTP upon clicking the invitation link.
+              <b>Security Protocol:</b> Only Pet Owners can self-register online. Staff logins are strictly authorized by you (the Administrator). The invited staff member will set their own password and verify their phone number by SMS when opening the invitation link.
             </div>
 
-            <div className="row end" style={{ gap: "10px" }}>
+            <div className="row end" style={{ gap: "10px", flexWrap: "wrap" }}>
               <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
               <button
                 type="submit"
@@ -203,6 +210,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
                 <span>{loading ? "Sending Invitation..." : `Send ${roleName} Invitation`}</span>
               </button>
             </div>
+            </fieldset>
           </form>
         )}
       </div>
@@ -264,7 +272,7 @@ function Dash({ db, setDb, me, go, say }) {
 
       <section className="card" style={{marginTop:16}}>
         <h3>Needs attention</h3><p>Review exceptions and direct the responsible team to the next action.</p>
-        {staff.error && <p role="alert">{staff.error} <button className="btn ghost sm" onClick={staff.load}>Retry staff status</button></p>}
+        {staff.error && <p role="alert">{staff.error} <button className="btn ghost sm" onClick={()=>staff.load()}>Retry staff status</button></p>}
         <div style={{display:'grid',gap:12}}>
           <div><b>{staff.data ? locked.length : '—'} active staff account(s) locked</b> · Review the reason and unlock access if appropriate. <button className="btn ghost sm" onClick={()=>go('users')}>Review staff access</button></div>
           <div><b>{staff.data ? reassign.length : '—'} upcoming visit(s) assigned to inactive doctors</b> · Ask reception to confirm reassignment with the client. <button className="btn ghost sm" onClick={()=>go('cal')}>Review calendar</button></div>
@@ -340,10 +348,7 @@ function Dash({ db, setDb, me, go, say }) {
           setDb={setDb}
           me={me}
           onClose={() => setShowStaffModal(false)}
-          onCreated={(u) => {
-            setShowStaffModal(false);
-            say(`Staff account for ${u.name} (${u.role}) created successfully!`);
-          }}
+          onCreated={() => staff.load()}
         />
       )}
     </>
@@ -352,7 +357,7 @@ function Dash({ db, setDb, me, go, say }) {
 
 function StaffPage(props) {
   const [inviting,setInviting] = useState(false),[revision,setRevision]=useState(0);
-  return <><AdminStaff key={revision} onInvite={()=>setInviting(true)} />{inviting && <StaffModal {...props} onClose={()=>{setInviting(false);setRevision(r=>r+1);}} />}</>;
+  return <><AdminStaff key={revision} onInvite={()=>setInviting(true)} />{inviting && <StaffModal {...props} onCreated={()=>setRevision(r=>r+1)} onClose={()=>{setInviting(false);setRevision(r=>r+1);}} />}</>;
 }
 
 export const admin = {
