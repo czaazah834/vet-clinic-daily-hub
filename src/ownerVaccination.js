@@ -18,7 +18,7 @@ export function vaccinationAppointment(record, appointments, date = today()) {
   return appointments.filter(a => a.petId === record.petId && a.date >= date &&
     ['Scheduled', 'Confirmed', 'Checked-in', 'In consultation'].includes(a.status) &&
     (!a.service || ['vaccination', 'deworming'].includes(a.service)) &&
-    vaccineFamily((a.reason || '').replace(/^(vaccination|deworming)\s*[–-]\s*/i, '')) === vaccineFamily(record.vaccine))
+    vaccineFamily((a.reason || '').replace(/^(vaccination|deworming)\s*[–:-]\s*/i, '')) === vaccineFamily(record.vaccine))
     .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))[0] || null;
 }
 

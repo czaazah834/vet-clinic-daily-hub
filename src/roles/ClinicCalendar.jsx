@@ -1010,11 +1010,11 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
   const TODAY = bookingToday();
   const [petId, setPetId] = useState(slot.petId || db.pets[0]?.id || "");
-  const [vetId, setVetId] = useState(slot.vetId || "v1");
-  const [date, setDate] = useState(slot.date && slot.date >= TODAY ? slot.date : TODAY);
+  const [vetId, setVetId] = useState(slot.vetId || doctors[0]?.[0] || "");
+  const [date, setDate] = useState(slot.fromVaccineCard ? slot.date : slot.date && slot.date >= TODAY ? slot.date : TODAY);
   const [time, setTime] = useState(slot.time || "09:00");
-  const [service, setService] = useState("checkup");
-  const [reason, setReason] = useState("");
+  const [service, setService] = useState(slot.service || "checkup");
+  const [reason, setReason] = useState(slot.reason || "");
   const [followUpId, setFollowUpId] = useState(slot.followUpId || "");
   const [dateErr, setDateErr] = useState("");
 
@@ -1072,6 +1072,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
         </div>
 
         <form onSubmit={handleSubmit}>
+          {slot.vaccineDueDate && <p className="ow-note">Approved booster due: {slot.vaccineDueDate}. Choose an available clinic visit; this does not change the approved due date.</p>}
           <div style={{ display: "grid", gap: "12px" }}>
             <div className="fld">
               <label>Select Patient (Pet &amp; Owner)</label>

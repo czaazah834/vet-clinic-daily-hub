@@ -1,14 +1,14 @@
 import { useRef, useState } from "react";
-import { TODAY, scope, uid, addLog, dueState, ICON } from "../../lib.jsx";
+import { TODAY, scope, uid, addLog, ICON } from "../../lib.jsx";
 import { useLive, Field, Modal, petAge, fmt12, onlyDecimal, Icon, PhotoUpload } from "./ui.jsx";
 import {
   computeAgeDetails,
-  getPreventiveSchedule,
-  getNextMilestone,
   computeWeightBracket,
   normalizeSpecies,
   formatSpeciesLabel
 } from "../../preventiveSchedule.js";
+import { currentVaccinationDue, vaccinationStatus } from "../../ownerVaccination.js";
+import { today as clinicToday } from "../../booking.js";
 import { api } from "../../api.js";
 
 /* ---------- Clinical Species Classification (VCMS Protocols v2.0) ---------- */
@@ -538,11 +538,12 @@ export function RequestList({ db, setDb, me, say, onEdit }) {
 /* ---------- Full profile of an approved pet ---------- */
 export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
   const V = scope(db, me, "vacc").filter(v => v.petId === p.id), A = scope(db, me, "appts").filter(a => a.petId === p.id);
-  const over = V.filter(v => !v.done && v.nextDue && dueState(v.nextDue) === "Overdue").length;
-  const soon = V.filter(v => !v.done && v.nextDue && dueState(v.nextDue) === "Due soon").length;
-  const next = A.filter(a => ["Scheduled", "Confirmed", "Checked-in"].includes(a.status) && a.date >= TODAY).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
+  const current = currentVaccinationDue(V);
+  const over = current.filter(v => vaccinationStatus(v, current) === "Overdue").length;
+  const soon = current.filter(v => vaccinationStatus(v, current) === "Due soon").length;
+  const pending = V.filter(v => !v.done || !v.vetId).length;
+  const next = A.filter(a => ["Scheduled", "Confirmed", "Checked-in", "In consultation"].includes(a.status) && a.date >= clinicToday()).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
   
-  const normSpecies = normalizeSpecies(p.species);
   const petAgeDetails = p.birth ? computeAgeDetails(p.birth) : null;
   const rows = [
     ["Species", formatSpeciesLabel(p.species)],
@@ -558,14 +559,6 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
     p.dentalOcclusion ? ["Dental Status", p.dentalOcclusion] : null
   ].filter(Boolean).filter(([, x]) => x);
 
-  const petSchedule = p.birth ? getPreventiveSchedule(p.birth, p.species, V) : [];
-  const nextMilestone = p.birth ? getNextMilestone(p.birth, p.species, V) : null;
-  const isAdultPet = petAgeDetails?.isAdult;
-  const [showArchived, setShowArchived] = useState(false);
-  const displaySchedule = (isAdultPet && !showArchived)
-    ? petSchedule.filter(s => (s.ageWeeks && s.ageWeeks >= 52) || s.status !== "Completed" || s.care.includes("Adult") || s.care.includes("Booster"))
-    : petSchedule;
-
   return (
     <Modal title={p.name} onClose={onClose}>
       <dl className="op-dl">{rows.map(([k, x]) => <div key={k}><dt>{k}</dt><dd>{x}</dd></div>)}</dl>
@@ -575,7 +568,7 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
       
       <div className="op-sec">
         <h4>Health at a glance</h4>
-        <p className="op-line"><Icon n="syringe" size={16} /> {V.length ? <>{V.length} vaccine record{V.length > 1 ? "s" : ""}{over ? <span className="op-chip no">{over} overdue</span> : soon ? <span className="op-chip wait">{soon} due soon</span> : <span className="op-chip ok">Up to date</span>}</> : "No vaccine records yet"}</p>
+        <p className="op-line"><Icon n="syringe" size={16} /> {V.length ? <>{V.length} vaccine record{V.length > 1 ? "s" : ""}{over ? <span className="op-chip no">{over} overdue</span> : soon ? <span className="op-chip wait">{soon} due soon</span> : current.length ? <span className="op-chip ok">Approved boosters on track</span> : <span className="op-chip">No approved booster date</span>}{pending > 0 && <span className="op-chip wait">{pending} awaiting vet review</span>}</> : "No vaccine records yet"}</p>
         <p className="op-line"><Icon n="calendar" size={16} /> {next ? `Next visit: ${next.date} at ${fmt12(next.time)} (${next.status})` : "No visit booked"}</p>
       </div>
 

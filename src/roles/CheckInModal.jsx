@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Thermometer,
   Scale,
@@ -18,9 +18,10 @@ import {
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
-import { TODAY, addLog, ICON, petName, ownerName, I } from "../lib.jsx";
+import { addLog, ICON, petName, ownerName, I } from "../lib.jsx";
 import { assessWeight, assessTemp, SPECIES_DEFAULTS } from "./vitals.js";
 import { computeWeightBracket, normalizeSpecies } from "../preventiveSchedule.js";
+import { today, nowHM } from "../booking.js";
 import { api } from "../api.js";
 
 export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn }) {
@@ -31,12 +32,15 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const speciesConfig = SPECIES_DEFAULTS[species] || SPECIES_DEFAULTS.Other;
   const lastWeight = pet.weight || (pet.weights && pet.weights.length ? pet.weights[pet.weights.length - 1].kg : null);
 
-  const [weight, setWeight] = useState("");
-  const [temp, setTemp] = useState("");
-  const [triage, setTriage] = useState("Routine");
+  const TODAY = today();
+  const saved = appt?.status === "Checked-in" ? appt.intakeVitals : null;
+  const inFlight = useRef(false);
+  const [weight, setWeight] = useState(saved?.weight ?? "");
+  const [temp, setTemp] = useState(saved?.temp ?? "");
+  const [triage, setTriage] = useState(saved?.triageLevel || "Routine");
   const [serviceReason, setServiceReason] = useState(appt?.reason || "Routine Consultation & Exam");
-  const [notes, setNotes] = useState("");
-  const [fasted, setFasted] = useState(false);
+  const [notes, setNotes] = useState(saved?.notes || "");
+  const [fasted, setFasted] = useState(saved?.fasted ?? false);
   const [saving, setSaving] = useState(false);
   const [valErr, setValErr] = useState("");
 
@@ -48,13 +52,15 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const tempAnalysis = assessTemp(temp, species);
 
   const handleStepWeight = (delta) => {
-    const cur = parseFloat(weight) || 5.0;
-    const next = Math.max(0.1, +(cur + delta).toFixed(1));
+    const cur = parseFloat(weight);
+    if (!Number.isFinite(cur)) return;
+    const next = Math.max(0.05, +(cur + delta).toFixed(1));
     setWeight(String(next));
   };
 
   const handleStepTemp = (delta) => {
-    const cur = parseFloat(temp) || 38.5;
+    const cur = parseFloat(temp);
+    if (!Number.isFinite(cur)) return;
     const next = +(cur + delta).toFixed(1);
     setTemp(String(next));
   };
@@ -64,7 +70,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
   const submit = async (e) => {
     e.preventDefault();
-    if (saving) return;
+    if (inFlight.current) return;
     const w = parseFloat(weight);
     const t = parseFloat(temp);
 
@@ -78,6 +84,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
     }
     setValErr("");
 
+    const arrivalDate = today(), arrivalTime = nowHM();
     const intakeVitals = {
       weight: !isNaN(w) ? w : null,
       temp: !isNaN(t) ? t : null,
@@ -87,12 +94,11 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       triageLevel: triage,
       notes: (notes || "").trim(),
       fasted,
-      checkedInAt: new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }),
+      checkedInAt: arrivalTime,
       checkedInBy: me?.name || "Assistant",
     };
 
-    const isEarlyArrival = appt.date !== TODAY;
-    const arrivalTime = new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" });
+    const isEarlyArrival = appt.date !== arrivalDate;
 
     const patchPayload = {
       status: "Checked-in",
@@ -102,16 +108,18 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       actorRole: me?.role || "assistant"
     };
     if (isEarlyArrival) {
-      patchPayload.date = TODAY;
+      patchPayload.date = arrivalDate;
       patchPayload.time = arrivalTime;
     }
 
+    inFlight.current = true;
     setSaving(true);
     // 1. Persist directly to PostgreSQL Neon DB
     try {
       await api.patch(`/api/appointments/${appt.id}/status`, patchPayload);
     } catch (err) {
       setValErr(err.message);
+      inFlight.current = false;
       setSaving(false);
       return;
     }
@@ -122,7 +130,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
         a.id === appt.id
           ? {
               ...a,
-              date: isEarlyArrival ? TODAY : a.date,
+              date: isEarlyArrival ? arrivalDate : a.date,
               time: isEarlyArrival ? arrivalTime : a.time,
               status: "Checked-in",
               reason: serviceReason.trim() || a.reason,
@@ -139,7 +147,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
             ? {
                 ...x,
                 weight: w,
-                weights: [...(x.weights || []).filter(item => item.date !== TODAY), { date: TODAY, kg: w, by: "frontdesk_checkin" }],
+                weights: [...(x.weights || []).filter(item => item.date !== arrivalDate), { date: arrivalDate, kg: w, by: "frontdesk_checkin" }],
               }
             : x
         );
@@ -165,6 +173,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       };
     });
 
+    inFlight.current = false;
     setSaving(false);
     onCheckedIn && onCheckedIn(intakeVitals);
   };
@@ -200,7 +209,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
           <div style={{ background: "#eff6ff", border: "1.5px solid #93c5fd", padding: "10px 14px", borderRadius: "10px", marginBottom: "14px", fontSize: "12.5px", color: "#1e40af", display: "flex", alignItems: "center", gap: "10px" }}>
             <Clock size={18} color="#2563eb" />
             <div>
-              <b>Early Walk-in Arrival:</b> Patient was booked for <b>{appt.date}</b>. Checking in now will move their visit to <b>Today ({TODAY})</b> and queue them directly for the doctor.
+              <b>Walk-in Arrival:</b> Patient was booked for <b>{appt.date}</b>. Checking in now will move their visit to <b>Today ({TODAY})</b> and queue them directly for the doctor.
             </div>
           </div>
         )}
@@ -220,20 +229,22 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
               <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                 <div style={{ flex: "1" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
                     <input
                       type="number"
-                      step="0.1"
-                      min="0.1"
+                      step="0.01"
+                      min="0.05"
+                      max="120"
+                      aria-label="Measured weight (kg)"
                       value={weight}
                       onChange={e => setWeight(e.target.value)}
                       style={{ fontSize: "18px", fontWeight: "700", padding: "8px 12px", width: "120px" }}
                     />
                     <span style={{ fontWeight: "700", color: "#475569" }}>kg</span>
-                    <button type="button" className="btn ghost sm" onClick={() => handleStepWeight(-0.5)}>-0.5</button>
-                    <button type="button" className="btn ghost sm" onClick={() => handleStepWeight(-0.1)}>-0.1</button>
-                    <button type="button" className="btn ghost sm" onClick={() => handleStepWeight(+0.1)}>+0.1</button>
-                    <button type="button" className="btn ghost sm" onClick={() => handleStepWeight(+0.5)}>+0.5</button>
+                    <button type="button" className="btn ghost sm" disabled={!Number.isFinite(parseFloat(weight))} onClick={() => handleStepWeight(-0.5)}>-0.5</button>
+                    <button type="button" className="btn ghost sm" disabled={!Number.isFinite(parseFloat(weight))} onClick={() => handleStepWeight(-0.1)}>-0.1</button>
+                    <button type="button" className="btn ghost sm" disabled={!Number.isFinite(parseFloat(weight))} onClick={() => handleStepWeight(+0.1)}>+0.1</button>
+                    <button type="button" className="btn ghost sm" disabled={!Number.isFinite(parseFloat(weight))} onClick={() => handleStepWeight(+0.5)}>+0.5</button>
                   </div>
                 </div>
 
@@ -283,7 +294,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                   </div>
 
                   {clinicalBracket.heartwormAlert && (
-                    <div style={{ background: "#fef2f2", border: "1px solid #f87171", color: "#991b1b", padding: "6px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div style={{ background: "#fef2f2", border: "1px solid #f87171", color: "#991b1b", padding: "6px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, marginBottom: "8px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
                       <ShieldAlert size={14} />
                       <span>{clinicalBracket.heartwormAlert}</span>
                     </div>
@@ -312,13 +323,13 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
               {/* Species Toxicity Interceptors for Front Desk */}
               {normSpecies === "Lagomorph" && (
-                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
                   <ShieldAlert size={15} />
                   <span><b>Clinical Toxicology Interceptor:</b> Strict ban on Fipronil (Frontline) due to fatal rabbit neurotoxicity.</span>
                 </div>
               )}
               {normSpecies === "Feline" && (
-                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
                   <ShieldAlert size={15} />
                   <span><b>Clinical Toxicology Interceptor:</b> Completely restrict formulas containing Permethrin on felines.</span>
                 </div>
@@ -336,19 +347,20 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
               <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                 <div style={{ flex: "1" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
                     <input
                       type="number"
                       step="0.1"
-                      min="35.0"
-                      max="44.0"
+                      min="33"
+                      max="45"
+                      aria-label="Measured temperature (°C)"
                       value={temp}
                       onChange={e => setTemp(e.target.value)}
                       style={{ fontSize: "18px", fontWeight: "700", padding: "8px 12px", width: "120px" }}
                     />
                     <span style={{ fontWeight: "700", color: "#475569" }}>°C</span>
-                    <button type="button" className="btn ghost sm" onClick={() => handleStepTemp(-0.2)}>-0.2</button>
-                    <button type="button" className="btn ghost sm" onClick={() => handleStepTemp(+0.2)}>+0.2</button>
+                    <button type="button" className="btn ghost sm" disabled={!Number.isFinite(parseFloat(temp))} onClick={() => handleStepTemp(-0.2)}>-0.2</button>
+                    <button type="button" className="btn ghost sm" disabled={!Number.isFinite(parseFloat(temp))} onClick={() => handleStepTemp(+0.2)}>+0.2</button>
                     <button
                       type="button"
                       className="btn ghost sm"
@@ -400,7 +412,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       <span>Subnormal Temperature / Hypothermia Warning ({temp}°C). Provide thermal blanket.</span>
                     </div>
                   ) : (
-                    <div style={{ color: "#16a34a", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div style={{ color: "#16a34a", fontWeight: "600", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
                       <CheckCircle2 size={16} color="#16a34a" />
                       <span>{tempAnalysis.advice}</span>
                     </div>

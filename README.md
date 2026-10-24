@@ -395,3 +395,19 @@ retain the recorded paid amount and ask reception for clarification. The page
 shows visit references, not newly issued receipt numbers or online payment links.
 
 Checks: `node --test tests/owner-billing.test.js` and `npm run build`.
+
+### Owner summaries and assistant intake continuity
+
+Pet profile summaries use the same latest certified booster dates as the card
+and reminders. Registration suggestions remain awaiting vet review. An empty
+allergy list means no allergies recorded, and weight history identifies its
+recorded source without assuming verification. Appointment details follow current
+clinic state; failed cancellations retain the reason and allow retry.
+
+Reception uses Philippine clinic dates and times for its queue, walk-ins and
+arrival measurements. Editing an already checked-in patient's intake retains
+saved measurements, triage, fasting and notes. New arrivals require actual
+measurements; adjustment buttons cannot supply invented starting values.
+Booster actions prefill the exact patient, service, vaccine and approved due date
+in the clinic calendar, with available times still selected by staff. Only an
+active appointment for the same vaccine family marks a recall as booked.

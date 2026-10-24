@@ -34,6 +34,8 @@ test('appointment matching rejects unrelated, other-pet, cancelled, completed an
   assert.deepEqual(vaccinationAppointment(dose, [later, visit], today), visit);
   const kennel={...dose,vaccine:'Kennel cough'};
   assert.ok(vaccinationAppointment(kennel,[{...visit,reason:'Vaccination – Kennel cough'}],today));
+  assert.ok(vaccinationAppointment(kennel,[{...visit,reason:'Vaccination: Kennel cough'}],today));
+  assert.equal(vaccinationAppointment(kennel,[{...visit,reason:'Vaccination: Feline 4-in-1'}],today), null);
 });
 test('booking carries the exact pet and approved due date, but moves overdue requests into the booking window', () => {
   const start = vaccinationBooking({ ...dose, nextDue:'2026-09-20' }, today, '2027-01-22');
