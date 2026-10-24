@@ -36,6 +36,7 @@ function Dash({ db, setDb, me, go, say }) {
           <p>Here’s how your pets are doing.</p>
         </div>
         <div className="ow-hero-acts">
+          <button className="btn glass" onClick={() => go("prices")}>View services & prices</button>
           {pets.length > 0 && <button className="btn gold" onClick={() => book()}><Icon n="calendar" size={16} /> Book a visit</button>}
           <button className={pets.length ? "btn glass" : "btn gold"} disabled={!!blocked} title={blocked} onClick={() => setModal({ form: true })}><Icon n="plus" size={16} /> Add my pet</button>
         </div>

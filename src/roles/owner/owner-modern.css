@@ -414,3 +414,29 @@
   .shell.th-owner{background:#fff}
   .shell.th-owner .content{padding:0;max-width:none}
 }
+
+/* Owner catalog uses the same fixed prices as checkout. */
+.shell.th-owner .ow-prices-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.shell.th-owner .ow-prices-heading p{margin-top:6px}
+.shell.th-owner .ow-prices .ow-note{margin:18px 0;padding:14px 18px;background:var(--ow-soft);line-height:1.6}
+.shell.th-owner .ow-price-types{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.shell.th-owner .ow-price-filters{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px}
+.shell.th-owner .ow-price-filters input,.shell.th-owner .ow-price-filters select{width:100%;min-width:0}
+.shell.th-owner .ow-price-count{margin:16px 0;color:#526487;font-size:13px}
+.shell.th-owner .ow-price-group{margin-top:22px}
+.shell.th-owner .ow-price-group h4{margin:0 0 10px;color:var(--navy);font-size:16px}
+.shell.th-owner .ow-price-list{list-style:none;margin:0;padding:0;border:1px solid var(--ow-line);border-radius:16px;overflow:hidden}
+.shell.th-owner .ow-price-list li{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px}
+.shell.th-owner .ow-price-list li+li{border-top:1px solid var(--ow-line)}
+.shell.th-owner .ow-price-detail{min-width:0;overflow-wrap:anywhere}
+.shell.th-owner .ow-price-detail h5{font-size:14px;margin:0 0 5px;line-height:1.5}
+.shell.th-owner .ow-price-detail p{font-size:13px;color:#526487;margin:0;line-height:1.6}
+.shell.th-owner .ow-price-rx{display:inline-block;margin-top:8px;color:#1e40af;background:var(--ow-soft);padding:4px 9px;border-radius:8px;font-size:12px}
+.shell.th-owner .ow-price-amount{flex-shrink:0;text-align:right}
+.shell.th-owner .ow-price-amount strong{display:block;color:var(--navy);font-size:18px;white-space:nowrap}
+.shell.th-owner .ow-price-amount small{display:block;margin-top:4px;font-size:12px;color:#526487}
+@media(max-width:600px){
+  .shell.th-owner .ow-price-filters{grid-template-columns:minmax(0,1fr)}
+  .shell.th-owner .ow-price-list li{align-items:flex-start;flex-direction:column;gap:12px;padding:14px}
+  .shell.th-owner .ow-price-amount{text-align:left}
+}
