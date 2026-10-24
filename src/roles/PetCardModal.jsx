@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { PawPrint, Printer, RotateCw, Calendar, CheckCircle2, Clock, CreditCard } from "lucide-react";
 import { Badge, VETS, TODAY, ICON, I, moveAppt, uid } from "../lib.jsx";
 import { Avatar, Icon, toSquare } from "./owner/ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails } from "../preventiveSchedule.js";
@@ -97,7 +98,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
         {/* Top Control Bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "22px" }}>🐾</span>
+            <PawPrint size={22} color="var(--navy)" />
             <h3 style={{ margin: 0, color: "var(--navy)", fontSize: "1.25rem" }}>
               {p.name}&rsquo;s Health Passport &amp; Digital Vaccination Card
             </h3>
@@ -113,15 +114,18 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               onClick={() => setIsFlipped(!isFlipped)}
               style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}
             >
-              🔄 {isFlipped ? "Flip to Page 1 (Bio)" : "Flip to Page 2 (Immunization Log)"}
+              <RotateCw size={14} />
+              <span>{isFlipped ? "Flip to Page 1 (Bio)" : "Flip to Page 2 (Immunization Log)"}</span>
             </button>
             <button
               type="button"
               className="btn sm ghost"
               onClick={() => window.print()}
               title="Print official document"
+              style={{ display: "flex", alignItems: "center", gap: "6px" }}
             >
-              🖨️ Print Card
+              <Printer size={14} />
+              <span>Print Card</span>
             </button>
             <button
               type="button"
@@ -150,13 +154,13 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
           }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "13.5px", fontWeight: 700, color: "var(--navy)" }}>
-                  📅 Visit: {activeAppt.date} at {activeAppt.time}
+                <span style={{ fontSize: "13.5px", fontWeight: 700, color: "var(--navy)", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <Calendar size={15} /> Visit: {activeAppt.date} at {activeAppt.time}
                 </span>
                 <Badge v={activeAppt.status} />
                 {activeAppt.billingStatus === "Paid" ? (
                   <span style={{ background: "#dcfce7", color: "#166534", fontSize: "11.5px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px" }}>
-                    ✓ Paid (₱{activeAppt.amount})
+                    Paid (₱{activeAppt.amount})
                   </span>
                 ) : activeAppt.status === "Completed" ? (
                   <span style={{ background: "#fef3c7", color: "#92400e", fontSize: "11.5px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px" }}>
@@ -244,7 +248,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                       style={{ fontWeight: 700 }}
                       title="Client showed up early today! Move visit to today and check in"
                     >
-                      ⚡ Arrived Early Today? Check in Now
+                      Arrived Early Today? Check in Now
                     </button>
                   )}
                 </>
@@ -321,7 +325,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                 }}
                 style={{ fontWeight: 700 }}
               >
-                ⚡ Check-in as Today&rsquo;s Walk-in
+                Check in as Today&rsquo;s Walk-in
               </button>
             </div>
           </div>
@@ -419,7 +423,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                     )}
                   </div>
                   <div style={{ marginTop: 6, fontSize: "10.5px", color: "#059669", fontWeight: 800, textTransform: "uppercase" }}>
-                    ✓ Patient Verified
+                    Patient Verified
                   </div>
                 </div>
 
@@ -533,7 +537,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                                   color: "#92400e",
                                   border: "1px solid #fde68a"
                                 }} title="External clinic record; used as baseline guide for scheduling">
-                                  📋 External Guide
+                                  External Guide
                                 </span>
                               ) : (
                                 <span style={{
@@ -544,7 +548,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                                   background: st === "Completed" ? "#ecfdf5" : st === "Overdue" ? "#fef2f2" : st === "Due soon" ? "#fffbeb" : "#eff6ff",
                                   color: st === "Completed" ? "#047857" : st === "Overdue" ? "#b91c1c" : st === "Due soon" ? "#b45309" : "#1d4ed8"
                                 }}>
-                                  {st === "Completed" ? "✓ Certified" : st}
+                                  {st === "Completed" ? "Certified" : st}
                                 </span>
                               )}
                             </td>

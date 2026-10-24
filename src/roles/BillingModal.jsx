@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { petName, ownerName, addLog } from "../lib.jsx";
 import { api } from "../api.js";
-import { Search, Plus, Trash2, Receipt, CheckCircle2 } from "lucide-react";
+import { Search, Plus, Trash2, Receipt, CheckCircle2, Printer, Pill } from "lucide-react";
 
 export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   const pet = db.pets.find(p => p.id === appt.petId) || {};
@@ -160,7 +160,9 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             </div>
 
             <div style={{ display: "flex", justifyContent: "center", gap: "10px" }}>
-              <button className="btn ghost sm" onClick={() => window.print()}>🖨️ Print Receipt</button>
+              <button className="btn ghost sm" onClick={() => window.print()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Printer size={15} /> Print Receipt
+              </button>
               <button className="btn gold sm" onClick={onClose}>Done</button>
             </div>
           </div>
@@ -177,10 +179,42 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
               </div>
             </div>
 
+            {/* Doctor's Assessment & Prescription Instructions */}
+            {(record.diagnosis || record.prescription || record.treatment) && (
+              <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "10px", padding: "12px 14px", marginBottom: "14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                  <b style={{ color: "#166534", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Pill size={15} /> Attending Doctor&rsquo;s Clinical Assessment &amp; Prescription
+                  </b>
+                  <span style={{ fontSize: "11px", color: "#15803d", fontWeight: 700, background: "#dcfce7", padding: "2px 6px", borderRadius: "4px" }}>
+                    Doctor Signed Off
+                  </span>
+                </div>
+                {record.diagnosis && (
+                  <div style={{ fontSize: "12.5px", color: "#166534", marginBottom: "3px" }}>
+                    <b>Diagnosis:</b> {record.diagnosis}
+                  </div>
+                )}
+                {record.treatment && (
+                  <div style={{ fontSize: "12px", color: "#334155", marginBottom: "3px" }}>
+                    <b>Treatment Rendered:</b> {record.treatment}
+                  </div>
+                )}
+                {record.prescription && (
+                  <div style={{ marginTop: "6px", paddingTop: "6px", borderTop: "1px dashed #86efac", fontSize: "12.5px", color: "#14532d" }}>
+                    <b>Prescribed Home Care Medications (Dispense &amp; Instruct Owner):</b>
+                    <div style={{ whiteSpace: "pre-wrap", background: "#ffffff", padding: "8px 10px", borderRadius: "6px", border: "1px solid #bbf7d0", marginTop: "4px", fontSize: "12px", color: "#0f172a" }}>
+                      {record.prescription}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Price Basis & Search Catalog */}
             <div style={{ marginBottom: "16px" }}>
               <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "var(--navy)", marginBottom: "4px" }}>
-                🔍 Search Clinic Price Basis &amp; Add Services/Medicines
+                Search Clinic Price Basis &amp; Add Services/Medicines
               </label>
               <div style={{ position: "relative" }}>
                 <input
@@ -363,7 +397,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             <div className="row end" style={{ gap: "10px" }}>
               <button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button>
               <button type="submit" className="btn gold" disabled={loading} style={{ fontWeight: 700 }}>
-                {loading ? "Processing..." : "✓ Settle & Process Payment"}
+                {loading ? "Processing..." : "Settle & Process Payment"}
               </button>
             </div>
           </form>

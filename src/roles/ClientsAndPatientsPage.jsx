@@ -17,11 +17,13 @@ import {
   Filter,
   Check
 } from "lucide-react";
-import { TODAY, ICON, I } from "../lib.jsx";
+import { TODAY, uid, addLog, petName, ICON, I } from "../lib.jsx";
+import { api } from "../api.js";
 import { petAge } from "./owner/ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails, normalizeSpecies } from "../preventiveSchedule.js";
 import PetCardModal from "./PetCardModal.jsx";
 import InClinicRegistration from "./InClinicRegistration.jsx";
+import CheckInModal from "./CheckInModal.jsx";
 
 function getPetVaccState(petId, vaccList) {
   const mine = (vaccList || []).filter(v => v.petId === petId);
@@ -51,7 +53,7 @@ function getPetVaccState(petId, vaccList) {
 
   if (overdueCount > 0) {
     return {
-      label: `🚨 ${overdueCount} Overdue`,
+      label: `${overdueCount} Overdue`,
       status: "overdue",
       color: "#b91c1c",
       bg: "#fef2f2",
@@ -61,7 +63,7 @@ function getPetVaccState(petId, vaccList) {
   }
   if (dueSoonCount > 0) {
     return {
-      label: `⚠️ ${dueSoonCount} Due soon`,
+      label: `${dueSoonCount} Due soon`,
       status: "dueSoon",
       color: "#b45309",
       bg: "#fffbeb",
@@ -70,7 +72,7 @@ function getPetVaccState(petId, vaccList) {
     };
   }
   return {
-    label: "✓ Up to date",
+    label: "Up to date",
     status: "ok",
     color: "#15803d",
     bg: "#f0fdf4",
@@ -86,10 +88,44 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
   const [vaccFilter, setVaccFilter] = useState("all");
   const [cardPetId, setCardPetId] = useState(null);
   const [showWalkIn, setShowWalkIn] = useState(false);
+  const [addPetForOwner, setAddPetForOwner] = useState(null);
+  const [checkInAppt, setCheckInAppt] = useState(null);
 
   const pets = db.pets || [];
   const owners = db.owners || [];
   const vaccs = db.vacc || db.vaccs || [];
+
+  const handleCheckInPet = async (pet) => {
+    let appt = (db.appts || []).find(a => a.petId === pet.id && a.date === TODAY && a.status !== "Cancelled");
+    if (!appt) {
+      const timeStr = new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" });
+      const newApptPayload = {
+        id: "a_" + uid(),
+        petId: pet.id,
+        vetId: "v1",
+        date: TODAY,
+        time: timeStr,
+        reason: "Walk-in Consultation & Check-in",
+        status: "Scheduled",
+        billingStatus: "Unbilled",
+        amount: 600,
+        actorName: me?.name || "Staff",
+        actorRole: me?.role || "assistant"
+      };
+      try {
+        await api.post("/api/appointments", newApptPayload);
+      } catch (err) {
+        console.warn("Backend appointment fallback:", err);
+      }
+      appt = newApptPayload;
+      setDb(p => ({
+        ...p,
+        appts: [appt, ...(p.appts || [])],
+        log: addLog(p, me, `Initiated walk-in arrival check-in for ${pet.name}.`)
+      }));
+    }
+    setCheckInAppt(appt);
+  };
 
   // Filtered Pets
   const filteredPets = pets.filter(p => {
@@ -251,9 +287,9 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
               style={{ padding: "6px 10px", fontSize: "12.5px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
             >
               <option value="all">All Vaccine Statuses</option>
-              <option value="ok">✓ Up to date</option>
-              <option value="dueSoon">⚠️ Due soon (within 14 days)</option>
-              <option value="overdue">🚨 Overdue</option>
+              <option value="ok">Up to date</option>
+              <option value="dueSoon">Due soon (within 14 days)</option>
+              <option value="overdue">Overdue</option>
             </select>
           </div>
         )}
@@ -264,7 +300,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
         <section className="card" style={{ padding: "0", overflow: "hidden" }}>
           <div style={{ padding: "12px 18px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: "12.5px", color: "#475569" }}>
-              💡 <b>Tip:</b> Click any row to open the pet&rsquo;s official <b>Digital Vaccination Card</b>, review shots, or print access slips.
+              <b>Tip:</b> Click any row to open the pet&rsquo;s official <b>Digital Vaccination Card</b>, review shots, or print access slips.
             </span>
             <span style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--navy)" }}>
               {filteredPets.length} patient(s) found
@@ -343,7 +379,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                             fontFamily: "monospace",
                             fontWeight: 700
                           }}>
-                            💳 {p.vaccinationCardId || "VACC-UNISSUED"}
+                            {p.vaccinationCardId || "VACC-UNISSUED"}
                           </span>
                         </td>
 
@@ -370,25 +406,61 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
 
                         {/* Action link */}
                         <td style={{ padding: "12px 14px", textAlign: "right" }}>
-                          <button
-                            type="button"
-                            className="btn sm ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCardPetId(p.id);
-                            }}
-                            style={{
-                              padding: "4px 10px",
-                              fontSize: "12px",
-                              color: "var(--navy)",
-                              border: "1px solid #bfdbfe",
-                              background: "#eff6ff",
-                              fontWeight: 600,
-                              borderRadius: "6px"
-                            }}
-                          >
-                            Digital Card ➜
-                          </button>
+                          <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }} onClick={e => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              className="btn sm"
+                              onClick={() => handleCheckInPet(p)}
+                              style={{
+                                padding: "4px 8px",
+                                fontSize: "11.5px",
+                                background: "#f0fdf4",
+                                color: "#166534",
+                                border: "1px solid #86efac",
+                                fontWeight: 700,
+                                borderRadius: "6px"
+                              }}
+                              title="Check in for today's visit with vitals"
+                            >
+                              Check In
+                            </button>
+                            <button
+                              type="button"
+                              className="btn sm ghost"
+                              onClick={() => {
+                                go ? go("cal") : null;
+                                say && say(`Opening calendar to book visit for ${p.name}...`);
+                              }}
+                              style={{
+                                padding: "4px 8px",
+                                fontSize: "11.5px",
+                                color: "#1e3a8a",
+                                border: "1px solid #cbd5e1",
+                                fontWeight: 600,
+                                borderRadius: "6px"
+                              }}
+                              title="Schedule appointment in calendar"
+                            >
+                              Book
+                            </button>
+                            <button
+                              type="button"
+                              className="btn sm ghost"
+                              onClick={() => setCardPetId(p.id)}
+                              style={{
+                                padding: "4px 8px",
+                                fontSize: "11.5px",
+                                color: "var(--navy)",
+                                border: "1px solid #bfdbfe",
+                                background: "#eff6ff",
+                                fontWeight: 600,
+                                borderRadius: "6px"
+                              }}
+                              title="Open Official Digital Vaccination Card"
+                            >
+                              Card
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -476,9 +548,44 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                         </td>
 
                         <td style={{ padding: "12px 14px", textAlign: "right" }}>
-                          <span style={{ fontSize: "12px", color: "#64748b" }}>
-                            {ownerPets.length} pet{ownerPets.length === 1 ? "" : "s"}
-                          </span>
+                          <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
+                            <button
+                              type="button"
+                              className="btn sm gold"
+                              onClick={() => setAddPetForOwner(o)}
+                              style={{
+                                padding: "4px 10px",
+                                fontSize: "11.5px",
+                                fontWeight: 700,
+                                borderRadius: "6px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px"
+                              }}
+                              title="Register a new pet linked to this client"
+                            >
+                              <Plus size={13} /> Add Pet
+                            </button>
+                            <button
+                              type="button"
+                              className="btn sm ghost"
+                              onClick={() => {
+                                go ? go("cal") : null;
+                                say && say(`Opening calendar to book visit for ${o.name}...`);
+                              }}
+                              style={{
+                                padding: "4px 10px",
+                                fontSize: "11.5px",
+                                fontWeight: 600,
+                                color: "#1e3a8a",
+                                border: "1px solid #cbd5e1",
+                                borderRadius: "6px"
+                              }}
+                              title="Schedule appointment in calendar"
+                            >
+                              Book Visit
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -507,7 +614,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
         />
       )}
 
-      {/* In-Clinic Walk-in Registration Modal */}
+      {/* In-Clinic Walk-in Registration Modal (New Client & Pet) */}
       {showWalkIn && (
         <InClinicRegistration
           db={db}
@@ -517,6 +624,36 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
           onRegistered={({ pet, owner }) => {
             say && say(`Successfully registered ${owner?.name || "Client"} and issued card for ${pet?.name || "Patient"}!`);
             setShowWalkIn(false);
+          }}
+        />
+      )}
+
+      {/* Add Pet For Existing Client Modal */}
+      {addPetForOwner && (
+        <InClinicRegistration
+          existingOwner={addPetForOwner}
+          db={db}
+          setDb={setDb}
+          me={me}
+          onClose={() => setAddPetForOwner(null)}
+          onRegistered={({ pet, owner }) => {
+            say && say(`Successfully added ${pet?.name || "Patient"} to ${owner?.name || addPetForOwner.name}'s account!`);
+            setAddPetForOwner(null);
+          }}
+        />
+      )}
+
+      {/* Direct Check-In with Vitals Modal */}
+      {checkInAppt && (
+        <CheckInModal
+          appt={checkInAppt}
+          db={db}
+          setDb={setDb}
+          me={me}
+          onClose={() => setCheckInAppt(null)}
+          onCheckedIn={(vitals) => {
+            setCheckInAppt(null);
+            say && say(`Patient ${petName(db, checkInAppt.petId)} checked in with vitals! Added to Doctor Queue.`);
           }}
         />
       )}

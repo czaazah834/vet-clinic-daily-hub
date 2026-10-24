@@ -168,7 +168,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px", marginBottom: "14px" }}>
           <div>
             <h3 style={{ margin: "0 0 4px", fontSize: "19px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ color: "var(--navy)" }}><I e={ICON[species] || "🐾"} size={22} /></span>
+              <span style={{ color: "var(--navy)" }}><I e={ICON[species] || "paw"} size={22} /></span>
               <span>Front Desk Patient Check-In &amp; Triage</span>
             </h3>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
@@ -190,7 +190,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
         {/* Early Arrival Notice if booked for a different date */}
         {appt.date !== TODAY && (
           <div style={{ background: "#eff6ff", border: "1.5px solid #93c5fd", padding: "10px 14px", borderRadius: "10px", marginBottom: "14px", fontSize: "12.5px", color: "#1e40af", display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "18px" }}>⚡</span>
+            <Clock size={18} color="#2563eb" />
             <div>
               <b>Early Walk-in Arrival:</b> Patient was booked for <b>{appt.date}</b>. Checking in now will move their visit to <b>Today ({TODAY})</b> and queue them directly for the doctor.
             </div>
@@ -257,8 +257,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                     {weightAnalysis.trend && <b style={{ color: "#0369a1" }}>{weightAnalysis.trend}</b>}
                   </div>
                   {weightAnalysis.warning && (
-                    <div style={{ marginTop: "4px", color: weightAnalysis.color, fontWeight: "600" }}>
-                      ⚠️ {weightAnalysis.warning}
+                    <div style={{ marginTop: "4px", color: weightAnalysis.color, fontWeight: "600", display: "flex", alignItems: "center", gap: "5px" }}>
+                      <AlertTriangle size={14} /> {weightAnalysis.warning}
                     </div>
                   )}
                 </div>
@@ -406,7 +406,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                 </label>
                 {externalVaccs.length > 0 && (
                   <span style={{ fontSize: "11px", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", padding: "2px 7px", borderRadius: "6px", fontWeight: 700 }} title="Has prior records from outside clinic">
-                    📋 {externalVaccs.length} External Dose(s) on File
+                    {externalVaccs.length} External Dose(s) on File
                   </span>
                 )}
               </div>

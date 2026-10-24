@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { User, KeyRound, LogOut } from "lucide-react";
 import { ROLES } from "../lib.jsx";
 import { Avatar, Modal } from "./owner/ui.jsx";
 import { ProfileBody, PasswordBody } from "./owner/Profile.jsx";
@@ -120,7 +121,8 @@ export default function StaffHeader({ db, setDb, me, say, onLogout }) {
             onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
           >
-            👤 My Profile
+            <User size={15} color="#475569" />
+            <span>My Profile</span>
           </button>
           <button
             type="button"
@@ -143,7 +145,8 @@ export default function StaffHeader({ db, setDb, me, say, onLogout }) {
             onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
           >
-            🔑 Change Password
+            <KeyRound size={15} color="#475569" />
+            <span>Change Password</span>
           </button>
           <hr style={{ border: 0, borderTop: "1px solid #e2e8f0", margin: "4px 0" }} />
           <button
@@ -171,7 +174,8 @@ export default function StaffHeader({ db, setDb, me, say, onLogout }) {
             onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
           >
-            🚪 Log out
+            <LogOut size={15} color="#dc2626" />
+            <span>Log out</span>
           </button>
         </div>
       )}

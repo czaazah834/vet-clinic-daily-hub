@@ -260,19 +260,21 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                 onChange={e => setVetFilter(e.target.value)}
                 style={{ width: "auto", padding: "6px 10px", fontSize: "13px" }}
               >
-                <option value="">All Veterinarians</option>
+                {me.role !== "vet" && <option value="">All Veterinarians</option>}
                 {VETS.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
               </select>
             </label>
 
-            <button
-              className="btn sm gold"
-              onClick={() => setBookingSlot({ date: sel, time: "09:00", vetId: vetFilter || "v1" })}
-              style={{ display: "flex", alignItems: "center", gap: "5px" }}
-            >
-              <Plus size={16} />
-              <span>Book Visit</span>
-            </button>
+            {me.role !== "vet" && (
+              <button
+                className="btn sm gold"
+                onClick={() => setBookingSlot({ date: sel, time: "09:00", vetId: vetFilter || "v1" })}
+                style={{ display: "flex", alignItems: "center", gap: "5px" }}
+              >
+                <Plus size={16} />
+                <span>Book Visit</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -532,27 +534,44 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                         // Empty slot
                         return (
                           <td key={vetId} style={{ padding: "6px 12px", borderRight: "1px solid #e2e8f0" }}>
-                            <button
-                              type="button"
-                              className="btn ghost sm"
-                              style={{
-                                width: "100%",
-                                borderStyle: "dashed",
-                                borderColor: "#cbd5e1",
-                                color: "#94a3b8",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                gap: "4px",
-                                padding: "6px 8px",
-                                fontSize: "11.5px",
-                                background: "transparent",
-                              }}
-                              onClick={() => setBookingSlot({ date: sel, time, vetId })}
-                            >
-                              <Plus size={13} />
-                              <span>Open Slot</span>
-                            </button>
+                            {me.role !== "vet" ? (
+                              <button
+                                type="button"
+                                className="btn ghost sm"
+                                style={{
+                                  width: "100%",
+                                  borderStyle: "dashed",
+                                  borderColor: "#cbd5e1",
+                                  color: "#94a3b8",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: "4px",
+                                  padding: "6px 8px",
+                                  fontSize: "11.5px",
+                                  background: "transparent",
+                                }}
+                                onClick={() => setBookingSlot({ date: sel, time, vetId })}
+                              >
+                                <Plus size={13} />
+                                <span>Open Slot</span>
+                              </button>
+                            ) : (
+                              <div
+                                style={{
+                                  width: "100%",
+                                  border: "1px dashed #e2e8f0",
+                                  color: "#94a3b8",
+                                  textAlign: "center",
+                                  padding: "6px 8px",
+                                  fontSize: "11px",
+                                  borderRadius: "6px",
+                                  background: "#f8fafc"
+                                }}
+                              >
+                                Available
+                              </div>
+                            )}
                           </td>
                         );
                       })}
@@ -671,15 +690,17 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
               </select>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <button
-                className="btn sm gold"
-                onClick={() => setBookingSlot({ date: TODAY, time: "10:00", vetId: vetFilter || "v1" })}
-                style={{ fontWeight: 700 }}
-              >
-                + Book New Appointment
-              </button>
-            </div>
+            {me.role !== "vet" && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  className="btn sm gold"
+                  onClick={() => setBookingSlot({ date: TODAY, time: "10:00", vetId: vetFilter || "v1" })}
+                  style={{ fontWeight: 700 }}
+                >
+                  + Book New Appointment
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Master Appointments Table */}
@@ -708,7 +729,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
             return (
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", padding: "8px 14px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12.5px", color: "#475569" }}>
-                  <span>💡 <b>Tip:</b> Click any appointment row to open the pet&rsquo;s official Digital Vaccination Card and manage visit actions.</span>
+                  <span><b>Tip:</b> Click any appointment row to open the pet&rsquo;s official Digital Vaccination Card and manage visit actions.</span>
                   <span style={{ fontWeight: 600 }}>{filtered.length} appointment(s)</span>
                 </div>
 

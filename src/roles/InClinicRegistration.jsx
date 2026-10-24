@@ -11,7 +11,7 @@ import {
   petText
 } from "./owner/Pets.jsx";
 import { useLive, Field, onlyDigitsPlus, onlyDecimal, petAge } from "./owner/ui.jsx";
-import { User, PawPrint, QrCode, CheckCircle2, ArrowRight } from "lucide-react";
+import { User, PawPrint, QrCode, CheckCircle2, ArrowRight, ClipboardList, Printer, Phone, Calendar } from "lucide-react";
 
 const getYesterday = () => {
   const d = new Date();
@@ -118,14 +118,14 @@ function validateWalkIn(v) {
   return e;
 }
 
-export default function InClinicRegistration({ db, setDb, me, onClose, onRegistered }) {
+export default function InClinicRegistration({ db, setDb, me, onClose, onRegistered, existingOwner }) {
   const f = useLive(
     {
       // Owner details
-      ownerName: "",
-      phone: "",
-      email: "",
-      address: "",
+      ownerName: existingOwner?.name || "",
+      phone: existingOwner?.phone || "",
+      email: existingOwner?.email || "",
+      address: existingOwner?.address || "",
       // Pet details
       petName: "",
       species: "Canine (Dog)",
@@ -242,6 +242,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       reason: v.reason.trim(),
       actorName: me?.name || "Vet Assistant",
       actorRole: me?.role || "assistant",
+      ownerId: existingOwner?.id || "",
       serviceCategory,
       specificVaccine,
       priorVaccines,
@@ -255,7 +256,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       console.warn("Backend walk-in registration fallback:", err);
     }
 
-    const owner = backendResult?.owner || {
+    const owner = backendResult?.owner || existingOwner || {
       id: "o_" + uid(),
       name: payload.ownerName,
       phone: payload.phone,
@@ -313,13 +314,13 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
         {/* Modal Title */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #f1f5f9", paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "24px" }}>📋</span>
+            <ClipboardList size={24} color="var(--navy)" />
             <div>
               <h3 style={{ margin: 0, color: "var(--navy)", fontSize: "1.3rem" }}>
-                Walk-In Registration (Client &amp; Patient)
+                {existingOwner ? `Add New Pet for ${existingOwner.name}` : "Walk-In Registration (Client & Patient)"}
               </h3>
               <span style={{ fontSize: "12px", color: "#64748b" }}>
-                Front desk express intake with live validation and instant Digital Vaccination Card generation
+                {existingOwner ? "Add and link a new animal patient to this verified client account" : "Front desk express intake with live validation and instant Digital Vaccination Card generation"}
               </span>
             </div>
           </div>
@@ -353,7 +354,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                 How walk-in customers access the system: Advise owner <b>{successData.owner.name}</b> to open their Pet Portal anytime on their phone using their contact number (<b>{successData.owner.phone}</b>) or email (<b>{successData.owner.email}</b>).
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", background: "#fff", padding: "8px 12px", borderRadius: "8px", border: "1px dashed #93c5fd" }}>
-                <span style={{ fontSize: "18px" }}>📱</span>
+                <Phone size={18} color="#1e40af" />
                 <span style={{ fontSize: "12px", color: "#1e3a8a", wordBreak: "break-all" }}>
                   Official Access Link: <b>{typeof window !== "undefined" ? window.location.origin : ""}/?phone={encodeURIComponent(successData.owner.phone)}</b>
                 </span>
@@ -361,80 +362,100 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
             </div>
 
             <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
-              <button className="btn sm ghost" onClick={() => window.print()}>🖨️ Print Access Slip</button>
+              <button className="btn sm ghost" onClick={() => window.print()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Printer size={15} /> Print Access Slip
+              </button>
               <button className="btn sm gold" onClick={onClose}>Done &amp; View in Queue</button>
             </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} noValidate>
             {/* Section 1: Pet Owner Information */}
-            <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px", border: "1px solid #e2e8f0" }}>
-              <b style={{ display: "block", color: "var(--navy)", fontSize: "13.5px", marginBottom: "10px" }}>
-                👤 1. Owner &amp; Client Contact Details
-              </b>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                <Field
-                  id="ownerName"
-                  label="Owner Full Name"
-                  req
-                  value={v.ownerName}
-                  filter={petText}
-                  filterMsg="Letters, spaces, . ' - only"
-                  maxLen={60}
-                  onChange={x => f.set("ownerName", x)}
-                  onBlur={() => f.blur("ownerName")}
-                  error={f.show("ownerName")}
-                  valid={f.ok("ownerName")}
-                  hint="e.g. Maria Santos"
-                />
-
-                <Field
-                  id="phone"
-                  label="Mobile Number"
-                  req
-                  type="tel"
-                  value={v.phone}
-                  filter={onlyDigitsPlus}
-                  filterMsg="Numbers and + only"
-                  maxLen={13}
-                  onChange={x => f.set("phone", x)}
-                  onBlur={() => f.blur("phone")}
-                  error={f.show("phone")}
-                  valid={f.ok("phone")}
-                  hint="09XXXXXXXXX or +639XXXXXXXXX"
-                />
-
-                <Field
-                  id="email"
-                  label="Email (Optional)"
-                  type="email"
-                  value={v.email}
-                  onChange={x => f.set("email", x)}
-                  onBlur={() => f.blur("email")}
-                  error={f.show("email")}
-                  valid={f.ok("email")}
-                  hint="Used for portal access & receipts"
-                />
-
-                <Field
-                  id="address"
-                  label="City / Address"
-                  value={v.address}
-                  filter={petText}
-                  maxLen={150}
-                  onChange={x => f.set("address", x)}
-                  onBlur={() => f.blur("address")}
-                  error={f.show("address")}
-                  valid={f.ok("address")}
-                  hint="e.g. Caloocan City"
-                />
+            {existingOwner ? (
+              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: "11px", fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Registered Client &amp; Household
+                  </div>
+                  <b style={{ fontSize: "16px", color: "var(--navy)" }}>{existingOwner.name}</b>
+                  <div style={{ fontSize: "12.5px", color: "#475569", marginTop: "3px" }}>
+                    <span>Phone: {existingOwner.phone || "No phone"}</span> &bull; <span>Email: {existingOwner.email || "No email"}</span>
+                    {existingOwner.address && <span> &bull; Address: {existingOwner.address}</span>}
+                  </div>
+                </div>
+                <span style={{ background: "#dbeafe", color: "#1e40af", padding: "5px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: 700 }}>
+                  Existing Client
+                </span>
               </div>
-            </div>
+            ) : (
+              <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px", border: "1px solid #e2e8f0" }}>
+                <b style={{ display: "block", color: "var(--navy)", fontSize: "13.5px", marginBottom: "10px" }}>
+                  1. Owner &amp; Client Contact Details
+                </b>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <Field
+                    id="ownerName"
+                    label="Owner Full Name"
+                    req
+                    value={v.ownerName}
+                    filter={petText}
+                    filterMsg="Letters, spaces, . ' - only"
+                    maxLen={60}
+                    onChange={x => f.set("ownerName", x)}
+                    onBlur={() => f.blur("ownerName")}
+                    error={f.show("ownerName")}
+                    valid={f.ok("ownerName")}
+                    hint="e.g. Maria Santos"
+                  />
+
+                  <Field
+                    id="phone"
+                    label="Mobile Number"
+                    req
+                    type="tel"
+                    value={v.phone}
+                    filter={onlyDigitsPlus}
+                    filterMsg="Numbers and + only"
+                    maxLen={13}
+                    onChange={x => f.set("phone", x)}
+                    onBlur={() => f.blur("phone")}
+                    error={f.show("phone")}
+                    valid={f.ok("phone")}
+                    hint="09XXXXXXXXX or +639XXXXXXXXX"
+                  />
+
+                  <Field
+                    id="email"
+                    label="Email (Optional)"
+                    type="email"
+                    value={v.email}
+                    onChange={x => f.set("email", x)}
+                    onBlur={() => f.blur("email")}
+                    error={f.show("email")}
+                    valid={f.ok("email")}
+                    hint="Used for portal access & receipts"
+                  />
+
+                  <Field
+                    id="address"
+                    label="City / Address"
+                    value={v.address}
+                    filter={petText}
+                    maxLen={150}
+                    onChange={x => f.set("address", x)}
+                    onBlur={() => f.blur("address")}
+                    error={f.show("address")}
+                    valid={f.ok("address")}
+                    hint="e.g. Caloocan City"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Section 2: Pet Clinical Registration */}
             <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px", border: "1px solid #e2e8f0" }}>
               <b style={{ display: "block", color: "var(--navy)", fontSize: "13.5px", marginBottom: "10px" }}>
-                🐾 2. Patient Clinical Details (Species &amp; Life Stage)
+                2. Patient Clinical Details (Species &amp; Life Stage)
               </b>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
@@ -558,7 +579,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                   />
                   {ageDetails && (
                     <div style={{ fontSize: "11px", color: "#1e3a8a", background: "#eff6ff", border: "1px solid #bfdbfe", padding: "4px 8px", borderRadius: "6px", marginTop: "4px", fontWeight: 700 }}>
-                      🐾 Calculated Age: {petCalculatedAge} ({ageDetails.lifeStageLabel})
+                      Calculated Age: {petCalculatedAge} ({ageDetails.lifeStageLabel})
                     </div>
                   )}
                 </div>
@@ -680,12 +701,12 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                       onChange={e => handleServiceChange(e.target.value)}
                       style={{ width: "100%", padding: "8px 10px", fontSize: "13px", borderRadius: "8px", border: "1.5px solid #93c5fd", fontWeight: 600, background: "#fff" }}
                     >
-                      <option value="consultation">🩺 General Consultation &amp; Routine Check-up</option>
-                      <option value="vaccination">💉 Vaccination / Immunization Booster</option>
-                      <option value="deworming">💊 Routine Deworming (Parasiticide)</option>
-                      <option value="flea_tick">🛡️ Flea, Tick &amp; Heartworm Prevention</option>
-                      <option value="grooming">✂️ Grooming &amp; Sanitary Care</option>
-                      <option value="emergency">🚨 Urgent / Emergency Clinical Triage</option>
+                      <option value="consultation">General Consultation &amp; Routine Check-up</option>
+                      <option value="vaccination">Vaccination / Immunization Booster</option>
+                      <option value="deworming">Routine Deworming (Parasiticide)</option>
+                      <option value="flea_tick">Flea, Tick &amp; Heartworm Prevention</option>
+                      <option value="grooming">Grooming &amp; Sanitary Care</option>
+                      <option value="emergency">Urgent / Emergency Clinical Triage</option>
                     </select>
                   </div>
 
@@ -727,7 +748,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                         )}
                       </select>
                       <small style={{ color: "#0369a1", display: "block", marginTop: "4px", fontSize: "11.5px" }}>
-                        💡 This will be set as today&rsquo;s clinical visit reason for the veterinarian to examine and administer.
+                        This will be set as today&rsquo;s clinical visit reason for the veterinarian to examine and administer.
                       </small>
                     </div>
                   )}
@@ -821,7 +842,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                             transition: "all 0.15s ease"
                           }}
                         >
-                          <span>{isChecked ? "✓" : "+"}</span>
+                          <span>{isChecked ? "Selected" : "+"}</span>
                           <span>{item}</span>
                         </button>
                       );
@@ -842,7 +863,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                   </div>
 
                   <div style={{ marginTop: "10px", padding: "8px 10px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "6px", fontSize: "11.5px", color: "#166534" }}>
-                    ✨ <b>Smart Pre-Scheduling Active:</b> Selected previous shots will be saved with an &ldquo;External Clinic (Guide)&rdquo; badge on Page 2 of the Digital Card. The system will pre-schedule the remaining doses without repeating completed shots.
+                    <b>Smart Pre-Scheduling Active:</b> Selected previous shots will be saved with an &ldquo;External Clinic (Guide)&rdquo; badge on Page 2 of the Digital Card. The system will pre-schedule the remaining doses without repeating completed shots.
                   </div>
                 </div>
               )}
@@ -858,7 +879,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
             <div className="row end" style={{ gap: "10px" }}>
               <button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button>
               <button type="submit" className="btn gold" disabled={loading} style={{ fontWeight: 700 }}>
-                {loading ? "Registering & Issuing Card..." : "✓ Register & Issue Vaccination Card"}
+                {loading ? "Registering & Issuing Card..." : "Register & Issue Vaccination Card"}
               </button>
             </div>
           </form>

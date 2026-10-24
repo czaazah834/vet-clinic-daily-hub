@@ -1739,9 +1739,19 @@ clinicRouter.post("/walk-in", async (req, res) => {
 
   try {
     const result = await withTransaction(async (client) => {
-      // 1. Insert Owner (or match existing by phone or email)
+      // 1. Insert Owner (or match existing by explicit ownerId, or by phone/email)
       let effectiveOwner = null;
-      if (email || phone) {
+      if (req.body.ownerId) {
+        const existById = await client.query(
+          `SELECT * FROM owners WHERE id = $1 LIMIT 1`,
+          [req.body.ownerId]
+        );
+        if (existById.rows.length) {
+          effectiveOwner = existById.rows[0];
+        }
+      }
+
+      if (!effectiveOwner && (email || phone)) {
         const existQ = await client.query(
           `SELECT * FROM owners WHERE (email = $1 AND $1 <> '') OR (phone = $2 AND $2 <> '') LIMIT 1`,
           [email || "", phone || ""]

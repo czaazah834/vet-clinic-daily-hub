@@ -17,6 +17,7 @@ import { I, M, Stats, Hero, TODAY, plus, moveAppt, petName, ownerName, ICON, Bad
 import SoapConsultationModal from "./SoapConsultationModal.jsx";
 import ClinicCalendar from "./ClinicCalendar.jsx";
 import ClientsAndPatientsPage from "./ClientsAndPatientsPage.jsx";
+import ConsultationsPage from "./ConsultationsPage.jsx";
 
 function Dash({ db, setDb, me, go, say }) {
   const [activeSoap, setActiveSoap] = useState(null); // { appt, pet }
@@ -191,7 +192,7 @@ function Dash({ db, setDb, me, go, say }) {
                 >
                   <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
                     <b style={{ color: "var(--navy)", fontSize: "16px", minWidth: "50px", marginTop: "4px" }}>{a.time}</b>
-                    <span style={{ fontSize: "24px", marginTop: "2px" }}><I e={ICON[p.species] || "🐾"} size={24} /></span>
+                    <span style={{ fontSize: "24px", marginTop: "2px" }}><I e={ICON[p.species] || "paw"} size={24} /></span>
                     <div>
                       <div style={{ fontWeight: "700", fontSize: "15px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                         <span>{p.name}</span>
@@ -333,7 +334,7 @@ export const vet = {
     { k: "home", l: "Clinical Queue", i: "stethoscope", dash: 1, sub: "Live patient queue, SOAP consultation notes and EMR records." },
     { k: "cal", l: "Doctor Schedule", i: "calendar", Page: ClinicCalendar, sub: "Clinic appointment calendar and timetable." },
     { k: "pets", l: "Patient EMR & Masterlist", i: "paw", Page: ClientsAndPatientsPage, sub: "Digital medical records, patient profiles, and official vaccination cards." },
-    M("records", "SOAP Consultations", "file", "records", "Record diagnoses, treatments, and prescriptions."),
+    { k: "records", l: "SOAP Consultations", i: "file", Page: ConsultationsPage, sub: "Certified SOAP consultation notes, clinical diagnoses, and prescriptions." },
     M("vacc", "Vaccination Station", "syringe", "vacc", "Administer vaccines and track calculated booster dates."),
     { k: "owners", hide: true, Page: ClientsAndPatientsPage },
     { k: "reports", l: "Clinical Reports", i: "chart", rep: 1, sub: "Filter and print clinic consultation summaries." },

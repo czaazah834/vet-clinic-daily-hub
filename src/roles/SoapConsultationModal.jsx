@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Stethoscope, Activity, AlertTriangle, X } from "lucide-react";
-import { TODAY, uid, INTERVAL, petName, ownerName, addLog, ICON, I } from "../lib.jsx";
+import { Stethoscope, Activity, AlertTriangle, X, Calendar, Pill } from "lucide-react";
+import { TODAY, plus, uid, INTERVAL, petName, ownerName, addLog, ICON, I } from "../lib.jsx";
 import { api } from "../api.js";
 
 export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClose, onSaved }) {
@@ -31,13 +31,40 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     brand: "Defensor 3",
     batch: "LOT-" + new Date().getFullYear() + "-01",
     vaccineNotes: "Administered subcutaneously during consultation.",
+    // Clinical Follow-up Scheduling
+    scheduleFollowUp: false,
+    followUpDays: "7",
+    followUpDate: plus(7),
+    followUpReason: `Clinical Follow-up & Post-treatment Re-check for ${pet.name}`,
   });
 
   const [errs, setErrs] = useState({});
 
   const set = (k, v) => {
     setF(p => ({ ...p, [k]: v }));
-    if (errs[k]) setErrs(p => ({ ...p, [k]: "" }));
+    if (k === "diagnosis") {
+      setErrs(p => ({ ...p, diagnosis: !v.trim() ? "Assessment / Diagnosis is required" : "" }));
+    } else if (k === "treatment") {
+      setErrs(p => ({ ...p, treatment: !v.trim() ? "Plan / Treatment is required" : "" }));
+    } else if (errs[k]) {
+      setErrs(p => ({ ...p, [k]: "" }));
+    }
+  };
+
+  const handleFollowUpDaysChange = (days) => {
+    const d = parseInt(days, 10) || 7;
+    setF(p => ({
+      ...p,
+      followUpDays: String(d),
+      followUpDate: plus(d)
+    }));
+  };
+
+  const appendRxPreset = (text) => {
+    setF(p => ({
+      ...p,
+      prescription: p.prescription ? `${p.prescription.trim()}\n${text}` : text
+    }));
   };
 
   const getBoosterDate = (vaccineName) => {
@@ -151,7 +178,32 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       }
     }
 
-    // 4. Update In-Memory / React State
+    // 4. Optionally Schedule Follow-up Appointment in Database
+    let followUpAppt = null;
+    if (f.scheduleFollowUp && f.followUpDate) {
+      followUpAppt = {
+        id: "a" + uid(),
+        petId: pet.id,
+        vetId: effectiveVetId,
+        date: f.followUpDate,
+        time: "10:00",
+        reason: f.followUpReason.trim() || `Follow-up re-check for ${pet.name}`,
+        status: "Scheduled",
+        billingStatus: "Unbilled",
+        amount: 450
+      };
+      try {
+        await api.post("/api/appointments", {
+          ...followUpAppt,
+          actorName: me?.name || "Veterinarian",
+          actorRole: me?.role || "vet"
+        });
+      } catch (err) {
+        console.warn("Backend follow-up appointment sync:", err.message);
+      }
+    }
+
+    // 5. Update In-Memory / React State
     setDb(p => {
       const nextRecords = [newRecord, ...(p.records || [])];
       let nextVacc = p.vacc || [];
@@ -176,9 +228,12 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         );
       }
 
-      const nextAppts = (p.appts || []).map(a =>
+      let nextAppts = (p.appts || []).map(a =>
         appt && a.id === appt.id ? { ...a, status: "Completed", billingStatus: "Unbilled", amount: 650 } : a
       );
+      if (followUpAppt) {
+        nextAppts = [followUpAppt, ...nextAppts];
+      }
 
       return {
         ...p,
@@ -191,7 +246,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
           me,
           `Veterinarian ${me.name} completed consultation for ${pet.name}. Diagnosis: ${newRecord.diagnosis}.${
             newVacc ? ` Administered ${newVacc.vaccine} (${newVacc.brand}, batch ${newVacc.batch}), next booster due ${newVacc.nextDue}.` : ""
-          } Sent to Front Desk for billing & checkout.`
+          }${followUpAppt ? ` Scheduled follow-up visit on ${followUpAppt.date}.` : ""} Sent to Front Desk for billing & checkout.`
         ),
       };
     });
@@ -400,15 +455,62 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
-                <label>
-                  <b>Prescription &amp; Home Care Medication</b>
-                  <textarea
-                    rows={2}
-                    value={f.prescription}
-                    onChange={e => set("prescription", e.target.value)}
-                    placeholder="Medications, dosage, frequency, days supply, follow-up advice..."
-                  />
-                </label>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "4px" }}>
+                  <label style={{ margin: 0 }}>
+                    <b>Prescription &amp; Home Care Medication</b>
+                  </label>
+                  <span style={{ fontSize: "11px", color: "#64748b" }}>
+                    Dosages calibrated for <b>{parseFloat(f.weight) || parseFloat(pet.weight) || 5.0} kg</b>
+                  </span>
+                </div>
+
+                {/* Quick Dosage Presets */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
+                  {(() => {
+                    const w = parseFloat(f.weight) || parseFloat(pet.weight) || 5.0;
+                    const presets = [
+                      {
+                        name: "Co-Amoxiclav (15 mg/kg)",
+                        text: `Co-Amoxiclav: ${Math.round(w * 15)}mg PO BID x 7 days with food.`
+                      },
+                      {
+                        name: "Meloxicam (0.1 mg/kg)",
+                        text: `Meloxicam: ${(w * 0.1).toFixed(2)}mg PO SID x 3 days with meal (NSAID).`
+                      },
+                      {
+                        name: "Carprofen (2.2 mg/kg)",
+                        text: `Carprofen: ${Math.round(w * 2.2)}mg PO BID x 5 days with food.`
+                      },
+                      {
+                        name: "Metronidazole (10 mg/kg)",
+                        text: `Metronidazole: ${Math.round(w * 10)}mg PO BID x 5 days.`
+                      },
+                      {
+                        name: "Broad Dewormer",
+                        text: `Broad-spectrum Dewormer: ${Math.max(0.5, (w / 10).toFixed(1))} tablet PO single dose. Repeat in 14 days if indicated.`
+                      }
+                    ];
+                    return presets.map(p => (
+                      <button
+                        key={p.name}
+                        type="button"
+                        onClick={() => appendRxPreset(p.text)}
+                        className="btn ghost sm"
+                        style={{ fontSize: "11px", padding: "3px 8px", background: "#f1f5f9", borderColor: "#cbd5e1", borderRadius: "14px" }}
+                        title={`Click to append dosage for ${w}kg`}
+                      >
+                        + {p.name}
+                      </button>
+                    ));
+                  })()}
+                </div>
+
+                <textarea
+                  rows={3}
+                  value={f.prescription}
+                  onChange={e => set("prescription", e.target.value)}
+                  placeholder="Medications, dosage, frequency, days supply, follow-up advice..."
+                />
               </div>
 
               {/* Vaccine Administration During Consultation */}
@@ -464,6 +566,64 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                         value={f.batch}
                         onChange={e => set("batch", e.target.value)}
                       />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Follow-up Appointment Scheduler */}
+              <div style={{ gridColumn: "1/-1", background: "#f8fafc", border: "1px solid #cbd5e1", padding: "14px", borderRadius: "12px", marginTop: "4px" }}>
+                <label style={{ display: "flex", gap: "10px", alignItems: "center", cursor: "pointer", fontWeight: "700", color: "#1e3a8a" }}>
+                  <input
+                    type="checkbox"
+                    checked={f.scheduleFollowUp}
+                    onChange={e => set("scheduleFollowUp", e.target.checked)}
+                  />
+                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Calendar size={16} /> Schedule Clinical Follow-up / Re-check Visit
+                  </span>
+                </label>
+
+                {f.scheduleFollowUp && (
+                  <div style={{ marginTop: "12px" }}>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
+                      {[
+                        { label: "In 3 Days", days: 3 },
+                        { label: "In 7 Days (1 Wk)", days: 7 },
+                        { label: "In 14 Days (2 Wks)", days: 14 },
+                        { label: "In 1 Month (30 Days)", days: 30 },
+                      ].map(preset => (
+                        <button
+                          key={preset.days}
+                          type="button"
+                          className={`btn sm ${f.followUpDays === String(preset.days) ? "primary" : "ghost"}`}
+                          style={{ fontSize: "12px", padding: "4px 10px" }}
+                          onClick={() => handleFollowUpDaysChange(preset.days)}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "10px" }}>
+                      <div className="fld">
+                        <label>Target Follow-up Date<i> *</i></label>
+                        <input
+                          type="date"
+                          value={f.followUpDate}
+                          min={TODAY}
+                          onChange={e => set("followUpDate", e.target.value)}
+                        />
+                      </div>
+                      <div className="fld">
+                        <label>Follow-up Reason / Clinical Instructions</label>
+                        <input
+                          type="text"
+                          value={f.followUpReason}
+                          onChange={e => set("followUpReason", e.target.value)}
+                          placeholder="e.g. Suture removal, wound check, ear cytology re-eval..."
+                        />
+                      </div>
                     </div>
                   </div>
                 )}

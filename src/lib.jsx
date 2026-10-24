@@ -24,6 +24,9 @@ import {
   Clock,
   Sparkles,
   Flame,
+  Receipt,
+  DollarSign,
+  CreditCard,
 } from "lucide-react";
 
 const MAP = {
@@ -39,6 +42,10 @@ const MAP = {
   records: ClipboardList,
   chart: ChartColumn,
   reports: ChartColumn,
+  receipt: Receipt,
+  dollar: DollarSign,
+  sales: Receipt,
+  credit: CreditCard,
   shield: ShieldCheck,
   admin: ShieldCheck,
   hospital: Hospital,

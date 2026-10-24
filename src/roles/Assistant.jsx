@@ -11,6 +11,8 @@ import {
   Thermometer,
   Scale,
   Sparkles,
+  DollarSign,
+  Receipt,
 } from "lucide-react";
 import { M, Stats, Hero, TODAY, plus, moveAppt, petName, ownerName, Badge, dueState, ICON, I, uid } from "../lib.jsx";
 import { api } from "../api.js";
@@ -23,6 +25,8 @@ import PetRequestsPage from "./PetRequestsPage.jsx";
 import AssistantVaccinationManager from "./AssistantVaccinationManager.jsx";
 import PetCardModal from "./PetCardModal.jsx";
 import ClientsAndPatientsPage from "./ClientsAndPatientsPage.jsx";
+import DailySalesPage from "./DailySalesPage.jsx";
+import ConsultationsPage from "./ConsultationsPage.jsx";
 import { formatSpeciesLabel } from "../preventiveSchedule.js";
 
 function Dash({ db, setDb, me, go, say }) {
@@ -40,6 +44,10 @@ function Dash({ db, setDb, me, go, say }) {
   const inConsult = q.filter(a => a.status === "In consultation");
   const completed = q.filter(a => a.status === "Completed");
   const calls = db.vacc.filter(v => v.nextDue && !v.done && v.nextDue <= plus(14));
+
+  const todayPaid = q.filter(a => a.billingStatus === "Paid");
+  const todayRevenue = todayPaid.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+  const unbilledCompleted = q.filter(a => a.status === "Completed" && a.billingStatus !== "Paid");
 
   // Auto-detect when doctor completes consultation and automatically launch billing
   const prevCompletedRef = useRef(null);
@@ -81,7 +89,7 @@ function Dash({ db, setDb, me, go, say }) {
             style={{ display: "flex", alignItems: "center", gap: "6px", background: "#f0fdf4", color: "#166534", border: "1.5px solid #86efac", fontWeight: 700 }}
             title="Express check-in for existing online or registered patients"
           >
-            <Sparkles size={16} /> ⚡ Check-in Existing Patient
+            <Sparkles size={16} /> Express Check-in Patient
           </button>
           <button
             className="btn"
@@ -105,12 +113,57 @@ function Dash({ db, setDb, me, go, say }) {
       <Stats
         items={[
           ["calendar", q.length, "Total Visits Today"],
+          ["receipt", `₱${todayRevenue.toLocaleString()}`, `Today's Sales (${todayPaid.length} Paid)`],
           ["bell", waiting.length, "Checked-in (In Queue)"],
           ["stethoscope", inConsult.length, "In Consultation"],
-          ["paw", pendingReqs.length, "Online Pet Requests"],
           ["phone", calls.length, "Vaccine Reminders Due"],
         ]}
       />
+
+      {/* Today's Sales & Cashier Register Bar */}
+      <div style={{
+        background: "#ffffff",
+        border: "1.5px solid #e2e8f0",
+        borderRadius: "14px",
+        padding: "14px 18px",
+        marginTop: "16px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: "12px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.03)"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ width: 42, height: 42, borderRadius: "10px", background: "linear-gradient(135deg, #1e3a8a, #2563eb)", color: "#fff", display: "grid", placeItems: "center" }}>
+            <Receipt size={22} />
+          </div>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <b style={{ color: "var(--navy)", fontSize: "15px" }}>Today&rsquo;s Cashier Collections: ₱{todayRevenue.toLocaleString()}</b>
+              <span style={{ fontSize: "11px", background: "#dcfce7", color: "#166534", padding: "2px 7px", borderRadius: "6px", fontWeight: 700 }}>
+                {todayPaid.length} Settled
+              </span>
+              {unbilledCompleted.length > 0 && (
+                <span style={{ fontSize: "11px", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", padding: "2px 7px", borderRadius: "6px", fontWeight: 700 }}>
+                  {unbilledCompleted.length} Ready for Checkout
+                </span>
+              )}
+            </div>
+            <small style={{ color: "#64748b", display: "block", marginTop: "2px" }}>
+              Daily sales ledger, invoice receipts, payment methods (Cash/GCash/Card), and Z-reading closing report.
+            </small>
+          </div>
+        </div>
+
+        <button
+          className="btn sm"
+          onClick={() => go("sales")}
+          style={{ background: "#eff6ff", color: "#1e40af", border: "1.5px solid #bfdbfe", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", padding: "7px 14px" }}
+        >
+          View Full Daily Sales &amp; Invoices Ledger ➜
+        </button>
+      </div>
 
       {/* Pending Online Pet Registrations Banner */}
       {pendingReqs.length > 0 && (
@@ -300,7 +353,7 @@ function Dash({ db, setDb, me, go, say }) {
                         title="View Official Digital Vaccination Card and manage visit"
                         style={{ display: "flex", alignItems: "center", gap: "4px" }}
                       >
-                        💳 Card
+                        Digital Card
                       </button>
 
                       {a.status === "Scheduled" && (
@@ -341,7 +394,7 @@ function Dash({ db, setDb, me, go, say }) {
                           onClick={() => setBillingAppt(a)}
                           title="Search clinic price catalog, create invoice, and settle bill"
                         >
-                          {isPaid ? "Receipt (Paid)" : "🧾 Bill / Checkout"}
+                          {isPaid ? "Receipt (Paid)" : "Bill / Checkout"}
                         </button>
                       )}
                     </div>
@@ -394,7 +447,17 @@ function Dash({ db, setDb, me, go, say }) {
                         onClick={() => setCardPetId(p.id || v.petId)}
                         title="View Official Digital Vaccination Card"
                       >
-                        💳 Card
+                        Card
+                      </button>
+                      <button
+                        className="btn sm gold"
+                        onClick={() => {
+                          go("cal");
+                          say(`Booking booster appointment for ${p.name || "patient"} (${v.vaccine}).`);
+                        }}
+                        title="Book booster visit in Clinic Calendar"
+                      >
+                        Book Booster
                       </button>
                       <button
                         className="btn ghost sm"
@@ -650,11 +713,12 @@ export const assistant = {
   Dash,
   menu: [
     { k: "home", l: "Front Desk", i: "bell", dash: 1, sub: "Today’s arrival queue, walk-in registration, and reminders." },
+    { k: "sales", l: "Daily Sales & Billing", i: "receipt", Page: DailySalesPage, sub: "Daily collections register, cashier receipts, and sales breakdown." },
     { k: "pet-requests", l: "Online Pet Requests", i: "paw", Page: PetRequestsPage, sub: "Review and approve online pet registrations with automated vaccination cards." },
     { k: "cal", l: "Appointments & Calendar", i: "calendar", Page: ClinicCalendar, sub: "Unified calendar schedules, slot booking, and appointments management." },
     { k: "clients-patients", l: "Clients & Patients Masterlist", i: "users", Page: ClientsAndPatientsPage, sub: "Unified masterlist of pet owners, animal patient profiles, and official vaccination cards." },
     { k: "vacc", l: "Vaccination Cards", i: "syringe", Page: AssistantVaccinationManager, sub: "Manage official pet vaccination cards, log doctor-administered shots, and track boosters." },
-    M("records", "Consultations", "file", "records", "Read-only view of veterinary consultation notes."),
+    { k: "records", l: "Consultations & EMR", i: "file", Page: ConsultationsPage, sub: "Certified veterinary consultation notes, EMR, and prescription handoff." },
     { k: "pets", hide: true, Page: ClientsAndPatientsPage },
     { k: "owners", hide: true, Page: ClientsAndPatientsPage },
   ],

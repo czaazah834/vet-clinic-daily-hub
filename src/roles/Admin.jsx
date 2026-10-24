@@ -13,6 +13,9 @@ import {
 import { M, by, Stats, Hero, TODAY, plus, ROLES, VETS, uid, addLog, Badge } from "../lib.jsx";
 import { auth } from "../authApi.js";
 import ClinicCalendar from "./ClinicCalendar.jsx";
+import DailySalesPage from "./DailySalesPage.jsx";
+import ClientsAndPatientsPage from "./ClientsAndPatientsPage.jsx";
+import ConsultationsPage from "./ConsultationsPage.jsx";
 
 function Bars({ title, data }) {
   const max = Math.max(1, ...Object.values(data));
@@ -321,13 +324,14 @@ export const admin = {
   Dash,
   menu: [
     { k: "home", l: "Clinic Overview", i: "hospital", dash: 1, sub: "Clinic-wide analytics, audit trail, and staff provisioning." },
-    { k: "cal", l: "Master Calendar", i: "calendar", Page: ClinicCalendar, sub: "Full clinic interactive schedule calendar." },
-    M("users", "Staff & User Accounts", "shield", "users", "RBAC control: create and manage staff logins."),
-    M("owners", "Owners Masterlist", "user", "owners", "Complete owner contact records."),
-    M("pets", "Patients Masterlist", "paw", "pets", "All registered patient profiles."),
-    M("appts", "Appointments", "calendar", "appts", "System-wide appointment bookings and tracking."),
-    M("vacc", "Vaccinations Hub", "syringe", "vacc", "Vaccination records and compliance tracking."),
-    M("records", "Consultations", "file", "records", "Electronic medical records and consultation history."),
+    M("users", "Staff & User Accounts", "shield", "users", "RBAC control: create and manage staff logins, roles, and credentials."),
+    { k: "sales", l: "Daily Sales & Billing", i: "receipt", Page: DailySalesPage, sub: "Daily collections register, cashier receipts, and sales breakdown." },
+    { k: "cal", l: "Master Calendar", i: "calendar", Page: ClinicCalendar, sub: "Clinic appointment calendar (read-only administrative oversight)." },
+    { k: "clients-patients", l: "Clients & Patients Masterlist", i: "users", Page: ClientsAndPatientsPage, sub: "Unified masterlist of pet owners, animal patient profiles, and official vaccination cards." },
+    { k: "records", l: "Consultations & EMR", i: "file", Page: ConsultationsPage, sub: "Certified veterinary consultation notes, EMR, and prescription handoff." },
     { k: "reports", l: "Reports & Audits", i: "chart", rep: 1, sub: "Filter, audit, and print clinic summaries." },
+    { k: "owners", hide: true, Page: ClientsAndPatientsPage },
+    { k: "pets", hide: true, Page: ClientsAndPatientsPage },
+    { k: "appts", hide: true, Page: ClinicCalendar },
   ],
 };
