@@ -256,7 +256,7 @@ function Dash({ db, setDb, me, go, say }) {
                       ) : (
                         <button className="btn sm gold" title="Book the booster visit in the clinic calendar" onClick={() => { setPrefill(vaccinationBooking(v)); go("cal"); say(`Booking booster for ${p.name || "patient"} (${v.vaccine}).`); }}>Book booster</button>
                       )}
-                      <button className="btn ghost sm" onClick={() => setLogCallTarget({ v, p, o })} title="Log call notes and dispatch reminders via Email and SMS">Log call</button>
+                      <button className="btn ghost sm" onClick={() => setLogCallTarget({ v, p, o })} title="Record a call outcome and review saved call history">Log call</button>
                     </div>
                   </div>
                 );

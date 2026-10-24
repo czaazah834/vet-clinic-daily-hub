@@ -27,6 +27,7 @@ export async function clinicAccess(req, res, next) {
   try {
     if ((req.method === 'GET' && ['/admin/staff','/admin/audit'].includes(path)) || (req.method === 'POST' && /^\/admin\/(?:staff\/[^/]+\/access|invitations\/[^/]+\/revoke)$/.test(path))) return allow('admin') ? next() : denied();
     if (path === '/checkout-inbox' && req.method === 'GET' || /^\/checkout-inbox\/[^/]+\/(claim|renew|release)$/.test(path) && req.method === 'POST') return allow('assistant') ? next() : denied();
+    if (key === 'GET /reminders/calls') return allow('assistant', 'admin') ? next() : denied();
     if (key === 'GET /reminders/status') return allow('assistant', 'admin') ? next() : denied();
     if (key === 'GET /appointments/availability') return allow('owner', 'assistant') ? next() : denied();
     if (key === 'GET /state' || key === 'GET /services/prices') return next();

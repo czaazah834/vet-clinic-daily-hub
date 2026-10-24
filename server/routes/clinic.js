@@ -1,3 +1,4 @@
+import { logReminderCall, reminderCallHistory } from "../reminderCalls.js";
 import { sameIntakeVisit } from "../../src/intakeVisit.js";
 import { clinicalCharges, validateClinicalCharges } from "../clinicalCharges.js";
 import { boosterDate } from "../../src/clinicalWorkflow.js";
@@ -2477,7 +2478,8 @@ clinicRouter.get("/reminders/status", async (req, res) => {
   } catch { res.status(500).json({ error:"Unable to load reminder status." }); }
 });
 
-clinicRouter.post("/reminders/log-call", handleSendReminder);
+clinicRouter.get("/reminders/calls", reminderCallHistory);
+clinicRouter.post("/reminders/log-call", (req,res) => req.body.logOnly === true ? logReminderCall(req,res) : handleSendReminder(req,res));
 clinicRouter.post("/reminders/send", handleSendReminder);
 
 
