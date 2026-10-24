@@ -38,6 +38,11 @@ export default function Portal({ cfg, me, db, setDb, onLogout }) {
           {cur.Page ? <cur.Page db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.dash ? <Dash db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.rep ? <Reports db={db} me={me} /> : <EntityPage key={cur.k} ent={cur.ent} db={db} setDb={setDb} me={me} say={say} />}
         </main>
       </div>
+      {me.role === "owner" && (
+        <nav className="ow-tabbar" aria-label="Main">
+          {cfg.menu.filter(m => !m.hide).map(m => <button key={m.k} className={m.k === page ? "on" : ""} aria-current={m.k === page ? "page" : undefined} onClick={() => go(m.k)}><I e={m.i} size={21} /><span>{m.s || m.l}</span></button>)}
+        </nav>
+      )}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );
