@@ -456,3 +456,24 @@ details remain read-only until the owner corrects and resubmits the request,
 following the existing registration contract. Review filters wrap on mobile.
 
 Check: `node --test tests/registration-review.test.js`; `npm run build`.
+
+
+### Walk-in registration and intake
+
+Reception enters the patient's species, sex, birth date and measured weight;
+these fields start blank and follow the same server validation as online pet
+registration. Missing optional email/address remain blank. Neutered and dental
+status start as unknown or not evaluated. Dental details and the measured weight
+are saved with the patient.
+
+The saved card and vaccine rows appear immediately in clinic state. External
+history remains a reference guide requiring veterinarian review. Adding today's
+arrival opens intake with the exact saved appointment; the arrival remains
+Scheduled until reception records current vitals. Duplicate form submissions
+are blocked while saving, failures retain entered details, and registration plus
+its audit commit together. The printed registration summary provides record
+information; it does not grant owner sign-in access.
+
+Checks: `node --test tests/walk-in-registration.test.js server/tests/walk-in-registration.test.js`,
+`npm run test:clinic`, `npm run test:registration:postgres` with a disposable
+local database, and `npm run build`.
