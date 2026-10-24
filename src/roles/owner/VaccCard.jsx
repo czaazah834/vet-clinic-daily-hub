@@ -17,10 +17,40 @@ const CLINIC = {
 const doseLabel = v => v.doseNo ? (v.doseOf ? `Dose ${v.doseNo} of ${v.doseOf}` : `Dose ${v.doseNo}`) : "";
 
 const stateOf = v => v.done ? "Completed" : dueState(v.nextDue) || "No next dose";
-const daysTo = d => Math.round((new Date(d + "T00:00:00") - new Date(TODAY + "T00:00:00")) / 864e5);
-const fmtDate = d => d ? new Date(d + "T00:00:00").toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
+
+const parseDateSafe = d => {
+  if (!d) return null;
+  if (d instanceof Date) return isNaN(d.getTime()) ? null : d;
+  const s = String(d).trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const dt = new Date(s.slice(0, 10) + "T00:00:00");
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  const dt = new Date(s);
+  return isNaN(dt.getTime()) ? null : dt;
+};
+
+const daysTo = d => {
+  const dt = parseDateSafe(d);
+  if (!dt) return 0;
+  const today = parseDateSafe(TODAY) || new Date();
+  return Math.round((dt - today) / 864e5);
+};
+
+const fmtDate = d => {
+  const dt = parseDateSafe(d);
+  return dt ? dt.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
+};
+
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
-const rel = d => { const n = daysTo(d); return n === 0 ? "Today" : n > 0 ? `in ${plural(n, "day")}` : `${plural(-n, "day")} overdue`; };
+const rel = d => {
+  if (!d) return "None scheduled";
+  const dt = parseDateSafe(d);
+  if (!dt) return "None scheduled";
+  const n = daysTo(d);
+  return n === 0 ? "Today" : n > 0 ? `in ${plural(n, "day")}` : `${plural(-n, "day")} overdue`;
+};
 const vetOf = v => { const n = v.vetName || (VETS.find(x => x[0] === v.vetId) || [])[1]; return n ? `${/^dr\.?\s/i.test(n) ? "" : "Dr. "}${n}${v.vetLicense ? ` · Lic. ${v.vetLicense}` : ""}` : "Dr. Ana Cruz · Lic. 04821"; };
 const tone = s => s === "Overdue" ? "er" : s === "Due soon" ? "wa" : "";
 

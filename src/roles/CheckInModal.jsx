@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { TODAY, addLog, ICON, petName, ownerName, I } from "../lib.jsx";
 import { assessWeight, assessTemp, SPECIES_DEFAULTS } from "./vitals.js";
+import { computeWeightBracket, normalizeSpecies } from "../preventiveSchedule.js";
+import { api } from "../api.js";
 
 export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn }) {
   const pet = (db.pets && appt ? db.pets.find(p => p.id === appt.petId) : null) || {};
@@ -48,7 +50,10 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
     setTemp(String(next));
   };
 
-  const submit = (e) => {
+  const normSpecies = normalizeSpecies(pet.species);
+  const clinicalBracket = computeWeightBracket(weight, pet.species, pet.birth);
+
+  const submit = async (e) => {
     e.preventDefault();
     const w = parseFloat(weight);
     const t = parseFloat(temp);
@@ -58,12 +63,25 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       temp: !isNaN(t) ? t : null,
       weightAnalysis,
       tempAnalysis,
+      clinicalBracket,
       triageLevel: triage,
       notes: (notes || "").trim(),
       fasted,
       checkedInAt: new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }),
       checkedInBy: me?.name || "Assistant",
     };
+
+    // 1. Persist directly to PostgreSQL Neon DB
+    try {
+      await api.patch(`/api/appointments/${appt.id}/status`, {
+        status: "Checked-in",
+        intakeVitals,
+        actorName: me?.name || "Assistant",
+        actorRole: me?.role || "assistant"
+      });
+    } catch (err) {
+      console.warn("Backend check-in update:", err.message);
+    }
 
     setDb(p => {
       // 1. Update appointment status & intake data
@@ -204,6 +222,55 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       ⚠️ {weightAnalysis.warning}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* VCMS Clinical Weight Bracket & Pharmacy Verification for Vet Assistant */}
+              {clinicalBracket && normSpecies === "Canine" && (
+                <div style={{ marginTop: "12px", background: "#fff", border: "1.5px solid #fed7aa", borderRadius: "10px", padding: "10px 12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                    <span style={{ fontSize: "14px" }}>⚖️</span>
+                    <b style={{ color: "#9a3412", fontSize: "12.5px", textTransform: "uppercase" }}>
+                      Clinical Dispensing Brackets ({clinicalBracket.kg} kg Weighed)
+                    </b>
+                  </div>
+
+                  {clinicalBracket.heartwormAlert && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #f87171", color: "#991b1b", padding: "6px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, marginBottom: "8px" }}>
+                      🛡️ {clinicalBracket.heartwormAlert}
+                    </div>
+                  )}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "12px" }}>
+                    <div style={{ background: "#f8fafc", padding: "6px 8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                      <span style={{ color: "#334155", fontWeight: 700 }}>NexGard Spectra: </span>
+                      {clinicalBracket.nexgard && (
+                        <span style={{ background: clinicalBracket.nexgard.color, color: "#fff", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                          {clinicalBracket.nexgard.box}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ background: "#f8fafc", padding: "6px 8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                      <span style={{ color: "#334155", fontWeight: 700 }}>Simparica Trio: </span>
+                      {clinicalBracket.simparica && (
+                        <span style={{ background: "#2563eb", color: "#fff", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                          {clinicalBracket.simparica.box}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Species Toxicity Interceptors for Front Desk */}
+              {normSpecies === "Lagomorph" && (
+                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px" }}>
+                  <b>🚫 Clinical Toxicology Interceptor:</b> Strict ban on Fipronil (Frontline) due to fatal rabbit neurotoxicity.
+                </div>
+              )}
+              {normSpecies === "Feline" && (
+                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px" }}>
+                  <b>🚫 Clinical Toxicology Interceptor:</b> Completely restrict formulas containing Permethrin on felines.
                 </div>
               )}
             </div>

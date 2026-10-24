@@ -467,17 +467,6 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
           </div>
         )}
 
-        {weightBracket && weightBracket.heartwormAlert && (
-          <div style={{ background: "#fef2f2", border: "1.5px solid #ef4444", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", color: "#991b1b", fontSize: "0.82rem" }}>
-            <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
-              <span>🛡️</span> <span>VCMS 2.0 SAFETY PROTOCOL: Heartworm Antigen Test Required</span>
-            </div>
-            <div style={{ marginTop: "3px", lineHeight: 1.4 }}>
-              {weightBracket.heartwormAlert}
-            </div>
-          </div>
-        )}
-
         <div className="op-2">
           <Field id="pn" label="Pet name" req value={v.name} filter={petText} filterMsg="Letters, numbers and . ' - only" maxLen={30} onChange={x => f.set("name", x)} onBlur={() => f.blur("name")} error={f.show("name")} valid={f.ok("name")} />
           
@@ -540,58 +529,6 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
 
           <div className="full"><Field id="pm" label="Anything the clinic should know (optional)" type="textarea" rows={2} max={200} value={v.notes} onChange={x => f.set("notes", x)} onBlur={() => f.blur("notes")} error={f.show("notes")} valid={f.ok("notes")} hint="Health problems, behavior or past treatments" /></div>
         </div>
-
-        {/* Dynamic Weight Brackets (Canine) */}
-        {weightBracket && normSpecies === "Canine" && (
-          <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: "12px", padding: "14px", marginTop: "12px", marginBottom: "8px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-              <span style={{ fontSize: "1.1rem" }}>⚖️</span>
-              <b style={{ fontSize: "0.85rem", color: "#92400e", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                Automated Maintenance Weight Bracket ({weightBracket.kg} kg)
-              </b>
-            </div>
-
-            {weightBracket.alert && (
-              <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", padding: "8px 12px", borderRadius: "8px", fontSize: "0.82rem", fontWeight: 600, marginBottom: "8px" }}>
-                {weightBracket.alert}
-              </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "0.82rem" }}>
-              <div style={{ background: "#fff", padding: "8px 10px", borderRadius: "8px", border: "1px solid #fef3c7" }}>
-                <div style={{ color: "#78350f", fontWeight: 700 }}>NexGard Spectra Chewables:</div>
-                {weightBracket.nexgard && (
-                  <div style={{ marginTop: "3px" }}>
-                    <span style={{ display: "inline-block", background: weightBracket.nexgard.color, color: "#fff", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
-                      {weightBracket.nexgard.box}
-                    </span>
-                    <div style={{ fontSize: "0.76rem", color: "#64748b", marginTop: "3px" }}>
-                      {weightBracket.nexgard.note}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ background: "#fff", padding: "8px 10px", borderRadius: "8px", border: "1px solid #fef3c7" }}>
-                <div style={{ color: "#78350f", fontWeight: 700 }}>Simparica Trio Range:</div>
-                {weightBracket.simparica && (
-                  <div style={{ marginTop: "3px" }}>
-                    <span style={{ display: "inline-block", background: "#3b82f6", color: "#fff", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
-                      {weightBracket.simparica.box}
-                    </span>
-                    <div style={{ fontSize: "0.76rem", color: "#64748b", marginTop: "3px" }}>
-                      {weightBracket.simparica.note || `Matches ${weightBracket.kg} kg bracket.`}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ marginTop: "8px", fontSize: "0.76rem", color: "#92400e", lineHeight: 1.35 }}>
-              <b>Strict Rule:</b> Never use left-over medication from an older dog or split a larger pill in half for a puppy. Active ingredients are not mixed evenly inside tablets. Weigh puppy monthly on digital scale before giving.
-            </div>
-          </div>
-        )}
 
         {/* Automated Preventive Care Schedule (VCMS v2.0 Separation) */}
         {nextFormMilestone && (
@@ -804,7 +741,11 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
 
   const petSchedule = p.birth ? getPreventiveSchedule(p.birth, p.species, V) : [];
   const nextMilestone = p.birth ? getNextMilestone(p.birth, p.species, V) : null;
-  const petWeightBracket = computeWeightBracket(p.weight, p.species, p.birth);
+  const isAdultPet = petAgeDetails?.isAdult;
+  const [showArchived, setShowArchived] = useState(false);
+  const displaySchedule = (isAdultPet && !showArchived)
+    ? petSchedule.filter(s => (s.ageWeeks && s.ageWeeks >= 52) || s.status !== "Completed" || s.care.includes("Adult") || s.care.includes("Booster"))
+    : petSchedule;
 
   return (
     <Modal title={p.name} onClose={onClose}>
@@ -855,67 +796,20 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
         </div>
       )}
 
-      {petWeightBracket && normSpecies === "Canine" && (
-        <div className="op-sec">
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-            <h4 style={{ margin: 0 }}>Medication & Weight Brackets ({petWeightBracket.kg} kg)</h4>
-          </div>
-
-          {petWeightBracket.alert && (
-            <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", padding: "8px 12px", borderRadius: "8px", fontSize: "0.82rem", fontWeight: 600, marginBottom: "8px" }}>
-              {petWeightBracket.alert}
-            </div>
-          )}
-
-          {petWeightBracket.heartwormAlert && (
-            <div style={{ background: "#fee2e2", border: "1px solid #f87171", color: "#991b1b", padding: "8px 12px", borderRadius: "8px", fontSize: "0.82rem", fontWeight: 600, marginBottom: "8px" }}>
-              {petWeightBracket.heartwormAlert}
-            </div>
-          )}
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "0.82rem" }}>
-            <div style={{ background: "#f8fafc", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--ln)" }}>
-              <div style={{ color: "#0f172a", fontWeight: 700 }}>NexGard Spectra Chewables:</div>
-              {petWeightBracket.nexgard && (
-                <div style={{ marginTop: "4px" }}>
-                  <span style={{ display: "inline-block", background: petWeightBracket.nexgard.color, color: "#fff", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
-                    {petWeightBracket.nexgard.box}
-                  </span>
-                  <div style={{ fontSize: "0.76rem", color: "var(--mu)", marginTop: "3px" }}>
-                    {petWeightBracket.nexgard.note}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div style={{ background: "#f8fafc", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--ln)" }}>
-              <div style={{ color: "#0f172a", fontWeight: 700 }}>Simparica Trio Bracket:</div>
-              {petWeightBracket.simparica && (
-                <div style={{ marginTop: "4px" }}>
-                  <span style={{ display: "inline-block", background: "#2563eb", color: "#fff", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
-                    {petWeightBracket.simparica.box}
-                  </span>
-                  <div style={{ fontSize: "0.76rem", color: "var(--mu)", marginTop: "3px" }}>
-                    {petWeightBracket.simparica.note || `Calculated for ${petWeightBracket.kg} kg body weight.`}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div style={{ marginTop: "8px", fontSize: "0.76rem", color: "#b45309", lineHeight: 1.35 }}>
-            <b>Strict Dosage Rule:</b> Never use leftover medication from an older dog or split a larger pill in half for a puppy. Active ingredients are not mixed evenly inside tablets. Weigh puppy monthly on digital scale before dosing.
-          </div>
-        </div>
-      )}
-
       {p.birth && petSchedule.length > 0 && (
         <div className="op-sec">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
             <h4 style={{ margin: 0 }}>Automated Preventive Schedule & Roadmap</h4>
-            <span style={{ fontSize: "0.8rem", color: "#0b3a5b", fontWeight: 700 }}>
-              Calculated Age: {petAge(p.birth)}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "0.8rem", color: "#0b3a5b", fontWeight: 700 }}>
+                Calculated Age: {petAge(p.birth)}
+              </span>
+              {isAdultPet && (
+                <button type="button" className="lnk" style={{ fontSize: "0.75rem" }} onClick={() => setShowArchived(!showArchived)}>
+                  {showArchived ? "Hide Foundation Shots ▲" : "View Foundation Shots ▼"}
+                </button>
+              )}
+            </div>
           </div>
 
           {nextMilestone && (
@@ -947,7 +841,7 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
                 </tr>
               </thead>
               <tbody>
-                {petSchedule.map(s => (
+                {displaySchedule.map(s => (
                   <tr key={s.id} style={{ borderBottom: "1px solid var(--ln)" }}>
                     <td style={{ padding: "6px 4px", fontWeight: 600 }}>
                       <span style={{ fontSize: "0.68rem", color: s.workflow === "Immunization" ? "#2563eb" : "#059669", display: "block" }}>

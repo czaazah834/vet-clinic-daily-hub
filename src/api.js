@@ -42,6 +42,21 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const fail = (message, fields) =>
   Object.assign(new Error(message), fields ? { fields, errors: fields } : {});
 let session = null;
+
+const getSessionUserId = () => {
+  if (session) return session;
+  if (typeof window !== "undefined") {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("pawcare_last_session_user") || "null");
+      if (saved?.id) { session = saved.id; return session; }
+    } catch (_) {}
+  }
+  return null;
+};
+
+export const setSessionUser = (u) => {
+  session = u?.id || null;
+};
 const codes = new Map();
 const CODE_MINUTES = 10,
   MAX_TRIES = 5;
@@ -67,7 +82,15 @@ export const findUser = (db, ident) => {
 };
 
 const authed = (role) => {
-  const u = store.get().users.find((x) => x.id === session);
+  const sid = getSessionUserId();
+  const dbUsers = store.get().users || [];
+  let u = dbUsers.find((x) => x.id === sid);
+  if (!u && typeof window !== "undefined") {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("pawcare_last_session_user") || "null");
+      if (saved && saved.id) u = saved;
+    } catch (_) {}
+  }
   if (!u)
     throw Object.assign(fail("Your session ended. Please log in again."), {
       expired: true,
@@ -194,7 +217,8 @@ function otpUser() {
     const u = db.users.find((x) => x.id === pending.userId);
     if (u) return u;
   }
-  const u = db.users.find((x) => x.id === session);
+  const sid = getSessionUserId();
+  const u = db.users.find((x) => x.id === sid);
   if (!u)
     throw Object.assign(fail("Your session ended. Please log in again."), {
       expired: true,

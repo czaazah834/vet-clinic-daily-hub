@@ -16,6 +16,26 @@ async function recordAudit(userName, userRole, action) {
   }
 }
 
+function toDateStr(val) {
+  if (!val) return "";
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, "0");
+    const d = String(val.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    const d = String(parsed.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return s;
+}
+
 /* 1. BOOTSTRAP / FULL STATE SYNC */
 clinicRouter.get("/state", async (req, res) => {
   try {
@@ -53,7 +73,7 @@ clinicRouter.get("/state", async (req, res) => {
     for (const w of weightsRes.rows) {
       if (!weightsByPet[w.pet_id]) weightsByPet[w.pet_id] = [];
       weightsByPet[w.pet_id].push({
-        date: w.date ? String(w.date).slice(0, 10) : "",
+        date: toDateStr(w.date),
         kg: parseFloat(w.kg)
       });
     }
@@ -66,7 +86,7 @@ clinicRouter.get("/state", async (req, res) => {
       speciesOther: p.species_other || "",
       breed: p.breed,
       sex: p.sex,
-      birth: p.birth ? new Date(p.birth).toISOString().slice(0, 10) : "",
+      birth: toDateStr(p.birth),
       weight: parseFloat(p.weight),
       color: p.color || "",
       neutered: p.neutered || "Not sure",
@@ -74,7 +94,7 @@ clinicRouter.get("/state", async (req, res) => {
       vaccinationCardId: p.vaccination_card_id || "",
       notes: p.notes || "",
       photo: p.photo || "",
-      weights: weightsByPet[p.id] || [{ date: p.birth ? String(p.birth).slice(0, 10) : "", kg: parseFloat(p.weight) }]
+      weights: weightsByPet[p.id] || [{ date: toDateStr(p.birth), kg: parseFloat(p.weight) }]
     }));
 
     const owners = ownersRes.rows.map(o => ({
@@ -84,7 +104,7 @@ clinicRouter.get("/state", async (req, res) => {
       firstName: o.first_name || "",
       lastName: o.last_name || "",
       middleInitial: o.middle_initial || "",
-      birthday: o.birthday ? String(o.birthday).slice(0, 10) : "",
+      birthday: toDateStr(o.birthday),
       email: o.email,
       phone: o.phone,
       houseStreet: o.house_street || "",
@@ -99,7 +119,7 @@ clinicRouter.get("/state", async (req, res) => {
       id: a.id,
       petId: a.pet_id,
       vetId: a.vet_id,
-      date: a.date ? String(a.date).slice(0, 10) : "",
+      date: toDateStr(a.date),
       time: a.time,
       reason: a.reason,
       status: a.status,
@@ -116,8 +136,8 @@ clinicRouter.get("/state", async (req, res) => {
       vaccine: v.vaccine,
       brand: v.brand || "",
       batch: v.batch || "",
-      date: v.date ? String(v.date).slice(0, 10) : "",
-      nextDue: v.next_due ? String(v.next_due).slice(0, 10) : null,
+      date: toDateStr(v.date),
+      nextDue: v.next_due ? toDateStr(v.next_due) : null,
       doseNo: v.dose_no,
       doseOf: v.dose_of,
       done: Boolean(v.done),
@@ -133,7 +153,7 @@ clinicRouter.get("/state", async (req, res) => {
       petId: c.pet_id,
       vetId: c.vet_id,
       apptId: c.appt_id || "",
-      date: c.date ? String(c.date).slice(0, 10) : "",
+      date: toDateStr(c.date),
       symptoms: c.symptoms,
       objective: c.objective,
       diagnosis: c.diagnosis,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { SEED, TODAY, addLog } from "./lib.jsx";
-import { bindStore } from "./api.js";
+import { bindStore, setSessionUser } from "./api.js";
 import { auth, OFFLINE_MSG } from "./authApi.js";
 import Landing from "./pages/Landing.jsx";
 import Login from "./pages/Login.jsx";
@@ -62,8 +62,12 @@ export default function App() {
     auth.me()
       .then(result => {
         if (!active) return;
-        if (result?.user?.role && CFG[result.user.role]) { setMe(result.user); saveCachedUser(result.user); }
-        else { setMe(null); saveCachedUser(null); setView("login"); }
+        if (result?.user?.role && CFG[result.user.role]) {
+          setMe(result.user);
+          saveCachedUser(result.user);
+          setSessionUser(result.user);
+        }
+        else { setMe(null); saveCachedUser(null); setSessionUser(null); setView("login"); }
       })
       .catch(error => {
         if (!active) return;
@@ -122,11 +126,17 @@ export default function App() {
   useEffect(() => { setDb(p => { const late = p.appts.filter(a => ["Scheduled", "Confirmed"].includes(a.status) && a.date < TODAY); if (!late.length) return p; return { ...p, appts: p.appts.map(a => late.includes(a) ? { ...a, status: "No-show" } : a), log: addLog(p, { name: "System" }, `${late.length} past appointment(s) marked No-show`) }; }); }, []);
   /* Log out here and on the server. A message (e.g. idle timeout) sends the person to Log in with that notice. */
   const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } try { localStorage.removeItem("pawcare_token"); sessionStorage.removeItem("pawcare_token"); } catch (_) {} setMe(null); saveCachedUser(null); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
-  /* Idle timeout: 15 minutes with no mouse, key or touch activity ends the session. */
+  /* Work Shift Session Timeout: 8 hours (standard full clinic shift) */
   useEffect(() => {
     if (!me) return;
-    let t; const reset = () => { clearTimeout(t); t = setTimeout(() => logout("You were logged out after 15 minutes of no activity. Please log in again."), 15 * 60000); };
-    const ev = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"]; ev.forEach(e => window.addEventListener(e, reset, { passive: true })); reset();
+    let t;
+    const reset = () => {
+      clearTimeout(t);
+      t = setTimeout(() => logout("Your session ended after 8 hours of inactivity. Please log in again."), 8 * 60 * 60 * 1000);
+    };
+    const ev = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
+    ev.forEach(e => window.addEventListener(e, reset, { passive: true }));
+    reset();
     return () => { clearTimeout(t); ev.forEach(e => window.removeEventListener(e, reset)); };
   }, [me]);
   const go = v => { setNotice(""); setBad(false); setView(v); };

@@ -131,10 +131,7 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
           <span className="err">{f.show("password", false)}</span>
         </div>
 
-        <div className="auth-row">
-          <label className="chk">
-            <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show password
-          </label>
+        <div className="auth-row" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="lnk" onClick={() => go("forgot")}>
             Forgot password?
           </button>
