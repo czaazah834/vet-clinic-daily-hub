@@ -359,3 +359,21 @@ reserve a slot. Only active visits explicitly naming the same vaccine family are
 shown as matching appointments; unrelated same-day visits are not labelled booked.
 
 Check: `node --test tests/owner-vaccination.test.js` and `npm run build`.
+
+### Owner visit summaries and follow-up actions
+
+Visit History opens with one click or its accessible View visit button. Owners
+can filter by follow-up booking status and read prescribed products, the vet's
+saved directions and prescribed supply alongside the unchanged full prescription
+and home-care text. Prescribed supply is not presented as confirmed dispensing.
+Vet names come from the clinic directory; missing names are not replaced with
+sample identities. Details refresh from the current owner-scoped record.
+
+Each follow-up action retains its consultation ID and pet. Unrelated visits do
+not fulfill the request; cancelled/no-show linked visits allow rebooking, while
+completed linked visits remain completed. Booking carries the exact request into
+the form and displays its saved instructions and target date. The appointment
+date is adjusted to the current booking window; the clinical target is unchanged.
+The target date does not reserve an appointment or trigger a new reminder.
+
+Checks: `node --test tests/owner-care.test.js` and `npm run build`.
