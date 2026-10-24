@@ -362,36 +362,6 @@ clinicRouter.post("/owner/contact", async (req, res) => {
 });
 
 /* 2. OWNERS CRUD */
-clinicRouter.post("/owners", async (req, res) => {
-  const { id, name, email, phone, address, actorName, actorRole } = req.body;
-
-  // RBAC check: Assistants cannot edit existing client accounts
-  if (id && actorRole === "assistant") {
-    return res.status(403).json({ error: "Vet Assistants cannot edit registered pet owner accounts." });
-  }
-
-  const ownerId = id || ("o_" + Math.random().toString(36).slice(2, 8));
-
-  try {
-    const result = await query(
-      `INSERT INTO owners (id, name, email, phone, address)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (id) DO UPDATE SET
-         name = EXCLUDED.name,
-         email = EXCLUDED.email,
-         phone = EXCLUDED.phone,
-         address = EXCLUDED.address
-       RETURNING *`,
-      [ownerId, name, email, phone, address]
-    );
-
-    await recordAudit(actorName, actorRole, `Registered / updated pet owner: ${name}`);
-    res.json({ success: true, owner: result.rows[0] });
-  } catch (err) {
-    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
-  }
-});
-
 /* 3. PETS CRUD & WEIGHT LOGGING */
 clinicRouter.post("/owner/pets", async (req, res) => {
   const {
@@ -914,55 +884,25 @@ clinicRouter.post("/owner/pets", async (req, res) => {
   }
 });
 
-clinicRouter.post("/pets", async (req, res) => {
-  const {
-    id, ownerId, name, species, speciesOther, breed, sex,
-    birth, weight, color, neutered, allergies, notes, photo,
-    actorName, actorRole
-  } = req.body;
-  const petId = id || ("p_" + Math.random().toString(36).slice(2, 8));
-  const cardId = "VACC-" + new Date().getFullYear() + "-" + Math.floor(1000 + Math.random() * 9000);
-
-  try {
-    const result = await withTransaction(async (client) => {
-      const insPet = await client.query(
-        `INSERT INTO pets (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, allergies, vaccination_card_id, notes, photo)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-         RETURNING *`,
-        [petId, ownerId, name, species || "Dog", speciesOther || "", breed || "Mixed Breed", sex || "Male", birth, weight || 5.0, color || "", neutered || "Not sure", allergies || [], cardId, notes || "", photo || ""]
-      );
-
-      // Record baseline weight
-      await client.query(
-        `INSERT INTO pet_weights (pet_id, date, kg) VALUES ($1, $2, $3)`,
-        [petId, birth || new Date().toISOString().slice(0, 10), weight || 5.0]
-      );
-
-      return insPet.rows[0];
-    });
-
-    await recordAudit(actorName, actorRole, `Registered patient ${name} (${species}) with card ${cardId}`);
-    res.json({ success: true, pet: result });
-  } catch (err) {
-    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
-  }
-});
-
+// Weight measurements use clinic dates, canonical identity and one audited transaction.
 clinicRouter.post("/pets/:id/weights", async (req, res) => {
-  const petId = req.params.id;
-  const { date, kg, recordedBy } = req.body;
   try {
-    await withTransaction(async (client) => {
-      await client.query(
-        `INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1, $2, $3, $4)`,
-        [petId, date || new Date().toISOString().slice(0, 10), kg, recordedBy || "clinic"]
-      );
-      await client.query(`UPDATE pets SET weight = $1 WHERE id = $2`, [kg, petId]);
+    const {kg} = req.body;
+    const date = req.body.date ?? clinicClock().date;
+    if (typeof kg !== 'number' || !Number.isFinite(kg) || kg < 0.05 || kg > 120 || Math.abs(kg*100-Math.round(kg*100)) > 0.000001) throw registrationError('Enter a measured weight from 0.05 to 120 kg with at most two decimal places.');
+    if (!validDate(date) || date > clinicClock().date) throw registrationError('Enter a real measurement date that is not in the future.');
+    const result = await withTransaction(async client => {
+      const pet = (await client.query('SELECT * FROM pets WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];
+      if (!pet) throw registrationError('Pet not found.',404);
+      if (date < toDateStr(pet.birth)) throw registrationError('The measurement cannot be dated before the patient’s birth.');
+      const latest = (await client.query('SELECT date FROM pet_weights WHERE pet_id=$1 ORDER BY date DESC LIMIT 1',[pet.id])).rows[0];
+      await client.query('INSERT INTO pet_weights (pet_id,date,kg,recorded_by) VALUES ($1,$2,$3,$4)',[pet.id,date,kg,req.user.name]);
+      if (!latest || date >= toDateStr(latest.date)) await client.query('UPDATE pets SET weight=$1 WHERE id=$2',[kg,pet.id]);
+      await registrationAudit(client,req.user,`Recorded measured weight for ${pet.id} on ${date}`);
+      return {petId:pet.id,date,kg,by:req.user.name};
     });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
-  }
+    res.json({success:true,measurement:result});
+  } catch(error) {res.status(error.status || 500).json({error:error.status ? error.message : 'Unable to save the weight. Please retry.'});}
 });
 
 clinicRouter.post(['/owner/pets/:id/photo','/pets/:id/photo'],async (req,res) => {
@@ -2094,86 +2034,6 @@ clinicRouter.post("/walk-in", async (req, res) => {
 });
 
 /* 6. VACCINATIONS & FRONT DESK / ASSISTANT LOGGING */
-clinicRouter.post("/vaccinations", async (req, res) => {
-  const {
-    id, petId, cardId, vaccine, brand, batch, date,
-    nextDue, doseNo, doseOf, done, automated, protocolType,
-    notes, vetId, recordedBy, actorName, actorRole
-  } = req.body;
-  const vaccId = id || ("v_" + Math.random().toString(36).slice(2, 8));
-  const isDone = done !== undefined ? Boolean(done) : true;
-
-  try {
-    validateBoosterDate(date, nextDue);
-    if (isDone) {
-      // Reconcile with any existing unadministered placeholder for this pet
-      const existingPlaceholder = await query(
-        `SELECT id FROM vaccinations 
-         WHERE pet_id = $1 AND done = false 
-           AND (
-             LOWER(vaccine) = LOWER($2)
-             OR (LOWER($2) LIKE '%rabies%' AND LOWER(vaccine) LIKE '%rabies%')
-             OR (LOWER($2) LIKE '%dhpp%' AND LOWER(vaccine) LIKE '%dhpp%')
-             OR (LOWER($2) LIKE '%5-in-1%' AND LOWER(vaccine) LIKE '%5-in-1%')
-             OR (LOWER($2) LIKE '%deworm%' AND LOWER(vaccine) LIKE '%deworm%')
-             OR (LOWER($2) LIKE '%fvrcp%' AND LOWER(vaccine) LIKE '%fvrcp%')
-           )
-         ORDER BY date DESC LIMIT 1`,
-        [petId, vaccine]
-      );
-
-      if (existingPlaceholder.rows.length) {
-        const placeholderId = existingPlaceholder.rows[0].id;
-        const upd = await query(
-          `UPDATE vaccinations SET
-             vaccine = $1, brand = $2, batch = $3, date = $4, next_due = $5,
-             dose_no = $6, dose_of = $7, done = true, automated = false,
-             notes = $8, vet_id = $9, recorded_by = $10
-           WHERE id = $11
-           RETURNING *`,
-          [vaccine, brand || "", batch || "", date, nextDue || null, doseNo || 1, doseOf || 1, notes || "", vetId || "", recordedBy || actorName || "Veterinarian", placeholderId]
-        );
-        // Clean up any other remaining unadministered duplicates of this vaccine for this pet
-        await query(
-          `DELETE FROM vaccinations WHERE pet_id = $1 AND done = false AND id <> $2
-           AND (
-             (LOWER($3) LIKE '%rabies%' AND LOWER(vaccine) LIKE '%rabies%')
-             OR (LOWER($3) LIKE '%dhpp%' AND LOWER(vaccine) LIKE '%dhpp%')
-             OR (LOWER($3) LIKE '%5-in-1%' AND LOWER(vaccine) LIKE '%5-in-1%')
-           )`,
-          [petId, placeholderId, vaccine]
-        );
-        await recordAudit(actorName, actorRole, `Updated & certified vaccination ${vaccine} for pet ${petId}`);
-        return res.json({ success: true, vaccination: upd.rows[0] });
-      }
-    }
-
-    const result = await query(
-      `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, notes, vet_id, recorded_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-       RETURNING *`,
-      [vaccId, petId, cardId || "VACC-DEFAULT", vaccine, brand || "", batch || "", date, nextDue || null, doseNo || 1, doseOf || 1, isDone, Boolean(automated), protocolType || "", notes || "", vetId || "", recordedBy || actorName || "Front Desk Assistant"]
-    );
-
-    if (isDone) {
-      await query(
-        `DELETE FROM vaccinations WHERE pet_id = $1 AND done = false AND id <> $2
-         AND (
-           (LOWER($3) LIKE '%rabies%' AND LOWER(vaccine) LIKE '%rabies%')
-           OR (LOWER($3) LIKE '%dhpp%' AND LOWER(vaccine) LIKE '%dhpp%')
-           OR (LOWER($3) LIKE '%5-in-1%' AND LOWER(vaccine) LIKE '%5-in-1%')
-         )`,
-        [petId, result.rows[0].id, vaccine]
-      );
-    }
-
-    await recordAudit(actorName, actorRole, `Logged vaccination ${vaccine} (${batch || "No lot#"}) for pet ${petId}`);
-    res.json({ success: true, vaccination: result.rows[0] });
-  } catch (err) {
-    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
-  }
-});
-
 clinicRouter.delete("/vaccinations/:id", async (req, res) => {
   const { id } = req.params;
   const { actorName, actorRole } = req.body;

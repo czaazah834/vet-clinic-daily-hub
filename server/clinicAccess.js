@@ -59,7 +59,8 @@ export async function clinicAccess(req, res, next) {
       }
       return next();
     }
-    if (key === 'POST /owners' || key === 'POST /pets') return allow('assistant') ? next() : denied();
+    if (key === 'POST /owners' || key === 'POST /pets') return allow('assistant') ? fail(res, 410, 'Use reviewed in-clinic registration to create an owner or patient.') : denied();
+    if (key === 'POST /vaccinations') return allow('vet') ? fail(res, 410, 'Certify administered vaccines through the assigned visit’s SOAP finalization.') : denied();
     if ((match = path.match(/^\/(?:owner\/)?pets\/([^/]+)\/(photo|weights)$/)) && req.method === 'POST') {
       if (!allow(...(match[2] === 'weights' ? ['assistant'] : ['owner', 'assistant']))) return denied();
       const id = decodeURIComponent(match[1]);
@@ -98,7 +99,7 @@ export async function clinicAccess(req, res, next) {
       }
       return next();
     }
-    if (key === 'POST /consultations' || key === 'POST /vaccinations') {
+    if (key === 'POST /consultations') {
       if (!allow('vet')) return denied();
       req.body.vetId = req.user.vetId || req.user.id;
       const rows = await query("SELECT * FROM appointments WHERE pet_id = $1 AND vet_id = ANY($2::varchar[]) AND status IN ('Checked-in', 'In consultation')", [req.body.petId, [req.user.vetId, req.user.id].filter(Boolean)]);

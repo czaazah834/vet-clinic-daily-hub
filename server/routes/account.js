@@ -1,3 +1,4 @@
+import { requestContactChange, verifyContactChange } from '../contactChanges.js';
 import express from 'express';
 import { query, withTransaction } from '../db.js';
 import { requireAuth } from './auth.js';
@@ -51,41 +52,8 @@ accountRouter.post('/profile/photo', async (req, res) => {
   }
 });
 
-accountRouter.post('/profile/contact', async (req, res) => {
-  const input = req.body || {};
-  const email = String(input.email || '').trim().toLowerCase();
-  const phone = String(input.phone || '').replace(/[\s-]/g, '');
-  const errors = {};
-  if (email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Enter a valid email address.';
-  if (!/^\+?\d{10,15}$/.test(phone)) errors.phone = 'Enter a valid mobile number.';
-  const address = {};
-  for (const [key, limit] of Object.entries({ houseStreet: 255, city: 100, state: 100, country: 100, zipCode: 20 })) {
-    address[key] = String(input[key] || '').trim();
-    if (address[key].length > limit) errors[key] = `Use ${limit} characters or fewer.`;
-  }
-  if (Object.keys(errors).length) return res.status(400).json({ error: 'Check your contact details.', errors });
-  try {
-    await withTransaction(async client => {
-      await client.query('UPDATE users SET email = $1, mobile_number = $2, updated_at = NOW() WHERE id = $3', [email, phone, req.user.id]);
-      const existing = await client.query('SELECT id FROM addresses WHERE user_id = $1', [req.user.id]);
-      const values = [address.houseStreet, address.country, address.city, address.state, address.zipCode, req.user.id];
-      if (existing.rows.length) {
-        await client.query('UPDATE addresses SET house_street = $1, country = $2, city = $3, state = $4, zip_code = $5 WHERE user_id = $6', values);
-      } else {
-        await client.query('INSERT INTO addresses (house_street, country, city, state, zip_code, user_id) VALUES ($1, $2, $3, $4, $5, $6)', values);
-      }
-      if (req.user.role === 'owner') {
-        const fullAddress = [address.houseStreet, address.city, address.state, address.zipCode, address.country].filter(Boolean).join(', ');
-        await client.query('UPDATE owners SET email = $1, phone = $2, address = $3 WHERE user_id = $4', [email, phone, fullAddress, req.user.id]);
-      }
-    });
-    res.json({ profile: { ...req.user, email, phone, address } });
-  } catch (error) {
-    if (error.code === '23505') return res.status(409).json({ error: 'This email is already registered.', errors: { email: 'This email is already registered.' } });
-    console.error('Save account contact failed:', error.message);
-    res.status(500).json({ error: 'Your contact details could not be saved. Please try again.' });
-  }
-});
+accountRouter.post('/profile/contact', requestContactChange);
+accountRouter.post('/profile/contact/verify', verifyContactChange);
 
 accountRouter.post('/password', async (req, res) => {
   const { cur, next, conf } = req.body || {};
