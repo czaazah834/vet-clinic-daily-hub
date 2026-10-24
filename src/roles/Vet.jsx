@@ -12,13 +12,10 @@ const weightTone = s => (s === "ideal" ? "" : "wa");
 
 function Dash({ db, setDb, me, go, say }) {
   const [activeSoap, setActiveSoap] = useState(null); // { appt, pet }
-  const [scope, setScope] = useState("all");          // "all" = whole clinic, "my" = assigned to this doctor
+  const [scope, setScope] = useState("my");          // "all" = whole clinic, "my" = assigned to this doctor
 
   const isMyVet = a => {
-    if (!a.vetId || a.vetId === "all") return true;
-    if (a.vetId === me.id || a.vetId === me.vetId) return true;
-    if ((me.name?.toLowerCase().includes("ana") || me.id === "u_vet_1") && (a.vetId === "v1" || a.vetId === "u_vet_1")) return true;
-    if ((me.name?.toLowerCase().includes("ben") || me.id === "u_vet_2") && (a.vetId === "v2" || a.vetId === "u_vet_2")) return true;
+    if (a.vetId === me.id || (me.vetId && a.vetId === me.vetId)) return true;
     return false;
   };
 
@@ -34,12 +31,12 @@ function Dash({ db, setDb, me, go, say }) {
   const allWaiting = todayAppts.filter(a => a.status === "Checked-in");
   const myWaiting = todayAppts.filter(a => isMyVet(a) && a.status === "Checked-in");
 
-  const startConsult = a => {
+  const startConsult = async a => {
     const pet = db.pets.find(p => p.id === a.petId);
     if (!pet) return say("Patient record not found.");
     // Front desk normally records intake vitals first; warn the doctor, but never block care.
     if (!a.intakeVitals) say("No intake vitals on file for this patient. Record them in the SOAP notes.");
-    moveAppt(setDb, a.id, "In consultation", me);
+    if (!await moveAppt(setDb, a.id, "In consultation", me, say)) return;
     setActiveSoap({ appt: { ...a, status: "In consultation" }, pet });
   };
 

@@ -12,7 +12,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   // SOAP fields initialized with Assistant's Intake Vitals if present
   const iv = appt?.intakeVitals;
   const initialWeight = iv?.weight ? String(iv.weight) : pet.weight ? String(pet.weight) : "";
-  const initialTemp = iv?.temp ? `${iv.temp}°C` : "38.5°C";
+  const initialTemp = iv?.temp ? `${iv.temp}°C` : "not measured";
   const tempRemark = iv?.tempAnalysis ? ` (${iv.tempAnalysis.label})` : "";
   const weightRemark = iv?.weightAnalysis ? ` (${iv.weightAnalysis.label})` : "";
   const triageRemark = iv?.triageLevel && iv.triageLevel !== "Routine" ? ` [TRIAGE: ${iv.triageLevel.toUpperCase()}]` : "";
@@ -20,7 +20,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const [f, setF] = useState({
     date: TODAY,
     symptoms: appt?.reason ? `Chief Complaint: ${appt.reason}${triageRemark}` : "",
-    objective: `Temp: ${initialTemp}${tempRemark}, Weight: ${initialWeight ? `${initialWeight} kg` : "—"}${weightRemark}. Heart rate and respiration normal.`,
+    objective: `Temp: ${initialTemp}${tempRemark}, Weight: ${initialWeight ? `${initialWeight} kg` : "—"}${weightRemark}.`,
     diagnosis: "",
     treatment: "",
     prescription: "",
@@ -78,6 +78,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
 
   const handleSubmit = async (ev) => {
     ev.preventDefault();
+    if (loading) return;
     const e = {};
     if (!f.diagnosis.trim()) e.diagnosis = "Assessment / Diagnosis is required";
     if (!f.treatment.trim()) e.treatment = "Plan / Treatment is required";
@@ -128,87 +129,20 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       };
     }
 
-    // 1. Persist Consultation to PostgreSQL Database
+    // Finalize the linked clinical data together, or leave the form open on failure.
+    const followUpNote = f.scheduleFollowUp
+      ? `\nFollow-up requested for ${f.followUpDate}: ${f.followUpReason.trim()}. Reception to confirm scheduling.` : "";
+    newRecord.treatment += followUpNote;
     try {
       await api.post("/api/consultations", {
-        id: consultId,
-        petId: pet.id,
-        vetId: effectiveVetId,
-        apptId: appt ? appt.id : "",
-        date: f.date,
-        symptoms: f.symptoms.trim(),
-        objective: f.objective.trim(),
-        diagnosis: f.diagnosis.trim(),
-        treatment: f.treatment.trim(),
-        prescription: f.prescription.trim(),
-        actorName: me?.name || "Veterinarian",
-        actorRole: me?.role || "vet"
+        ...newRecord,
+        ...(f.weight ? { weight: Number(f.weight) } : {}),
+        vaccination: newVacc,
       });
     } catch (err) {
-      console.warn("Backend consultation sync:", err.message);
-    }
-
-    // 2. Persist Administered Vaccine to PostgreSQL Database (Official Digital Card Log)
-    if (newVacc) {
-      try {
-        await api.post("/api/vaccinations", {
-          id: newVacc.id,
-          petId: pet.id,
-          cardId: pet.vaccinationCardId || `VACC-${new Date().getFullYear()}-3067`,
-          vaccine: newVacc.vaccine,
-          brand: newVacc.brand,
-          batch: newVacc.batch,
-          date: newVacc.date,
-          nextDue: newVacc.nextDue,
-          done: true,
-          notes: newVacc.notes,
-          vetId: effectiveVetId,
-          recordedBy: `Dr. ${me?.name || "Ana Cruz"}`,
-          actorName: me?.name || "Veterinarian",
-          actorRole: me?.role || "vet"
-        });
-      } catch (err) {
-        console.warn("Backend vaccination sync:", err.message);
-      }
-    }
-
-    // 3. Mark Appointment Completed in PostgreSQL Database
-    if (appt) {
-      try {
-        await api.patch(`/api/appointments/${appt.id}/status`, {
-          status: "Completed",
-          billingStatus: "Unbilled",
-          actorName: me?.name || "Veterinarian",
-          actorRole: me?.role || "vet"
-        });
-      } catch (err) {
-        console.warn("Backend appointment status sync:", err.message);
-      }
-    }
-
-    // 4. Optionally Schedule Follow-up Appointment in Database
-    let followUpAppt = null;
-    if (f.scheduleFollowUp && f.followUpDate) {
-      followUpAppt = {
-        id: "a" + uid(),
-        petId: pet.id,
-        vetId: effectiveVetId,
-        date: f.followUpDate,
-        time: "10:00",
-        reason: f.followUpReason.trim() || `Follow-up re-check for ${pet.name}`,
-        status: "Scheduled",
-        billingStatus: "Unbilled",
-        amount: 450
-      };
-      try {
-        await api.post("/api/appointments", {
-          ...followUpAppt,
-          actorName: me?.name || "Veterinarian",
-          actorRole: me?.role || "vet"
-        });
-      } catch (err) {
-        console.warn("Backend follow-up appointment sync:", err.message);
-      }
+      setErrs(p => ({ ...p, save: err.message }));
+      setLoading(false);
+      return;
     }
 
     // 5. Update In-Memory / React State
@@ -237,11 +171,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       }
 
       let nextAppts = (p.appts || []).map(a =>
-        appt && a.id === appt.id ? { ...a, status: "Completed", billingStatus: "Unbilled", amount: 650 } : a
+        appt && a.id === appt.id ? { ...a, status: "Completed", billingStatus: "Unbilled" } : a
       );
-      if (followUpAppt) {
-        nextAppts = [followUpAppt, ...nextAppts];
-      }
 
       return {
         ...p,
@@ -254,7 +185,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
           me,
           `Veterinarian ${me.name} completed consultation for ${pet.name}. Diagnosis: ${newRecord.diagnosis}.${
             newVacc ? ` Administered ${newVacc.vaccine} (${newVacc.brand}, batch ${newVacc.batch}), next booster due ${newVacc.nextDue}.` : ""
-          }${followUpAppt ? ` Scheduled follow-up visit on ${followUpAppt.date}.` : ""} Sent to Front Desk for billing & checkout.`
+          }${f.scheduleFollowUp ? ` Follow-up requested for ${f.followUpDate}; reception to confirm booking.` : ""} Sent to Front Desk for billing & checkout.`
         ),
       };
     });
@@ -588,7 +519,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     onChange={e => set("scheduleFollowUp", e.target.checked)}
                   />
                   <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Calendar size={16} /> Schedule Clinical Follow-up / Re-check Visit
+                    <Calendar size={16} /> Request Clinical Follow-up / Re-check Visit
                   </span>
                 </label>
 
@@ -638,6 +569,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
             </div>
 
+            {errs.save && <p className="err" role="alert">{errs.save}</p>}
             <div className="row end" style={{ marginTop: "20px", gap: "10px" }}>
               <button type="button" className="btn ghost" onClick={onClose} disabled={loading}>Cancel</button>
               <button type="submit" className="btn gold" disabled={loading} style={{ fontWeight: 700 }}>

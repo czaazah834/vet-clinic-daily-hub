@@ -1,3 +1,4 @@
+import { api } from "./api.js";
 import { useState } from "react";
 import {
   Search,
@@ -120,41 +121,38 @@ export default function EntityPage({ ent, db, setDb, me, say }) {
 
   const deny = m => { say(m); setModal(null); };
 
-  const save = d => {
+  const save = async d => {
     if (!can(ent, me, modal.init ? "u" : "c")) return deny("You don’t have permission to do that");
     if (me.role === "owner" && ent === "appts" && !scope(db, me, "pets").some(p => p.id === d.petId)) return deny("You can only book for your own pets");
-    const x = { ...d }; if (ent === "records") x.vetId = d.vetId || me.vetId || "v1";
-    if (ent === "appts" && !modal.init) x.status = me.role === "owner" ? "Scheduled" : "Confirmed";
+    const x = { ...d, id: modal.init?.id || uid() };
+    try {
+      if (ent === "appts" && modal.init) await api.put(`/api/appointments/${modal.init.id}`, x);
+      else if (["appts", "owners", "pets"].includes(ent) && !modal.init) {
+        const result = await api.post(`/api/${ent === "appts" ? "appointments" : ent}`, ent === "owners" ? { ...x, id: undefined } : x);
+        const saved = result.appointment || result.owner || result.pet;
+        if (!saved?.id) throw new Error("The server did not confirm the record.");
+        x.id = saved.id;
+        if (ent === "appts") x.status = "Scheduled";
+      } else return deny("Use the clinical or account workflow for this action.");
+    } catch (error) { say(error.message); return; }
     setDb(p => {
       let l = p[ent];
       if (modal.init) l = l.map(r => r.id === modal.init.id ? { ...r, ...x } : r);
-      else { if (ent === "vacc") l = l.map(v => v.petId === x.petId && v.vaccine === x.vaccine ? { ...v, done: true } : v); l = [...l, { id: uid(), ...x }]; }
+      else l = [...l, x];
       return { ...p, [ent]: l, log: addLog(p, me, `${modal.init ? "Updated" : "Added"} ${c.one}${x.petId ? " for " + petName(p, x.petId) : ""}`) };
     });
     say(`${modal.init ? "Updated" : "Added"} ${c.one}`); setModal(null);
   };
 
-  const move = (a, s) => {
+  const move = async (a, s) => {
     if (s === "WRITE") return setModal({ consult: a });
-    moveAppt(setDb, a.id, s, me); say(s === "In consultation" ? "Consultation started" : `${LABEL[s]} done`);
+    if (!await moveAppt(setDb, a.id, s, me, say)) return;
+    say(s === "In consultation" ? "Consultation started" : `${LABEL[s]} done`);
     if (s === "In consultation") setModal({ consult: a });
   };
 
-  const saveConsult = d => {
-    const a = modal.consult; if (!can("records", me, "c")) return deny("Only veterinarians can record consultations");
-    setDb(p => ({ ...p, records: [...p.records, { id: uid(), ...d, vetId: me.vetId || "v1", apptId: a.id }], appts: p.appts.map(r => r.id === a.id ? { ...r, status: "Completed" } : r), log: addLog(p, me, `Consultation saved for ${petName(p, d.petId)}; visit completed`) }));
-    say("Consultation saved. Visit completed."); setModal(null);
-  };
-
-  const del = x => {
-    if (!can(ent, me, "d")) return deny("You don’t have permission to delete");
-    if (ent === "users" && x.id === me.id) return deny("You can’t delete your own account");
-    setDb(p => { const n = { ...p };
-      if (ent === "owners") { const ps = p.pets.filter(r => r.ownerId === x.id).map(r => r.id); ["appts", "vacc", "records"].forEach(k => n[k] = p[k].filter(r => !ps.includes(r.petId))); n.pets = p.pets.filter(r => r.ownerId !== x.id); n.users = p.users.filter(u => u.ownerId !== x.id); }
-      if (ent === "pets") ["appts", "vacc", "records"].forEach(k => n[k] = p[k].filter(r => r.petId !== x.id));
-      n[ent] = p[ent].filter(r => r.id !== x.id); n.log = addLog(p, me, `Deleted ${c.one}`); return n; });
-    setModal(null); say("Deleted");
-  };
+  const saveConsult = () => deny("Open an assigned visit in the Clinical Desk to finalize its consultation.");
+  const del = () => deny("Deletion is unavailable. Use the authorized cancellation or correction workflow.");
 
   // Helper for action icon
   const getAddIcon = () => {
@@ -252,7 +250,7 @@ export default function EntityPage({ ent, db, setDb, me, say }) {
           setDb={setDb}
           me={me}
           onClose={() => setModal(null)}
-          onRegistered={({ owner, pet, cardId }) => {
+          onRegistered={(pet, owner) => {
             say(`Successfully registered ${owner.name} & patient ${pet.name}!`);
             setModal(null);
           }}

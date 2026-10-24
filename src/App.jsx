@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { SEED, TODAY, addLog } from "./lib.jsx";
+import { clinicRequest } from "./clinicApi.js";
+import { emptyClinicState, applyClinicState } from "./clinicState.js";
 import { bindStore, setSessionUser } from "./api.js";
 import { auth, OFFLINE_MSG } from "./authApi.js";
 import Landing from "./pages/Landing.jsx";
@@ -51,7 +52,8 @@ function saveCachedUser(user) {
 }
 
 export default function App() {
-  const [db, setDb] = useState(SEED), [me, setMe] = useState(getCachedUser), [restoring, setRestoring] = useState(() => !getCachedUser()), [view, setView] = useState(getInitialView), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
+  const [db, setDb] = useState(emptyClinicState), [me, setMe] = useState(getCachedUser), [restoring, setRestoring] = useState(() => !getCachedUser()), [view, setView] = useState(getInitialView), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
+  const [clinicError, setClinicError] = useState("");
   const [otpEnabled, setOtpEnabled] = useState(() => getInitialView() !== "otp");
   const dbRef = useRef(db); dbRef.current = db;
   useEffect(() => { bindStore(() => dbRef.current, setDb); }, []);
@@ -86,62 +88,31 @@ export default function App() {
       .finally(() => { if (active) setRestoring(false); });
     return () => { active = false; };
   }, []);
-   // Live synchronization with PostgreSQL Neon DB across staff tabs & sessions
+  // Sync only authenticated records; empty results clear stale and demo data.
   useEffect(() => {
+    if (!me || restoring) return;
     let active = true;
-    const syncState = () => {
-      fetch("/api/state")
-        .then(r => r.json())
-        .then(res => {
-          if (!active) return;
-          if (res.success && res.data) {
-            setDb(p => {
-              const remotePets = res.data.pets || [];
-              const mergedPets = [
-                ...remotePets,
-                ...(p.pets || []).filter(localP => !remotePets.some(r => r.id === localP.id))
-              ];
-              const remoteVaccs = res.data.vaccs || [];
-              const mergedVaccs = [
-                ...remoteVaccs,
-                ...(p.vacc || p.vaccs || []).filter(localV => !remoteVaccs.some(r => r.id === localV.id))
-              ];
-              const remoteAppts = res.data.appts || [];
-              const mergedAppts = [
-                ...remoteAppts,
-                ...(p.appts || []).filter(localA => !remoteAppts.some(r => r.id === localA.id))
-              ];
-              return {
-                ...p,
-                vets: res.data.vets ?? p.vets,
-                owners: res.data.owners?.length ? res.data.owners : p.owners,
-                pets: mergedPets.length ? mergedPets : p.pets,
-                appts: remoteAppts.length ? remoteAppts : mergedAppts,
-                vacc: mergedVaccs.length ? mergedVaccs : (p.vacc || []),
-                vaccs: mergedVaccs.length ? mergedVaccs : (p.vaccs || []),
-                records: res.data.consults?.length ? res.data.consults : (p.records || []),
-                consults: res.data.consults?.length ? res.data.consults : (p.consults || []),
-                petRequests: res.data.petRequests !== undefined ? res.data.petRequests : (p.petRequests || []),
-                log: res.data.log?.length ? res.data.log : p.log
-              };
-            });
-          }
-        })
-        .catch(() => {});
+    const syncState = async () => {
+      try {
+        const remote = await clinicRequest("GET", "/api/state");
+        if (!active) return;
+        setDb(p => applyClinicState(p, remote));
+        setClinicError("");
+      } catch (error) {
+        if (!active) return;
+        if (error.status === 401 || error.status === 403) {
+          setDb(emptyClinicState()); setMe(null); saveCachedUser(null); setSessionUser(null);
+          setNotice("Your session has ended. Please log in again."); setBad(true); setView("login");
+        } else setClinicError("Clinic connection unavailable. Displayed records may be out of date. Changes require a successful server save.");
+      }
     };
-
     syncState();
     const interval = setInterval(syncState, 3000);
     window.addEventListener("focus", syncState);
-    return () => {
-      active = false;
-      clearInterval(interval);
-      window.removeEventListener("focus", syncState);
-    };
-  }, []);
-  useEffect(() => { setDb(p => { const late = p.appts.filter(a => ["Scheduled", "Confirmed"].includes(a.status) && a.date < TODAY); if (!late.length) return p; return { ...p, appts: p.appts.map(a => late.includes(a) ? { ...a, status: "No-show" } : a), log: addLog(p, { name: "System" }, `${late.length} past appointment(s) marked No-show`) }; }); }, []);
+    return () => { active = false; clearInterval(interval); window.removeEventListener("focus", syncState); };
+  }, [me?.id, me?.role, restoring]);
   /* Log out here and on the server. A message (e.g. idle timeout) sends the person to Log in with that notice. */
-  const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } try { localStorage.removeItem("pawcare_token"); sessionStorage.removeItem("pawcare_token"); } catch (_) {} setMe(null); saveCachedUser(null); setSessionUser(null); window.history.replaceState(null, "", window.location.pathname); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
+  const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } try { localStorage.removeItem("pawcare_token"); sessionStorage.removeItem("pawcare_token"); } catch (_) {} setDb(emptyClinicState()); setClinicError(""); setMe(null); saveCachedUser(null); setSessionUser(null); window.history.replaceState(null, "", window.location.pathname); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
   /* Work Shift Session Timeout: 8 hours (standard full clinic shift) */
   useEffect(() => {
     if (!me) return;
@@ -211,7 +182,7 @@ export default function App() {
   const onLogin = r => { if (r.needsOtp) { setNotice(""); enterOtp(); } else { setMe(r.user); saveCachedUser(r.user); } };   // password right but mobile not verified yet: ask for the SMS code first
 
   // Render the normal app instead of an intrusive full-screen restoring view.
-  if (me) return <Portal cfg={CFG[me.role]} me={me} db={db} setDb={setDb} onLogout={() => logout()} />;
+  if (me) return <>{clinicError && <div role="alert" style={{ padding: "12px 20px", background: "#fff7ed", color: "#9a3412" }}>{clinicError}</div>}<Portal cfg={CFG[me.role]} me={me} db={db} setDb={setDb} onLogout={() => logout()} /></>;
   const screen =
     view === "login" ? <Login role={role} notice={notice} bad={bad} onLogin={onLogin} onBack={() => go("landing")} go={go} />
     : view === "staff-setup" ? <StaffSetup token={flow.inviteToken} onDone={r => { if (r.needsOtp) { setNotice(""); enterOtp(); } else { setMe(r.user); saveCachedUser(r.user); } }} onCancel={() => go("landing")} />

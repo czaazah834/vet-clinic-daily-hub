@@ -1,10 +1,13 @@
+import { ensureCheckoutSchema } from "../database/clinicSchema.js";
 import express from "express";
 import { query, withTransaction } from "../db.js";
 import { sha256 } from "../security.js";
 import { sendMail, sendSms } from "../services.js";
-import { getAppUrl } from "./auth.js";
+import { getAppUrl, requireAuth } from "./auth.js";
+import { clinicAccess, assignedTo, validateStatusChange } from "../clinicAccess.js";
 
 export const clinicRouter = express.Router();
+clinicRouter.use(requireAuth, clinicAccess);
 
 /* Helper: log an action to audit_logs */
 async function recordAudit(userName, userRole, action) {
@@ -41,6 +44,12 @@ function toDateStr(val) {
 /* 1. BOOTSTRAP / FULL STATE SYNC */
 clinicRouter.get("/state", async (req, res) => {
   try {
+    const owner = req.user.role === "owner";
+    const vet = req.user.role === "vet";
+    const scopeParams = owner ? [req.user.ownerId] : vet ? [[req.user.vetId, req.user.id].filter(Boolean)] : [];
+    const petScope = owner ? "SELECT id FROM pets WHERE owner_id = $1" : "SELECT pet_id FROM appointments WHERE vet_id = ANY($1::varchar[])";
+    const scoped = owner || vet;
+    const wherePet = scoped ? ` WHERE pet_id IN (${petScope})` : "";
     const [
       ownersRes,
       petsRes,
@@ -58,15 +67,16 @@ clinicRouter.get("/state", async (req, res) => {
         FROM owners o
         LEFT JOIN users u ON u.id = o.user_id
         LEFT JOIN addresses a ON a.user_id = o.user_id
+        ${owner ? "WHERE o.id = $1" : vet ? `WHERE o.id IN (SELECT owner_id FROM pets WHERE id IN (${petScope}))` : ""}
         ORDER BY o.name ASC
-      `),
-      query("SELECT * FROM pets ORDER BY name ASC"),
-      query("SELECT * FROM pet_weights ORDER BY date ASC"),
-      query("SELECT * FROM appointments ORDER BY date ASC, time ASC"),
-      query("SELECT * FROM vaccinations ORDER BY date ASC, id ASC"),
-      query("SELECT * FROM consultations ORDER BY date DESC"),
-      query("SELECT * FROM pet_requests ORDER BY created_at DESC"),
-      query("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100"),
+      `, scopeParams),
+      query(`SELECT * FROM pets${scoped ? ` WHERE id IN (${petScope})` : ""} ORDER BY name ASC`, scopeParams),
+      query(`SELECT * FROM pet_weights${wherePet} ORDER BY date ASC`, scopeParams),
+      query(`SELECT * FROM appointments${owner ? ` WHERE pet_id IN (${petScope})` : vet ? " WHERE vet_id = ANY($1::varchar[])" : ""} ORDER BY date ASC, time ASC`, scopeParams),
+      query(`SELECT * FROM vaccinations${wherePet} ORDER BY date ASC, id ASC`, scopeParams),
+      query(`SELECT * FROM consultations${wherePet} ORDER BY date DESC`, scopeParams),
+      vet ? Promise.resolve({ rows: [] }) : query(`SELECT * FROM pet_requests${owner ? " WHERE owner_id = $1" : ""} ORDER BY created_at DESC`, owner ? scopeParams : []),
+      req.user.role === "admin" ? query("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100") : Promise.resolve({ rows: [] }),
       query("SELECT id, vet_id, first_name, last_name, role FROM users WHERE role = 'vet' ORDER BY first_name ASC")
     ]);
 
@@ -130,6 +140,10 @@ clinicRouter.get("/state", async (req, res) => {
       amount: parseFloat(a.amount),
       billingStatus: a.billing_status,
       paymentMethod: a.payment_method || "",
+      paymentReference: a.payment_details?.reference || "",
+      discount: a.payment_details?.discount || 0,
+      cashTendered: a.payment_details?.cashTendered ?? null,
+      changeAmount: a.payment_details?.changeAmount || 0,
       paidAt: a.paid_at || null,
       invoiceItems: a.invoice_items || [],
       intakeVitals: a.intake_vitals || null,
@@ -358,7 +372,7 @@ clinicRouter.post("/owners", async (req, res) => {
     await recordAudit(actorName, actorRole, `Registered / updated pet owner: ${name}`);
     res.json({ success: true, owner: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -880,7 +894,7 @@ clinicRouter.post("/owner/pets", async (req, res) => {
     });
   } catch (err) {
     console.error("Owner pet registration error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -914,7 +928,7 @@ clinicRouter.post("/pets", async (req, res) => {
     await recordAudit(actorName, actorRole, `Registered patient ${name} (${species}) with card ${cardId}`);
     res.json({ success: true, pet: result });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -931,7 +945,7 @@ clinicRouter.post("/pets/:id/weights", async (req, res) => {
     });
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -981,7 +995,7 @@ clinicRouter.post(["/owner/pets/:id/photo", "/pets/:id/photo"], async (req, res)
     });
   } catch (err) {
     console.error("Pet photo update error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -992,32 +1006,7 @@ clinicRouter.post("/pet-requests", async (req, res) => {
     birth, weight, color, neutered, notes
   } = req.body;
 
-  let effectiveOwnerId = ownerId;
-  const token = req.cookies?.pawcare_session || (req.headers.authorization || "").replace("Bearer ", "");
-  if (!effectiveOwnerId && token) {
-    try {
-      const sRes = await query(
-        `SELECT u.owner_id FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
-        [token]
-      );
-      if (sRes.rows.length && sRes.rows[0].owner_id) {
-        effectiveOwnerId = sRes.rows[0].owner_id;
-      }
-    } catch (_) {}
-  }
-
-  if (effectiveOwnerId) {
-    const oCheck = await query(`SELECT id FROM owners WHERE id = $1`, [effectiveOwnerId]);
-    if (!oCheck.rows.length) {
-      const uCheck = await query(`SELECT id FROM owners WHERE user_id = $1`, [effectiveOwnerId]);
-      if (uCheck.rows.length) effectiveOwnerId = uCheck.rows[0].id;
-    }
-  }
-
-  if (!effectiveOwnerId) {
-    const oRes = await query(`SELECT id FROM owners ORDER BY created_at DESC LIMIT 1`);
-    if (oRes.rows.length) effectiveOwnerId = oRes.rows[0].id;
-  }
+  const effectiveOwnerId = req.user.ownerId;
 
   const reqId = "req_" + Math.random().toString(36).slice(2, 8);
 
@@ -1028,20 +1017,20 @@ clinicRouter.post("/pet-requests", async (req, res) => {
        RETURNING *`,
       [reqId, effectiveOwnerId, name, species, speciesOther || "", breed || "Mixed Breed", sex || "Male", birth, weight || 5.0, color || "", neutered || "Not sure", notes || ""]
     );
-    await recordAudit("Owner", "owner", `Submitted online pet registration request for ${name} (Waiting for Vet Assistant review)`);
+    await recordAudit(req.user.name, req.user.role, `Submitted online pet registration request for ${name} (Waiting for Vet Assistant review)`);
     res.json({ success: true, request: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
 clinicRouter.delete("/pet-requests/:id", async (req, res) => {
   try {
     await query("DELETE FROM pet_requests WHERE id = $1", [req.params.id]);
-    await recordAudit("Owner", "owner", `Withdrew pet registration request ${req.params.id}`);
+    await recordAudit(req.user.name, req.user.role, `Withdrew pet registration request ${req.params.id}`);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -1054,9 +1043,10 @@ clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
 
   try {
     const result = await withTransaction(async (client) => {
-      const qReq = await client.query("SELECT * FROM pet_requests WHERE id = $1", [reqId]);
+      const qReq = await client.query("SELECT * FROM pet_requests WHERE id = $1 FOR UPDATE", [reqId]);
       if (!qReq.rows.length) throw new Error("Request not found");
       const r = qReq.rows[0];
+      if (r.status !== "Pending") throw Object.assign(new Error("This request has already been processed."), { status: 409 });
       if (r.status === "Approved") throw new Error("Request is already approved");
 
       // 1. Insert into pets table
@@ -1487,7 +1477,7 @@ clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
     await recordAudit(actorName || "Vet Assistant", actorRole || "assistant", `Approved pet request for ${result.request.name} (Assigned Card ${cardId})`);
     res.json({ success: true, ...result });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -1502,7 +1492,7 @@ clinicRouter.post("/pet-requests/:id/decline", async (req, res) => {
     await recordAudit(actorName, actorRole, `Declined pet request ${reqId}: ${reason}`);
     res.json({ success: true, request: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -1515,13 +1505,6 @@ clinicRouter.post("/appointments", async (req, res) => {
     const result = await query(
       `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, amount)
        VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', $7)
-       ON CONFLICT (id) DO UPDATE
-       SET pet_id = EXCLUDED.pet_id,
-           vet_id = EXCLUDED.vet_id,
-           date = EXCLUDED.date,
-           time = EXCLUDED.time,
-           reason = EXCLUDED.reason,
-           status = EXCLUDED.status
        RETURNING *`,
       [apptId, petId, vetId || "v1", date, time, reason, amount || 600.00]
     );
@@ -1544,7 +1527,7 @@ clinicRouter.post("/appointments", async (req, res) => {
     });
   } catch (err) {
     console.error("Booking error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -1588,16 +1571,21 @@ clinicRouter.put("/appointments/:id", async (req, res) => {
     });
   } catch (err) {
     console.error("Update appointment error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
 clinicRouter.patch("/appointments/:id/status", async (req, res) => {
   const apptId = req.params.id;
-  const { status, intakeVitals, cancelReason, billingStatus, date, time, actorName, actorRole } = req.body;
+  const { status, intakeVitals, cancelReason, billingStatus, date, time, reason, actorName, actorRole } = req.body;
 
   try {
     const result = await withTransaction(async (client) => {
+      const current = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
+      if (!current) throw Object.assign(new Error("Appointment not found."), { status: 404 });
+      if (req.user.role === "owner" && !(await client.query("SELECT id FROM pets WHERE id = $1 AND owner_id = $2", [current.pet_id, req.user.ownerId])).rows.length) throw Object.assign(new Error("Appointment not found."), { status: 404 });
+      const invalid = validateStatusChange(current, req.body, req.user);
+      if (invalid) throw Object.assign(new Error(invalid), { status: 409 });
       let q = "UPDATE appointments SET status = $1";
       const params = [status];
       let pIdx = 2;
@@ -1652,7 +1640,7 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
     await recordAudit(actorName, actorRole, `Updated appointment ${apptId} status to "${status}"`);
     res.json({ success: true, appointment: result });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.status ? err.message : "Unable to save visit status. Please try again." });
   }
 });
 
@@ -1661,7 +1649,7 @@ clinicRouter.delete("/appointments/:id", async (req, res) => {
     await query("DELETE FROM appointments WHERE id = $1", [req.params.id]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -1692,25 +1680,31 @@ clinicRouter.post("/appointments/:id/billing", async (req, res) => {
   const apptId = req.params.id;
   const { amount, billingStatus, paymentMethod, invoiceItems, actorName, actorRole } = req.body;
 
+  const discount = req.body.discount === undefined ? 0 : Number(req.body.discount);
+  const validItems = Array.isArray(invoiceItems) && invoiceItems.length > 0 && invoiceItems.length <= 100 && invoiceItems.every(item => item && typeof item.name === "string" && item.name.trim() && typeof item.price === "number" && Number.isFinite(item.price) && item.price >= 0 && item.price <= 10000000 && Number.isInteger(item.qty) && item.qty > 0 && item.qty <= 1000);
+  const subtotal = validItems ? invoiceItems.reduce((sum, item) => sum + Math.round(item.price * 100) * item.qty, 0) : NaN;
+  const total = (subtotal - Math.round(discount * 100)) / 100;
+  if (!validItems || !Number.isFinite(discount) || discount < 0 || !Number.isFinite(total) || total <= 0 || total > 10000000 || typeof amount !== "number" || !Number.isFinite(amount) || Math.round(amount * 100) !== Math.round(total * 100) || !["Cash", "GCash", "Maya", "Credit / Debit Card"].includes(paymentMethod) || (billingStatus && billingStatus !== "Paid")) {
+    return res.status(400).json({ error: "Check invoice quantities, prices, discount, total and payment method." });
+  }
+  if (paymentMethod === "Cash" ? (typeof req.body.cashTendered !== "number" || !Number.isFinite(req.body.cashTendered) || req.body.cashTendered < total) : (typeof req.body.paymentReference !== "string" || req.body.paymentReference.trim().length < 4 || req.body.paymentReference.length > 100)) return res.status(400).json({ error: "Enter sufficient cash received or the confirmed payment reference." });
   try {
-    const result = await query(
-      `UPDATE appointments
-       SET amount = COALESCE($1, amount),
-           billing_status = COALESCE($2, 'Paid'),
-           payment_method = COALESCE($3, 'Cash'),
-           invoice_items = COALESCE($4, invoice_items),
-           paid_at = NOW()
-       WHERE id = $5
-       RETURNING *`,
-      [parseFloat(amount) || 0, billingStatus || 'Paid', paymentMethod || 'Cash', JSON.stringify(invoiceItems || []), apptId]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: "Appointment not found" });
-    }
+    await ensureCheckoutSchema();
+    const paymentDetails = { discount, reference: req.body.paymentReference || "", cashTendered: paymentMethod === "Cash" ? req.body.cashTendered : total, changeAmount: paymentMethod === "Cash" ? Math.round((req.body.cashTendered - total) * 100) / 100 : 0 };
+    const result = await withTransaction(async client => {
+      const current = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
+      if (!current) throw Object.assign(new Error("Appointment not found."), { status: 404 });
+      if (current.status !== "Completed" || current.billing_status === "Paid") throw Object.assign(new Error("Only a completed, unpaid consultation can be checked out."), { status: 409 });
+      if (!(await client.query("SELECT id FROM consultations WHERE appt_id = $1", [apptId])).rows.length) throw Object.assign(new Error("A finalized consultation is required before payment."), { status: 409 });
+      const updated = await client.query(
+        `UPDATE appointments SET amount = $1, billing_status = 'Paid', payment_method = $2, invoice_items = $3, payment_details = $4, paid_at = NOW() WHERE id = $5 RETURNING *`,
+        [total, paymentMethod, JSON.stringify(invoiceItems), JSON.stringify(paymentDetails), apptId]
+      );
+      await client.query("INSERT INTO audit_logs (user_name, user_role, action) VALUES ($1,$2,$3)", [req.user.name, req.user.role, `Processed payment ₱${total} (${paymentMethod}) for visit ${apptId}`]);
+      return updated;
+    });
 
     const row = result.rows[0];
-    await recordAudit(actorName || "Front Desk", actorRole || "assistant", `Processed payment ₱${row.amount} (${row.payment_method}) for visit ${apptId}`);
 
     res.json({
       success: true,
@@ -1725,13 +1719,16 @@ clinicRouter.post("/appointments/:id/billing", async (req, res) => {
         billingStatus: row.billing_status,
         amount: parseFloat(row.amount),
         paymentMethod: row.payment_method,
+        paymentReference: paymentDetails.reference,
+        discount,
+        cashTendered: paymentDetails.cashTendered,
+        changeAmount: paymentDetails.changeAmount,
         paidAt: row.paid_at,
         invoiceItems: row.invoice_items
       }
     });
   } catch (err) {
-    console.error("Billing update error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.status ? err.message : "Unable to save payment. Refresh the visit before retrying." });
   }
 });
 
@@ -2054,16 +2051,16 @@ clinicRouter.post("/walk-in", async (req, res) => {
 
         const insAppt = await client.query(
           `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount, intake_vitals)
-           VALUES ($1, $2, $3, $4, $5, $6, 'Checked-in', 'Unbilled', 600, $7)
+           VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', 'Unbilled', 600, $7)
            RETURNING *`,
           [
             apptId,
             petId,
-            "v1",
+            req.body.vetId,
             today,
             timeNow,
             visitReason,
-            JSON.stringify({ weight: parseFloat(weight) || 5.0, triageLevel: triageLvl })
+            null
           ]
         );
         const aRow = insAppt.rows[0];
@@ -2109,7 +2106,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     console.error("Walk-in registration error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -2170,17 +2167,6 @@ clinicRouter.post("/vaccinations", async (req, res) => {
     const result = await query(
       `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, notes, vet_id, recorded_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-       ON CONFLICT (id) DO UPDATE SET
-         vaccine = EXCLUDED.vaccine,
-         brand = EXCLUDED.brand,
-         batch = EXCLUDED.batch,
-         date = EXCLUDED.date,
-         next_due = EXCLUDED.next_due,
-         dose_no = EXCLUDED.dose_no,
-         dose_of = EXCLUDED.dose_of,
-         done = EXCLUDED.done,
-         notes = EXCLUDED.notes,
-         recorded_by = EXCLUDED.recorded_by
        RETURNING *`,
       [vaccId, petId, cardId || "VACC-DEFAULT", vaccine, brand || "", batch || "", date, nextDue || null, doseNo || 1, doseOf || 1, isDone, Boolean(automated), protocolType || "", notes || "", vetId || "", recordedBy || actorName || "Front Desk Assistant"]
     );
@@ -2200,7 +2186,7 @@ clinicRouter.post("/vaccinations", async (req, res) => {
     await recordAudit(actorName, actorRole, `Logged vaccination ${vaccine} (${batch || "No lot#"}) for pet ${petId}`);
     res.json({ success: true, vaccination: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -2212,32 +2198,55 @@ clinicRouter.delete("/vaccinations/:id", async (req, res) => {
     await recordAudit(actorName, actorRole, `Deleted vaccination record ${id}`);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
 /* 7. CONSULTATIONS (SOAP MEDICAL NOTES) */
 clinicRouter.post("/consultations", async (req, res) => {
-  const { id, petId, vetId, apptId, date, symptoms, objective, diagnosis, treatment, prescription, actorName, actorRole } = req.body;
-  const consultId = id || ("c_" + Math.random().toString(36).slice(2, 8));
-
+  const { id, petId, apptId, date, symptoms, objective, diagnosis, treatment, prescription, vaccination, weight } = req.body;
+  const vetId = req.user.vetId || req.user.id;
+  const consultId = id || ("c_" + crypto.randomUUID());
+  const required = [symptoms, objective, diagnosis, treatment];
+  if (required.some(v => typeof v !== "string" || !v.trim() || v.length > 10000) || typeof prescription !== "string" || prescription.length > 3000 || !/^\d{4}-\d{2}-\d{2}$/.test(date || "")) {
+    return res.status(400).json({ error: "Complete the SOAP fields and enter a valid consultation date." });
+  }
+  if (vaccination && [vaccination.vaccine, vaccination.brand, vaccination.batch].some(v => typeof v !== "string" || !v.trim())) return res.status(400).json({ error: "Vaccine, brand and lot/batch are required." });
+  if (vaccination?.nextDue && (!/^\d{4}-\d{2}-\d{2}$/.test(vaccination.nextDue) || vaccination.nextDue <= date)) return res.status(400).json({ error: "The booster date must follow the vaccination date." });
+  if (weight !== undefined && (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0 || weight > 120)) return res.status(400).json({ error: "Enter a valid weight." });
   try {
-    const result = await query(
-      `INSERT INTO consultations (id, pet_id, vet_id, appt_id, date, symptoms, objective, diagnosis, treatment, prescription)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       RETURNING *`,
-      [consultId, petId, vetId, apptId || "", date, symptoms, objective, diagnosis, treatment, prescription || ""]
-    );
-
-    // If linked to an appointment, mark appointment completed
-    if (apptId) {
-      await query("UPDATE appointments SET status = 'Completed' WHERE id = $1", [apptId]);
-    }
-
-    await recordAudit(actorName, actorRole, `Recorded SOAP consultation notes for pet ${petId} (${diagnosis})`);
-    res.json({ success: true, consultation: result.rows[0] });
+    const result = await withTransaction(async client => {
+      const appt = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
+      if (!appt || appt.pet_id !== petId || !assignedTo(appt, req.user)) throw Object.assign(new Error("An assigned visit is required."), { status: 403 });
+      if (appt.status !== "In consultation") throw Object.assign(new Error("Start the consultation before finalizing. This visit may already be complete."), { status: 409 });
+      const inserted = await client.query(
+        `INSERT INTO consultations (id, pet_id, vet_id, appt_id, date, symptoms, objective, diagnosis, treatment, prescription)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [consultId, petId, vetId, apptId, date, symptoms.trim(), objective.trim(), diagnosis.trim(), treatment.trim(), prescription.trim()]
+      );
+      let savedVaccination = null;
+      if (vaccination) {
+        const pet = (await client.query("SELECT vaccination_card_id FROM pets WHERE id = $1", [petId])).rows[0];
+        if (!pet?.vaccination_card_id) throw Object.assign(new Error("The patient needs a clinic-issued vaccination card."), { status: 409 });
+        const saved = await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, done, notes, vet_id, recorded_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11) RETURNING *`,
+          [vaccination.id || "v_" + crypto.randomUUID(), petId, pet.vaccination_card_id, vaccination.vaccine.trim(), vaccination.brand.trim(), vaccination.batch.trim(), date, vaccination.nextDue || null, vaccination.notes || "", vetId, req.user.name]
+        );
+        savedVaccination = saved.rows[0];
+        await client.query("DELETE FROM vaccinations WHERE pet_id = $1 AND done = false AND LOWER(vaccine) = LOWER($2)", [petId, vaccination.vaccine]);
+      }
+      if (weight !== undefined) {
+        await client.query("UPDATE pets SET weight = $1 WHERE id = $2", [weight, petId]);
+        await client.query("INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1,$2,$3,$4)", [petId, date, weight, req.user.name]);
+      }
+      await client.query("UPDATE appointments SET status = 'Completed', billing_status = 'Unbilled' WHERE id = $1", [apptId]);
+      await client.query("INSERT INTO audit_logs (user_name, user_role, action) VALUES ($1,$2,$3)", [req.user.name, req.user.role, `Finalized consultation ${consultId} for visit ${apptId}`]);
+      return { consultation: inserted.rows[0], vaccination: savedVaccination };
+    });
+    res.json({ success: true, ...result });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : "Unable to finalize the consultation. Refresh the visit before retrying." });
   }
 });
 
@@ -2247,7 +2256,7 @@ clinicRouter.get("/logs", async (req, res) => {
     const result = await query("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 200");
     res.json({ success: true, logs: result.rows });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -2257,7 +2266,7 @@ clinicRouter.post("/logs", async (req, res) => {
     await recordAudit(userName, userRole, action);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
@@ -2403,7 +2412,7 @@ async function handleSendReminder(req, res) {
     // 4. Record in audit_logs
     const channels = [emailSent ? `Email (${targetEmail})` : null, smsSent ? `SMS (${targetPhone})` : null].filter(Boolean).join(" & ") || "None (no contact on file)";
     const auditAction = `Logged reminder call for owner ${targetOwnerName} (${targetPetName} - ${vaccineName} due ${dueStr}). Dispatched reminders via: ${channels}.${callNotes ? ` Call Note: "${callNotes}"` : ""}`;
-    await recordAudit(staffName || "Vet Assistant", staffRole || "assistant", auditAction);
+    await recordAudit(req.user.name, req.user.role, auditAction);
 
     res.json({
       success: true,

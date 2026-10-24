@@ -36,6 +36,7 @@ function stateOf(v) {
 }
 
 export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBook, onCheckIn, onBill }) {
+  const [actionError, setActionError] = useState("");
   const p = (db.pets || []).find(x => x.id === petId) || (db.pets || [])[0] || {};
   const o = (db.owners || []).find(x => x.id === p.ownerId) || {};
   const [isFlipped, setIsFlipped] = useState(false);
@@ -96,6 +97,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1000, display: "grid", placeItems: "center", padding: "16px" }}>
       <div className="modal" style={{ width: "min(880px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "20px 24px" }}>
         
+        {actionError && <p className="err" role="alert">{actionError}</p>}
         {/* Top Control Bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -183,7 +185,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                       type="button"
                       className="btn sm"
                       onClick={() => {
-                        moveAppt(setDb, activeAppt.id, "Confirmed", me);
+                        moveAppt(setDb, activeAppt.id, "Confirmed", me, setActionError);
                       }}
                       style={{ fontWeight: 600 }}
                     >
@@ -230,7 +232,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                       type="button"
                       className="btn sm"
                       onClick={() => {
-                        moveAppt(setDb, activeAppt.id, "Confirmed", me);
+                        moveAppt(setDb, activeAppt.id, "Confirmed", me, setActionError);
                       }}
                       style={{ fontWeight: 600 }}
                     >
@@ -256,7 +258,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               )}
 
               {/* Bill / Pay: strictly ONLY when appointment is Completed, or if Paid show Receipt */}
-              {activeAppt.status === "Completed" && (
+              {activeAppt.status === "Completed" && (me?.role === "assistant" || activeAppt.billingStatus === "Paid") && (
                 <button
                   type="button"
                   className={`btn sm ${activeAppt.billingStatus === "Paid" ? "ghost" : "gold"}`}

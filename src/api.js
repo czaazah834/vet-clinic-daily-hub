@@ -1,3 +1,4 @@
+import { clinicRequest } from "./clinicApi.js";
 /* Front-end server for sign-in, authentication, geo and owner APIs.
    Follows the reference architecture and flow from login_registration:
    - Register -> email link (24 h) -> mobile code (OTP, 5 min) -> log in
@@ -871,79 +872,7 @@ function findRoute(method, route) {
 }
 
 async function call(method, path, body) {
-  // If path is an API endpoint, try real network fetch first:
-  if (path.startsWith("/api/")) {
-    try {
-      const headers = { "Content-Type": "application/json" };
-      try {
-        const storedTok = (typeof localStorage !== "undefined" && localStorage.getItem("pawcare_token")) ||
-                          (typeof sessionStorage !== "undefined" && sessionStorage.getItem("pawcare_token"));
-        if (storedTok) {
-          headers["Authorization"] = `Bearer ${storedTok}`;
-        }
-      } catch (_) {}
-
-      const fetchOpts = {
-        method,
-        headers,
-        credentials: "include"
-      };
-      if (body && method !== "GET") {
-        fetchOpts.body = JSON.stringify(body);
-      }
-      const res = await fetch(path, fetchOpts);
-      const isJson = res.headers.get("content-type")?.includes("application/json");
-      const data = isJson ? await res.json() : await res.text();
-
-      if (res.ok) {
-        if (data?.token) {
-          try {
-            sessionStorage.setItem("pawcare_token", data.token);
-            localStorage.setItem("pawcare_token", data.token);
-          } catch (_) {}
-        }
-        return data.data !== undefined ? data.data : data;
-      }
-      // If endpoint 404 or backend unreachable / proxy error (>= 500), fallback to in-memory
-      if (res.status === 404 || res.status >= 500) {
-        if (path.includes("/auth/") || path.includes("/otp") || path.includes("/verify")) {
-          const errMsg = data?.error || (res.status === 504 ? "Unable to connect to clinic server. Please try again." : `Server returned error (${res.status}).`);
-          const err = new Error(errMsg);
-          err.isApiError = true;
-          throw err;
-        }
-        // Fallback to in-memory below
-      } else {
-        const err = new Error(data?.error || `Request failed with status ${res.status}`);
-        if (data?.errors) err.fields = data.errors;
-        if (data?.remainingCooldown) err.remainingCooldown = data.remainingCooldown;
-        err.status = res.status;
-        if (data?.unverified) err.unverified = true;
-        if (res.status === 401) err.expired = true;
-        if (data?.limit) err.limit = true;
-        if (data?.lockout) err.lockout = true;
-        err.isApiError = true;
-        throw err;
-      }
-    } catch (networkOrApiErr) {
-      if (networkOrApiErr.isApiError || networkOrApiErr.fields || networkOrApiErr.remainingCooldown || networkOrApiErr.lockout) {
-        throw networkOrApiErr;
-      }
-      if (path.includes("/auth/") || path.includes("/otp") || path.includes("/verify")) {
-        const err = new Error("Unable to reach the clinic server. Please try again in a moment.");
-        err.isApiError = true;
-        throw err;
-      }
-      // Server offline / not responding on this endpoint: fallback to in-memory below
-    }
-  }
-
-  await wait(180);
-  const [route, qs] = path.split("?"),
-    q = Object.fromEntries(new URLSearchParams(qs || ""));
-  const [fn, params] = findRoute(method, route);
-  if (!fn) throw fail("Not found: " + route);
-  return fn(body || q, q, params || {});
+  return clinicRequest(method, path, body);
 }
 
 // Function callable as api(path, body) -> { ok, d }

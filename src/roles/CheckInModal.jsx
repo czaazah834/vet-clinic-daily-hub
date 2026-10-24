@@ -27,16 +27,17 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const pet = (db.pets && appt ? db.pets.find(p => p.id === appt.petId) : null) || {};
   const owner = (db.owners && pet.ownerId ? db.owners.find(o => o.id === pet.ownerId) : null) || {};
 
-  const species = pet.species || "Dog";
-  const speciesConfig = SPECIES_DEFAULTS[species] || SPECIES_DEFAULTS.Dog;
+  const species = normalizeSpecies(pet.species);
+  const speciesConfig = SPECIES_DEFAULTS[species] || SPECIES_DEFAULTS.Other;
   const lastWeight = pet.weight || (pet.weights && pet.weights.length ? pet.weights[pet.weights.length - 1].kg : null);
 
-  const [weight, setWeight] = useState(lastWeight ? String(lastWeight) : "5.0");
-  const [temp, setTemp] = useState(String(speciesConfig.normalTempPreset || "38.5"));
+  const [weight, setWeight] = useState("");
+  const [temp, setTemp] = useState("");
   const [triage, setTriage] = useState("Routine");
   const [serviceReason, setServiceReason] = useState(appt?.reason || "Routine Consultation & Exam");
   const [notes, setNotes] = useState("");
   const [fasted, setFasted] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [valErr, setValErr] = useState("");
 
   const externalVaccs = (db.vacc || db.vaccs || []).filter(v => 
@@ -63,6 +64,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
   const submit = async (e) => {
     e.preventDefault();
+    if (saving) return;
     const w = parseFloat(weight);
     const t = parseFloat(temp);
 
@@ -104,11 +106,14 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       patchPayload.time = arrivalTime;
     }
 
+    setSaving(true);
     // 1. Persist directly to PostgreSQL Neon DB
     try {
       await api.patch(`/api/appointments/${appt.id}/status`, patchPayload);
     } catch (err) {
-      console.warn("Backend check-in update:", err.message);
+      setValErr(err.message);
+      setSaving(false);
+      return;
     }
 
     setDb(p => {
@@ -160,6 +165,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       };
     });
 
+    setSaving(false);
     onCheckedIn && onCheckedIn(intakeVitals);
   };
 
@@ -350,7 +356,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       onClick={() => setTemp(String(speciesConfig.normalTempPreset))}
                       style={{ background: "#e0f2fe", color: "#0369a1", borderColor: "#bae6fd" }}
                     >
-                      Default ({speciesConfig.normalTempPreset}°C)
+                      Use measured normal ({speciesConfig.normalTempPreset}°C)
                     </button>
                   </div>
                 </div>
@@ -497,7 +503,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
           <div className="row end" style={{ marginTop: "20px", gap: "10px" }}>
             <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn gold">
+            <button type="submit" className="btn gold" disabled={saving}>
               Complete Check-In &amp; Send to Doctor Queue
             </button>
           </div>

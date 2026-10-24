@@ -12,7 +12,8 @@
   "test:auth": "node --experimental-test-module-mocks --test server/tests/auth-flow.test.js",
   "test:email": "node server/scripts/test-email.js",
   "build": "vite build",
-  "preview": "vite preview"
+  "preview": "vite preview",
+  "test:clinic": "node --experimental-test-module-mocks --test server/tests/clinic-security.test.js server/tests/calendar-state.test.js tests/clinic-client.test.js tests/calendar-doctors.test.js"
  },
  "dependencies": {
   "bcryptjs": "^3.0.3",

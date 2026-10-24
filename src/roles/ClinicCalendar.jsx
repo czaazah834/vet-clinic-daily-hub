@@ -75,6 +75,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const curMonthMin = t.getMonth();
   const [cur, setCur] = useState({ y: curYearMin, m: curMonthMin });
   const isDoctor = isVet(me?.role);
+  const canBook = ["owner", "assistant"].includes(me?.role);
   const [viewMode, setViewMode] = useState(me?.role === "owner" ? "month" : "timeline"); // 'timeline' | 'month' | 'list'
   const doctors = calendarDoctors(db, me, VETS);
   const [selectedVet, setVetFilter] = useState("");
@@ -140,8 +141,8 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const dayEvents = (ev[sel] || []).slice().sort((a, b) => a.time.localeCompare(b.time));
   const niceDate = new Date(sel + "T00:00:00").toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
-  const handleAction = (a, action) => {
-    moveAppt(setDb, a.id, action, me);
+  const handleAction = async (a, action) => {
+    if (!await moveAppt(setDb, a.id, action, me, say)) return;
     say && say(`${LABEL[action] || action} updated`);
   };
 
@@ -174,7 +175,8 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
         actorRole: me.role
       });
     } catch (err) {
-      console.warn("Backend appointment booking fallback:", err);
+      say && say(err.message);
+      return;
     }
 
     setDb(p => ({
@@ -312,7 +314,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
               </select>
             </label>
 
-            {!isDoctor && (
+            {canBook && (
               <button
                 className="btn sm gold"
                 onClick={() => setBookingSlot({ date: sel < TODAY ? TODAY : sel, time: "09:00", vetId: vetFilter || doctors[0]?.[0] })}
@@ -423,7 +425,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                 {isDoctor ? "Your daily schedule" : "Clinic daily schedule"}
               </h3>
               <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                {isDoctor ? "Review your appointments and continue patient care." : "View each veterinarian’s day. Choose an open slot to book a visit."}
+                {isDoctor ? "Review your appointments and continue patient care." : canBook ? "View each veterinarian’s day. Choose an open slot to book a visit." : "Review clinic capacity and appointments."}
               </p>
             </div>
 
@@ -449,7 +451,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
             <div><Activity size={20} /><span><strong>{dayEvents.filter(e => ["Checked-in", "In consultation"].includes(e.status)).length}</strong> in clinic</span></div>
             <div><CheckCircle2 size={20} /><span><strong>{dayEvents.filter(e => e.status === "Completed").length}</strong> completed</span></div>
           </div>
-          {dayEvents.length === 0 && <div className="cc-empty" role="status"><Calendar size={22} /><div><b>No appointments for this day</b><span>{isDoctor ? "Your available time slots are shown below. Choose another date to review upcoming visits." : "Choose an open slot below to book the first visit."}</span></div></div>}
+          {dayEvents.length === 0 && <div className="cc-empty" role="status"><Calendar size={22} /><div><b>No appointments for this day</b><span>{isDoctor ? "Your available time slots are shown below. Choose another date to review upcoming visits." : canBook ? "Choose an open slot below to book the first visit." : "There are no visits to review for this date."}</span></div></div>}
           {/* Timeline Table */}
           <div className="cc-timeline-scroll" role="region" aria-label="Daily doctor timetable" tabIndex={0}>
             <table className="cc-timeline" style={{ minWidth: `${100 + visibleDoctors.length * 270}px` }}>
@@ -567,8 +569,8 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                   {me.role === "vet" && apptMatch.status === "Checked-in" && (
                                     <button
                                       className="btn sm gold"
-                                      onClick={() => {
-                                        moveAppt(setDb, apptMatch.appt.id, "In consultation", me);
+                                      onClick={async () => {
+                                        if (!await moveAppt(setDb, apptMatch.appt.id, "In consultation", me, say)) return;
                                         setActiveSoap({ appt: apptMatch.appt, pet: apptMatch.petObj });
                                       }}
                                       style={{ fontSize: "12px", padding: "4px 8px" }}
@@ -595,7 +597,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                         // Empty slot
                         return (
                           <td key={vetId} style={{ padding: "6px 12px", borderRight: "1px solid #e2e8f0" }}>
-                            {!isDoctor && sel >= TODAY ? (
+                            {canBook && sel >= TODAY ? (
                               <button
                                 type="button"
                                 className="btn ghost sm cc-open-slot"
@@ -708,8 +710,8 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                         <button className="btn sm gold" onClick={() => setCheckInAppt(e.appt)}>Check in</button>
                       )}
                       {isDoctor && e.status === "Checked-in" && (
-                        <button className="btn sm gold" onClick={() => {
-                          moveAppt(setDb, e.appt.id, "In consultation", me);
+                        <button className="btn sm gold" onClick={async () => {
+                          if (!await moveAppt(setDb, e.appt.id, "In consultation", me, say)) return;
                           setActiveSoap({ appt: e.appt, pet: e.petObj });
                         }}>
                           Start Consultation
@@ -753,7 +755,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
               </select>
             </div>
 
-            {!isDoctor && (
+            {canBook && (
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <button
                   className="btn sm gold"

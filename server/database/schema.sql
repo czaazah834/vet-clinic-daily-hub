@@ -213,3 +213,10 @@ CREATE TABLE IF NOT EXISTS account_photos (
   user_id VARCHAR(50) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   photo TEXT NOT NULL DEFAULT ''
 );
+
+-- Checkout fields, including existing installations initialized before billing.
+ALTER TABLE appointments
+  ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30),
+  ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS invoice_items JSONB NOT NULL DEFAULT '[]',
+  ADD COLUMN IF NOT EXISTS payment_details JSONB NOT NULL DEFAULT '{}';

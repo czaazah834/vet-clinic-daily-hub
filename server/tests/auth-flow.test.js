@@ -179,3 +179,12 @@ test('fully verified account can log in normally and receive a new session', asy
   assert.equal(data.user.id, user.id);
   assert.ok(data.token);
 });
+
+// Delivery bodies contain activation links and OTPs and must never be public.
+test('development outbox is unavailable to anonymous and authenticated callers', async () => {
+  for (const hasSession of [false, true]) {
+    const { res, data } = await request('/outbox', { session: hasSession });
+    assert.equal(res.status, 404);
+    assert.equal(data.outbox, undefined);
+  }
+});

@@ -378,30 +378,10 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
         return;
       }
     } catch (err) {
-      console.warn("Backend registration request fallback:", err);
+      say(err.message);
+      return;
     }
-
-    // Graceful fallback if offline
-    const localId = "req_" + uid();
-    const localReq = {
-      id: localId,
-      ownerId: me.ownerId,
-      requestedAt: TODAY,
-      status: "Pending",
-      declineReason: "",
-      ...data
-    };
-
-    setDb(p => ({
-      ...p,
-      petRequests: editing
-        ? (p.petRequests || []).map(r => r.id === editing.id ? { ...r, ...data, status: "Pending", declineReason: "" } : r)
-        : [...(p.petRequests || []), localReq],
-      log: addLog(p, me, `Submitted registration request for ${data.name} (${canonicalSpecies})`),
-    }));
-
-    say(editing ? "Request updated" : `${data.name}'s request was submitted! Waiting for clinic front desk approval.`);
-    onClose();
+    say("The server did not confirm the registration. Please try again.");
   };
 
   const availableBreeds = BREEDS_BY_SPECIES[v.species] || [];
@@ -495,8 +475,8 @@ export function RequestList({ db, setDb, me, say, onEdit }) {
   const withdraw = async r => {
     if (ask !== r.id) return setAsk(r.id);
     try {
-      await fetch(`/api/pet-requests/${r.id}`, { method: "DELETE" });
-    } catch (_) {}
+      await api.delete(`/api/pet-requests/${r.id}`);
+    } catch (err) { say(err.message); return; }
     setDb(p => ({
       ...p,
       petRequests: (p.petRequests || []).filter(x => x.id !== r.id),

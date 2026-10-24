@@ -148,7 +148,9 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
   );
 
   const { v } = f;
+  const [vetId, setVetId] = useState(db.vets?.[0]?.id || "");
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [successData, setSuccessData] = useState(null);
 
   // Clinical service needed today & prior history guide states
@@ -215,8 +217,11 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
 
   const handleSubmit = async (ev) => {
     ev.preventDefault();
+    if (loading) return;
+    setSaveError("");
     f.submit();
     if (!f.valid) return;
+    if (v.addToQueue && !vetId) { setSaveError("Choose a veterinarian before adding today’s arrival."); return; }
     setLoading(true);
 
     const finalBreed = showCustomBreed && v.customBreed.trim() ? v.customBreed.trim() : v.breed;
@@ -239,6 +244,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       dentalOcclusion: canonicalSpecies === "Rodent" ? v.dentalOcclusion : "",
       notes: v.notes.trim(),
       addToQueue: v.addToQueue,
+      vetId,
       reason: v.reason.trim(),
       actorName: me?.name || "Vet Assistant",
       actorRole: me?.role || "assistant",
@@ -252,8 +258,11 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
     let backendResult = null;
     try {
       backendResult = await api.post("/api/walk-in", payload);
+      if (!backendResult?.pet || !backendResult?.owner) throw new Error("The server did not confirm registration.");
     } catch (err) {
-      console.warn("Backend walk-in registration fallback:", err);
+      setSaveError(err.message);
+      setLoading(false);
+      return;
     }
 
     const owner = backendResult?.owner || existingOwner || {
@@ -280,17 +289,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
     };
 
     const newVaccs = backendResult?.vaccs || [];
-    const newAppt = backendResult?.appointment || (v.addToQueue ? {
-      id: "a_" + uid(),
-      petId: pet.id,
-      vetId: "v1",
-      date: TODAY,
-      time: new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" }),
-      reason: payload.reason,
-      status: "Checked-in",
-      billingStatus: "Unbilled",
-      amount: 600
-    } : null);
+    const newAppt = backendResult.appointment || null;
 
     setDb(p => ({
       ...p,
@@ -299,12 +298,12 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       vacc: [...newVaccs, ...(p.vacc || [])],
       vaccs: [...newVaccs, ...(p.vaccs || [])],
       appts: newAppt ? [...(p.appts || []).filter(a => a.id !== newAppt.id), newAppt] : (p.appts || []),
-      log: addLog(p, me, `Registered walk-in customer ${owner.name} and pet ${pet.name} (${pet.species}). Issued Digital Card #${pet.vaccinationCardId}.${newAppt ? " Patient checked into today's queue." : ""}`)
+      log: addLog(p, me, `Registered walk-in customer ${owner.name} and pet ${pet.name} (${pet.species}). Issued Digital Card #${pet.vaccinationCardId}.${newAppt ? " Arrival created; intake vitals required." : ""}`)
     }));
 
     setLoading(false);
     setSuccessData({ owner, pet, appt: newAppt });
-    onRegistered && onRegistered(pet, owner);
+    onRegistered && onRegistered(pet, owner, newAppt);
   };
 
   return (
@@ -337,7 +336,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
             </h4>
             <p style={{ margin: "0 0 16px", fontSize: "13.5px", color: "#475569" }}>
               Official Digital Vaccination Card <b style={{ color: "var(--navy)" }}>#{successData.pet.vaccinationCardId}</b> has been issued.
-              {successData.appt && " Patient has been added to Today's Arrival Queue in Checked-in status!"}
+              {successData.appt && " Arrival created. Record current vitals to complete check-in."}
             </p>
 
             {/* Walk-in Customer Digital Access Pass */}
@@ -687,11 +686,17 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                   checked={v.addToQueue}
                   onChange={e => f.set("addToQueue", e.target.checked)}
                 />
-                Add directly to Today&rsquo;s Arrival Queue (Status: Checked-in)
+                Create today’s arrival and continue to vitals
               </label>
 
               {v.addToQueue && (
                 <div style={{ display: "grid", gap: "10px" }}>
+                  <label>Attending veterinarian
+                    <select value={vetId} onChange={e => setVetId(e.target.value)} required>
+                      <option value="">Choose a veterinarian</option>
+                      {(db.vets || []).map(vet => <option key={vet.id} value={vet.id}>{vet.name}</option>)}
+                    </select>
+                  </label>
                   <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#1e3a8a", marginBottom: "4px" }}>
                       What does the patient need today? *
@@ -878,6 +883,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
             {/* Actions */}
             <div className="row end" style={{ gap: "10px" }}>
               <button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button>
+              {saveError && <p className="err" role="alert">{saveError}</p>}
               <button type="submit" className="btn gold" disabled={loading} style={{ fontWeight: 700 }}>
                 {loading ? "Registering & Issuing Card..." : "Register & Issue Vaccination Card"}
               </button>

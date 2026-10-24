@@ -1,0 +1,29 @@
+// Every clinic operation must receive a real server acknowledgment.
+export async function clinicRequest(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const token = globalThis.localStorage?.getItem('pawcare_token') || globalThis.sessionStorage?.getItem('pawcare_token');
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch { /* Cookie sessions still work when browser storage is unavailable. */ }
+  let response;
+  try {
+    response = await fetch(path, { method, headers, credentials: 'include', ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  } catch {
+    throw new Error('Unable to reach the clinic server. Your changes have not been confirmed. Check your connection and retry.');
+  }
+  let data;
+  try { data = await response.json(); }
+  catch { throw new Error('The clinic server returned an invalid response. Refresh to check whether your changes were saved.'); }
+  if (!data || typeof data !== 'object') throw new Error('The clinic server returned an invalid response. Refresh to check your records.');
+  if (!response.ok || data?.success === false) {
+    const error = new Error(data?.error || `The clinic request failed (${response.status}). Please try again.`);
+    error.status = response.status;
+    error.fields = data?.errors;
+    error.isApiError = true;
+    throw error;
+  }
+  if (data.token) {
+    try { globalThis.localStorage?.setItem('pawcare_token', data.token); globalThis.sessionStorage?.setItem('pawcare_token', data.token); } catch { /* Cookie session remains available. */ }
+  }
+  return data?.data !== undefined ? data.data : data;
+}

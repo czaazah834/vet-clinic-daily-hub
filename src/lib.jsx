@@ -1,3 +1,4 @@
+import { clinicRequest } from "./clinicApi.js";
 import { useState } from "react";
 import {
   House,
@@ -171,7 +172,12 @@ export const E = {
 export const LAB = { ownerId: "Owner", petId: "Pet", vetId: "Veterinarian", nextDue: "Next dose", _due: "Status", brand: "Brand", batch: "Batch #", symptoms: "Subjective", objective: "Objective", diagnosis: "Assessment", treatment: "Plan", prescription: "Prescription", billingStatus: "Billing", amount: "Amount (₱)" };
 export const NAV = [["dashboard", "Dashboard", "home"], ["owners", "Owners", "user"], ["pets", "Pets", "paw"], ["appts", "Appointments", "calendar"], ["vacc", "Vaccinations", "syringe"], ["records", "Consultations", "file"], ["reports", "Reports", "chart"]];
 export const HIDE = { owner: ["owners"] };
-export const can = (ent, me, a) => (E[ent].perm[me.role] || "").includes(a);
+export const can = (ent, me, a) => {
+  if (!(E[ent].perm[me.role] || "").includes(a)) return false;
+  if (a === "r") return true;
+  if (me.role === "admin" || ent === "users") return false;
+  return (ent === "appts" && ["owner", "assistant"].includes(me.role) && ["c", "u"].includes(a)) || (["owners", "pets"].includes(ent) && me.role === "assistant" && a === "c");
+};
 export const dueState = n => !n ? "" : n < TODAY ? "Overdue" : n <= plus(14) ? "Due soon" : "On track";
 export function scope(db, me, ent) {
   if (me.role !== "owner") return db[ent];
@@ -271,7 +277,7 @@ export function Hero({title,text,children,emoji,icons}){
 SEED.log = [];
 export const INTERVAL = { "Anti-rabies": 365, "5-in-1": 365, "Kennel cough": 365, "Feline 4-in-1": 365, "Deworming": 90 };
 export const FLOW = { Scheduled: ["Confirmed", "Cancelled", "No-show"], Confirmed: ["Checked-in", "Cancelled", "No-show"], "Checked-in": ["In consultation", "Cancelled"], "In consultation": ["Completed"], Completed: [], Cancelled: [], "No-show": [] };
-export const ACT = { Confirmed: ["assistant", "admin"], "Checked-in": ["assistant", "admin"], "In consultation": ["vet"], Completed: ["vet", "assistant", "admin"], Cancelled: ["assistant", "admin", "owner"], "No-show": ["assistant", "admin"] };
+export const ACT = { Confirmed: ["assistant"], "Checked-in": [], "In consultation": ["vet"], Completed: [], Cancelled: ["assistant", "owner"], "No-show": ["assistant"] };
 export const LABEL = { Confirmed: "Confirm", "Checked-in": "Check in", "In consultation": "Start consultation", Completed: "Complete visit", Cancelled: "Cancel", "No-show": "No-show" };
 export const nextSteps = (a, me) => (FLOW[a.status] || []).filter(s => (ACT[s] || []).includes(me.role) && !(me.role === "owner" && !["Scheduled", "Confirmed"].includes(a.status)));
 export const addLog = (p, me, msg) => {
@@ -287,42 +293,16 @@ export const addLog = (p, me, msg) => {
     action: msg
   };
 
-  try {
-    fetch("/api/logs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userName: me?.name || "System",
-        userRole: me?.role || "staff",
-        action: msg
-      })
-    }).catch(() => {});
-  } catch (_) {}
-
   return [newEntry, ...(p.log || [])].slice(0, 100);
 };
 
-export const moveAppt = (setDb, id, status, me) => {
+export const moveAppt = async (setDb, id, status, me, onError = () => {}) => {
   try {
-    fetch(`/api/appointments/${id}/status`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        status,
-        actorName: me?.name || "Staff",
-        actorRole: me?.role || "staff"
-      })
-    }).catch(err => console.warn("moveAppt backend sync:", err));
-  } catch (_) {}
-
-  setDb(p => {
-    const a = p.appts.find(x => x.id === id);
-    if (!a || !nextSteps(a, me).includes(status)) return p;
-    if (me.role === "owner" && (p.pets.find(x => x.id === a.petId) || {}).ownerId !== me.ownerId) return p;
-    return {
-      ...p,
-      appts: p.appts.map(x => x.id === id ? { ...x, status } : x),
-      log: addLog(p, me, `${petName(p, a.petId)}: ${a.status} to ${status}`)
-    };
-  });
+    await clinicRequest("PATCH", `/api/appointments/${id}/status`, { status });
+    setDb(p => ({ ...p, appts: p.appts.map(a => a.id === id ? { ...a, status } : a) }));
+    return true;
+  } catch (error) {
+    onError(error.message);
+    return false;
+  }
 };
