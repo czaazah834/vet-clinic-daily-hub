@@ -344,3 +344,18 @@ The former SOAP booster helper used today's date and assumed an annual interval 
 Each consultation care plan remains visible even after later routine consultations. Owners and reception explicitly select its request when booking; pet/ownership checks and a database constraint prevent cross-pet links and duplicate bookings. Rescheduling retains the link; cancellation/no-show returns the request to Needs booking. Only completion of its linked visit marks it Completed. The linked instructions appear in the veterinarian's SOAP form.
 
 Additional checks: `node --test server/tests/clinical-process.test.js`; the PostgreSQL scheduling suite covers booking races, cancellation/rebooking, charge retention and approved booster dates.
+
+### Owner booster continuity
+
+Owner dashboard, vaccination card and appointment calendar use the same latest
+vet-certified booster schedule as reception and reminders (`currentVaccinationDue`).
+A completed dose can still have an upcoming booster. Newer certifications supersede
+older recall dates, including when no next date is set; historical doses remain
+readable. Uncertified suggestions are labelled for vet review and do not appear as
+given doses or approved recalls. Vaccine booking preserves the approved due date
+separately from the selected visit date, clamps overdue requests to today, and asks
+for a date when the due date exceeds the 90-day booking window. A due date does not
+reserve a slot. Only active visits explicitly naming the same vaccine family are
+shown as matching appointments; unrelated same-day visits are not labelled booked.
+
+Check: `node --test tests/owner-vaccination.test.js` and `npm run build`.

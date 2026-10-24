@@ -1,7 +1,9 @@
+import { today as bookingToday } from "../booking.js";
+import { currentVaccinationDue, vaccinationAppointment, vaccinationStatus } from "../ownerVaccination.js";
 import CareFollowUps from "./CareFollowUps.jsx";
 import Prices from "./owner/Prices.jsx";
 import { useState } from "react";
-import { I, Hero, ICON, Badge, dueState, scope, TODAY, petName } from "../lib.jsx";
+import { I, Hero, ICON, Badge, scope, petName } from "../lib.jsx";
 import OwnerAppts from "./owner/Appts.jsx";
 import { OwnerVacc } from "./owner/VaccCard.jsx";
 import { OwnerVisits } from "./owner/Visits.jsx";
@@ -13,13 +15,15 @@ import "./owner/owner-modern.css";   // keep AFTER owner.css so the refreshed lo
 
 const LIVE = ["Scheduled", "Confirmed", "Checked-in", "In consultation"];
 function Dash({ db, setDb, me, go, say }) {
+  const TODAY = bookingToday();
   const [modal, setModal] = useState(null);   // { form, editing } or { profile }
   const pets = scope(db, me, "pets"), A = scope(db, me, "appts"), V = scope(db, me, "vacc"), reqs = myRequests(db, me);
   const blocked = addBlock(db, me);
   const book = (petId, reason) => { setPrefill(petId ? { petId, reason } : null); go("appts"); };
-  const over = V.filter(v => !v.done && v.nextDue && v.nextDue < TODAY);
+  const recalls = currentVaccinationDue(V);
+  const over = recalls.filter(v => v.nextDue < TODAY);
   const upcoming = A.filter(a => LIVE.includes(a.status) && a.date >= TODAY).length;
-  const dueVacc = V.filter(v => !v.done && v.nextDue && dueState(v.nextDue) !== "On track").length;
+  const dueVacc = recalls.filter(v => vaccinationStatus(v, recalls) !== "On track").length;
   const first = me.name.split(" ")[0];
   const steps = [
     ["plus", "Add your pet", "Name, species, birth date and weight.", () => setModal({ form: true })],
@@ -70,16 +74,16 @@ function Dash({ db, setDb, me, go, say }) {
     <CareFollowUps db={db} go={go} owner />
     <RequestList db={db} setDb={setDb} me={me} say={say} onEdit={r => setModal({ form: true, editing: r })} />
     {pets.length ? <div className="petgrid">{pets.map(p => {
-      const nv = V.filter(v => v.petId === p.id && v.nextDue && !v.done).sort((a, b) => a.nextDue.localeCompare(b.nextDue))[0];
+      const nv = recalls.filter(v => v.petId === p.id).sort((a, b) => a.nextDue.localeCompare(b.nextDue))[0];
       const na = A.filter(a => a.petId === p.id && LIVE.includes(a.status) && a.date >= TODAY).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
-      const nvAppt = nv ? A.find(a => a.petId === p.id && LIVE.includes(a.status) && (a.date === nv.nextDue || (a.date >= TODAY && (a.reason || "").toLowerCase().includes(nv.vaccine.toLowerCase())))) : null;
+      const nvAppt = nv ? vaccinationAppointment(nv, A) : null;
       return <article className="petcard" key={p.id} role="button" tabIndex={0} aria-label={`${p.name}, open pet details`} onClick={() => setModal({ profile: p })} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModal({ profile: p }); } }}>
         <div className="pc-top">
           <div className="big"><Avatar src={p.photo} fallback={<I e={ICON[p.species]} size={40} />} size={84} round={false} /></div>
           <div className="pc-id"><h3>{p.name}</h3><p>{p.breed || p.species}</p></div>
         </div>
         <div className="pc-tags">{p.sex && <span>{p.sex}</span>}{p.weight ? <span>{p.weight} kg</span> : null}{p.birth ? <span>{petAge(p.birth)}</span> : null}</div>
-        <div className="kv"><span>Next vaccine</span>{nv ? <b>{nv.vaccine} <Badge v={nvAppt ? "Scheduled" : dueState(nv.nextDue)} /></b> : <b>—</b>}</div>
+        <div className="kv"><span>Next vaccine</span>{nv ? <b>{nv.vaccine} <Badge v={nvAppt ? "Scheduled" : vaccinationStatus(nv, recalls)} /></b> : <b>—</b>}</div>
         <div className="kv"><span>Next visit</span><b>{na ? <>{na.date} {fmt12(na.time)} <Badge v={na.status} /></> : "None booked"}</b></div>
         <small className="pc-more">View details <Icon n="chevron" size={14} /></small></article>;
     })}</div> : null}
