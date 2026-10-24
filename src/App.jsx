@@ -113,6 +113,7 @@ export default function App() {
               ];
               return {
                 ...p,
+                vets: res.data.vets ?? p.vets,
                 owners: res.data.owners?.length ? res.data.owners : p.owners,
                 pets: mergedPets.length ? mergedPets : p.pets,
                 appts: remoteAppts.length ? remoteAppts : mergedAppts,
