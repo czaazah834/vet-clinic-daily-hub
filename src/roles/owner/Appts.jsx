@@ -216,21 +216,98 @@ export default function OwnerAppts({ db, setDb, me, say }) {
             💡 <b>Notice:</b> You haven’t added a pet yet. Please go to <b>My Pets</b> to add your pet, or you can view the clinic calendar and schedules below.
           </div>
         )}
-        {day && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
+        {day && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
           <h3 style={{ margin: 0, flex: "1 1 auto" }}>{dayNice}{day === TODAY ? " (today)" : ""}</h3>
           {day >= TODAY && !hol && <button className="btn sm" disabled={!pets.length} onClick={() => setModal({ book: true, start: { petId: pet || "", reason: "", date: day } })}>+ Book on this day</button>}
           <button className="btn ghost sm" onClick={() => setDay("")}>Show all</button>
         </div>}
+
+        {/* 1. Vaccines & Scheduled Care on this day (Displayed directly below the date) */}
+        {dayVacc.length > 0 && (
+          <div className="ow-dayp" style={{ marginBottom: 16 }}>
+            <h4 style={{ margin: "0 0 10px", fontSize: "0.95rem", color: "var(--navy)", fontWeight: 800 }}>
+              💉 Vaccines &amp; Care Scheduled on this Day
+            </h4>
+            {dayVacc.map((x, i) => {
+              const matchedAppt = list.find(a => a.petId === x.vacc?.petId && a.date === day);
+              return (
+                <div className="ow-evrow" key={i} style={{ alignItems: "center" }}>
+                  <span className={`ow-ev ${KIND[x.kind][1]}`}>
+                    <i className="ow-dot" />{KIND[x.kind][0]}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <b>{x.text}</b>
+                    {x.sub && <small style={{ display: "block", color: "var(--mu)" }}>{x.sub}</small>}
+                    {matchedAppt && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 3, fontSize: "0.78rem", color: "#15803d", fontWeight: 700 }}>
+                        ✓ Visit pre-scheduled for {fmt12(matchedAppt.time)}
+                      </span>
+                    )}
+                  </div>
+                  {matchedAppt ? (
+                    <button
+                      type="button"
+                      className="btn ghost sm"
+                      style={{ whiteSpace: "nowrap" }}
+                      onClick={() => setModal({ view: matchedAppt })}
+                    >
+                      View appointment
+                    </button>
+                  ) : (
+                    (x.kind === "due" || x.kind === "over") && (
+                      <button
+                        type="button"
+                        className="btn sm"
+                        disabled={!pets.length}
+                        style={{ whiteSpace: "nowrap" }}
+                        onClick={() => setModal({ book: true, start: { petId: x.vacc.petId, reason: x.vacc.vaccine === "Deworming" ? "Deworming" : "Vaccination", date: day } })}
+                      >
+                        Book a visit
+                      </button>
+                    )
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {hol && <p className="ow-note">Holiday: {hol}. The clinic is closed, so visits can’t be booked on this day.</p>}
         {list.length > 0 && <p className="ow-hint">Click any visit to view full clinical details. Open visits can be rescheduled or cancelled.</p>}
-        {(list.length ? <div className="tw"><table><thead><tr><th>Date</th><th>Time</th><th>Pet</th><th>Veterinarian</th><th>Reason</th><th>Status</th><th /></tr></thead><tbody>{list.map(a => {
-          const p = db.pets.find(x => x.id === a.petId) || {}, open = OPEN.includes(a.status) && a.date >= TODAY;
-          return <tr key={a.id} className="vh-r" tabIndex={0} style={{ cursor: "pointer" }} title="Click to see details" onClick={() => setModal({ view: a })} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModal({ view: a }); } }}><td>{a.date}</td><td>{fmt12(a.time)}{a.service && SERVICES[a.service] && <small className="ow-sub">to {fmt12(addMin(a.time, durOf(a)))}</small>}</td><td><span className="who"><span className="av"><I e={ICON[p.species]} size={16} /></span>{p.name}</span></td><td>{(VETS.find(v => v[0] === a.vetId) || [])[1] || "—"}</td>
-            <td>{a.reason}{a.service && SERVICES[a.service] && <small className="ow-sub">{SERVICES[a.service].label} · {durText(durOf(a))}</small>}{a.notes && <small className="ow-sub">Note: {a.notes}</small>}{a.cancelReason && <small className="ow-sub">Cancelled: {a.cancelReason}</small>}</td>
-            <td><Badge v={a.status} /><small className="ow-sub">{STATUS_NOTE[a.status]}</small></td>
-            <td className="act">{open && <><button className="btn ghost sm" onClick={e => { e.stopPropagation(); setModal({ book: true, editing: a }); }}>Edit</button> <button className="btn danger sm" onClick={e => { e.stopPropagation(); setModal({ cancel: a }); }}>Cancel</button></>}</td></tr>;
-        })}</tbody></table></div> : <div className="empty"><div><I e="📅" size={34} /></div>{day ? "No visits on this day." : "No visits to show here."}</div>)}
-        {dayVacc.length > 0 && <div className="ow-dayp" style={{ marginTop: 12 }}><h3>Vaccines on this day</h3>{dayVacc.map((x, i) => <div className="ow-evrow" key={i}><span className={`ow-ev ${KIND[x.kind][1]}`}><i className="ow-dot" />{KIND[x.kind][0]}</span><div><b>{x.text}</b>{x.sub && <small>{x.sub}</small>}</div>{(x.kind === "due" || x.kind === "over") && <button className="btn sm" disabled={!pets.length} onClick={() => setModal({ book: true, start: { petId: x.vacc.petId, reason: x.vacc.vaccine === "Deworming" ? "Deworming" : "Vaccination" } })}>Book a visit</button>}</div>)}</div>}
+
+        {/* 2. Appointments on this day or Empty State (Displayed after vaccines) */}
+        {(list.length ? (
+          <div className="tw">
+            <table>
+              <thead>
+                <tr><th>Date</th><th>Time</th><th>Pet</th><th>Veterinarian</th><th>Reason</th><th>Status</th><th /></tr>
+              </thead>
+              <tbody>
+                {list.map(a => {
+                  const p = db.pets.find(x => x.id === a.petId) || {}, open = OPEN.includes(a.status) && a.date >= TODAY;
+                  return (
+                    <tr key={a.id} className="vh-r" tabIndex={0} style={{ cursor: "pointer" }} title="Click to see details" onClick={() => setModal({ view: a })} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModal({ view: a }); } }}>
+                      <td>{a.date}</td>
+                      <td>{fmt12(a.time)}{a.service && SERVICES[a.service] && <small className="ow-sub">to {fmt12(addMin(a.time, durOf(a)))}</small>}</td>
+                      <td><span className="who"><span className="av"><I e={ICON[p.species]} size={16} /></span>{p.name}</span></td>
+                      <td>{(VETS.find(v => v[0] === a.vetId) || [])[1] || "—"}</td>
+                      <td>{a.reason}{a.service && SERVICES[a.service] && <small className="ow-sub">{SERVICES[a.service].label} · {durText(durOf(a))}</small>}{a.notes && <small className="ow-sub">Note: {a.notes}</small>}{a.cancelReason && <small className="ow-sub">Cancelled: {a.cancelReason}</small>}</td>
+                      <td><Badge v={a.status} /><small className="ow-sub">{STATUS_NOTE[a.status]}</small></td>
+                      <td className="act">{open && <><button className="btn ghost sm" onClick={e => { e.stopPropagation(); setModal({ book: true, editing: a }); }}>Edit</button> <button className="btn danger sm" onClick={e => { e.stopPropagation(); setModal({ cancel: a }); }}>Cancel</button></>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty" style={{ padding: "28px 16px" }}>
+            <div><I e="📅" size={34} /></div>
+            <p style={{ margin: "8px 0 0", color: "var(--mu)", fontWeight: 600 }}>
+              {day ? "No visits on this day." : "No visits to show here."}
+            </p>
+          </div>
+        ))}
       </div>
     </div>
     {modal && modal.book && <BookForm db={db} setDb={setDb} me={me} say={say} editing={modal.editing} start={modal.start} onClose={() => setModal(null)} />}

@@ -784,7 +784,20 @@ clinicRouter.post("/owner/pets", async (req, res) => {
         [reqId, effectiveOwnerId, name, species, speciesOther || "", breed || "", sex, birth || today, parseFloat(weight) || 5.0, color || "", neutered || "", notes || "", petId, cardId]
       );
 
-      return { pet: insPet.rows[0], vaccs: seeded };
+      // 5. Pre-schedule initial preventive appointment
+      const earliestDue = seeded.filter(v => v.next_due).sort((a, b) => a.next_due.localeCompare(b.next_due))[0];
+      let preAppt = null;
+      if (earliestDue) {
+        const apptId = "a_pre_" + Math.random().toString(36).slice(2, 8);
+        const insAppt = await client.query(
+          `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount)
+           VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', 'Pending', 0) RETURNING *`,
+          [apptId, petId, "vet_cruz", earliestDue.next_due, "10:00", `${earliestDue.vaccine} (Pre-scheduled)`]
+        );
+        preAppt = insAppt.rows[0];
+      }
+
+      return { pet: insPet.rows[0], vaccs: seeded, appointment: preAppt };
     });
 
     await recordAudit("Owner", "owner", `Registered new patient ${name} (${species}) with digital card ${cardId}`);
@@ -1357,8 +1370,21 @@ clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
         [actorName || "Vet Assistant", newPetId, cardId, reqId]
       );
 
+      // 5. Automatically pre-schedule the earliest upcoming preventive care visit
+      const earliestDue = seeded.filter(v => v.next_due).sort((a, b) => a.next_due.localeCompare(b.next_due))[0];
+      let preAppt = null;
+      if (earliestDue) {
+        const apptId = "a_pre_" + Math.random().toString(36).slice(2, 8);
+        const insAppt = await client.query(
+          `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount)
+           VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', 'Pending', 0) RETURNING *`,
+          [apptId, newPetId, "vet_cruz", earliestDue.next_due, "10:00", `${earliestDue.vaccine} (Pre-scheduled)`]
+        );
+        preAppt = insAppt.rows[0];
+      }
+
       const qPet = await client.query("SELECT * FROM pets WHERE id = $1", [newPetId]);
-      return { petId: newPetId, cardId, request: upd.rows[0], pet: qPet.rows[0], vaccs: seeded };
+      return { petId: newPetId, cardId, request: upd.rows[0], pet: qPet.rows[0], vaccs: seeded, appointment: preAppt };
     });
 
     await recordAudit(actorName || "Vet Assistant", actorRole || "assistant", `Approved pet request for ${result.request.name} (Assigned Card ${cardId})`);
