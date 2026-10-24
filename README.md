@@ -605,3 +605,22 @@ entered values; the form no longer inserts an unconfirmed subcutaneous-route not
 Checks: `node --test tests/consultation-save.test.js`, `npm run test:clinic`,
 `npm run test:scheduling:postgres` with a disposable local database, and
 `npm run build`.
+
+### Veterinarian clinical queue
+
+The vet desk separates Waiting, Active and Completed visits. Waiting patients
+are ordered by recorded Emergency, Priority, then routine triage, with appointment
+date/time breaking ties. Start next uses this same order. Unfinished checked-in
+visits remain visible across midnight. Starting care blocks repeated dashboard
+submissions while awaiting confirmation and keeps failures visible for retry.
+
+The booster count uses the latest certified dose per patient/vaccine family,
+including overdue dates through the next 14 days. Registration suggestions do
+not count. Completed visits open the saved consultation for that exact visit in
+a read-only view; missing notes prompt a refresh. Incomplete summaries identify
+missing clinical fields without assuming normal findings, a diagnosis, a sample
+vet, current patient weight, vaccine brand/lot, annual boosters or dispensing.
+
+Checks: `node --test tests/vet-queue.test.js tests/appointment-status.test.js
+ tests/consultation-save.test.js tests/owner-vaccination.test.js`,
+`npm run test:clinic`, and `npm run build`.
