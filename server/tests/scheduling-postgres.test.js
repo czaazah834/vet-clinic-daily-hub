@@ -204,12 +204,24 @@ test('vet handoff is atomic, scoped, race-safe and exposes instructions to the r
  const body={vetId:'v2',note:'Monitor hydration; treatment not yet administered.'};
  for(const role of ['owner','assistant','admin','vet2']) assert.equal((await req(role,'POST','/appointments/vet-handoff/handoff',body)).status,403);
  assert.equal((await req('vet','POST','/appointments/vet-handoff/handoff',{...body,note:''})).status,400);
+ const baseline=(await query("SELECT * FROM appointments WHERE id='vet-handoff'")).rows[0];
+ const {intakeVisitSnapshot}=await import('../../src/intakeVisit.js');
+ const expectedVisit=intakeVisitSnapshot(baseline);
+ await query("UPDATE appointments SET intake_vitals='{\"weight\":7,\"temp\":38.6}'::jsonb WHERE id='vet-handoff'");
+ assert.equal((await req('vet','POST','/appointments/vet-handoff/handoff',{...body,expectedVisit})).status,409);
+ assert.equal((await query("SELECT jsonb_array_length(handoffs) n FROM appointments WHERE id='vet-handoff'")).rows[0].n,0);
+ body.expectedVisit=intakeVisitSnapshot((await query("SELECT * FROM appointments WHERE id='vet-handoff'")).rows[0]);
+ for(const patch of [{status:'Checked-in'},{vetId:'v2'},{petId:'p1'},{date:'1900-01-01'},{time:'16:00'},{reason:'Outdated findings'}]) assert.equal((await req('vet','POST','/appointments/vet-handoff/handoff',{...body,expectedVisit:{...body.expectedVisit,...patch}})).status,409);
+ for(const target of ['v1','missing-vet'])assert.equal((await req('vet','POST','/appointments/vet-handoff/handoff',{...body,vetId:target})).status,400);
  await query(`CREATE FUNCTION reject_handoff_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Handed visit vet-handoff%' THEN RAISE EXCEPTION 'Synthetic handoff audit failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_handoff BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_handoff_audit()`);
  assert.equal((await req('vet','POST','/appointments/vet-handoff/handoff',body)).status,500);
  assert.equal((await query("SELECT vet_id FROM appointments WHERE id='vet-handoff'")).rows[0].vet_id,'v1');
  await query('DROP TRIGGER fail_handoff ON audit_logs');
  const results=await Promise.all([req('vet','POST','/appointments/vet-handoff/handoff',body),req('vet','POST','/appointments/vet-handoff/handoff',body)]);
  assert.deepEqual(results.map(r=>r.status).sort(),[200,403]);
+ const confirmed=results.find(r=>r.status===200).data;
+ assert.deepEqual(confirmed.appointment,{id:'vet-handoff',petId:'p8',vetId:'v2',status:'Checked-in'});
+ assert.equal(confirmed.handoff.note,body.note);assert.equal(confirmed.handoff.toId,'v2');assert.equal(confirmed.handoff.fromId,'v1');assert.ok(Number.isFinite(Date.parse(confirmed.handoff.at)));
  const row=(await query("SELECT * FROM appointments WHERE id='vet-handoff'")).rows[0];
  assert.equal(row.status,'Checked-in');assert.equal(row.handoffs.length,1);assert.equal(row.handoffs[0].note,body.note);
  const state=await req('vet2','GET','/state');assert.equal(state.status,200);
@@ -224,6 +236,8 @@ test('vet handoff is atomic, scoped, race-safe and exposes instructions to the r
  assert.equal(persisted.careStatus,'Recheck required');assert.equal(persisted.followUpDate,plan.followUpDate);
  assert.equal(persisted.followUpReason,plan.followUpReason);
  assert.equal((await req('vet2','POST','/appointments/vet-handoff/handoff',{vetId:'v1',note:'Already complete'})).status,409);
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,status,reason) VALUES('legacy-vet-handoff','p8','v1',$1,'11:00','Checked-in','Legacy caller')",[date]);
+ assert.equal((await req('vet','POST','/appointments/legacy-vet-handoff/handoff',{vetId:'v2',note:'Legacy request without snapshot'})).status,200);
 });
 
 test('structured prescription, automatic invoice and checkout task commit together and survive reload', async () => {

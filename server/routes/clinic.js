@@ -2489,17 +2489,19 @@ clinicRouter.post('/appointments/:id/handoff', async (req, res) => {
   if (typeof vetId !== 'string' || typeof note !== 'string' || !note.trim() || note.length > 3000) return res.status(400).json({error: 'Choose a veterinarian and enter handoff instructions (up to 3000 characters).'});
   try {
     await ensureCareSchema();
-    await withTransaction(async client => {
+    const saved = await withTransaction(async client => {
       const row = (await client.query('SELECT * FROM appointments WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
       if (!row || !assignedTo(row, req.user)) throw Object.assign(new Error('This visit is no longer assigned to you.'), {status: 403});
+      if (req.body.expectedVisit !== undefined && !sameIntakeVisit(row, req.body.expectedVisit)) throw Object.assign(new Error('This visit has changed. Refresh clinic records and reopen the handoff.'), {status: 409});
       if (!['Checked-in', 'In consultation'].includes(row.status)) throw Object.assign(new Error('Only an active arrival can be handed over.'), {status: 409});
       const target = (await client.query("SELECT id,vet_id,first_name,last_name FROM users WHERE role='vet' AND (id=$1 OR vet_id=$1) AND COALESCE(to_jsonb(users)->>'is_active','true') <> 'false' FOR SHARE", [vetId])).rows[0];
       if (!target || [req.user.id, req.user.vetId].includes(target.id) || [req.user.id, req.user.vetId].filter(Boolean).includes(target.vet_id)) throw Object.assign(new Error('Choose another active veterinarian.'), {status: 400});
       const recipient = target.vet_id || target.id;
       const entry = {from: req.user.name, fromId: req.user.vetId || req.user.id, to: `${target.first_name} ${target.last_name}`, toId: recipient, note: note.trim(), at: new Date().toISOString()};
-      await client.query("UPDATE appointments SET vet_id=$1, status='Checked-in', handoffs=handoffs || $2::jsonb WHERE id=$3", [recipient, JSON.stringify([entry]), row.id]);
+      const updated = (await client.query("UPDATE appointments SET vet_id=$1, status='Checked-in', handoffs=handoffs || $2::jsonb WHERE id=$3 RETURNING id,pet_id,vet_id,status", [recipient, JSON.stringify([entry]), row.id])).rows[0];
       await client.query('INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)', [req.user.name, req.user.role, `Handed visit ${row.id} to ${recipient}`]);
+      return {appointment:{id:updated.id,petId:updated.pet_id,vetId:updated.vet_id,status:updated.status},handoff:entry};
     });
-    res.json({success: true});
+    res.json({success: true,...saved});
   } catch (e) { res.status(e.status || 500).json({error: e.status ? e.message : 'Unable to save handoff. Please retry.'}); }
 });
