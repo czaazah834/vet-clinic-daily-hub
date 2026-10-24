@@ -3,7 +3,7 @@ import { api } from "../../api.js";
 import { today as bookingToday, lastDay } from "../../booking.js";
 import { useAvailability } from "../../useAvailability.js";
 import { openFollowUps } from "../../clinicalWorkflow.js";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Badge, I, ICON, scope, petName, uid, addLog } from "../../lib.jsx";
 import ApptDetails from "./ApptDetails.jsx";
 import { useLive, Field, Suggest, Modal, addNote, prefill, fmt12, ymdLocal } from "./ui.jsx";
@@ -144,16 +144,19 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
 }
 
 function CancelDialog({ a, db, setDb, me, say, onClose }) {
+  const inFlight = useRef(false);
+  const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const f = useLive({ why: "", other: "" }, v => { const e = {}; if (!v.why) e.why = "Please tell us why"; else if (v.why === "Other") { const o = v.other.trim(); if (o.length < 3) e.other = "Add a short reason (3+ characters)"; else if (o.length > 120) e.other = "Keep it under 120 characters"; else if (!/[A-Za-zÀ-ÿ]/.test(o)) e.other = "Use words, not only numbers or symbols"; } return e; });
   const go = async e => {
-    e.preventDefault(); f.submit(); if (!f.valid) return;
+    e.preventDefault(); if (inFlight.current) return; f.submit(); if (!f.valid) return;
     const cur = db.appts.find(x => x.id === a.id), mine = scope(db, me, "pets").some(p => p.id === a.petId);
     if (!cur || !mine || !OPEN.includes(cur.status)) { say("This visit can no longer be cancelled"); return onClose(); }
     const why = f.v.why === "Other" ? f.v.other.trim() : f.v.why;
+    inFlight.current = true; setSaving(true); setSaveError("");
     try {
       await api.patch(`/api/appointments/${a.id}/status`, { status: "Cancelled", cancelReason: why, actorName: me.name, actorRole: "owner" });
     } catch (err) {
-      say(err.message);
+      inFlight.current = false; setSaving(false); setSaveError(err.message);
       return;
     }
     setDb(p => ({ ...p, appts: p.appts.map(x => x.id === a.id ? { ...x, status: "Cancelled", cancelReason: why } : x), log: addLog(p, me, `${petName(p, a.petId)}: ${a.status} → Cancelled (${why})`) }));
@@ -165,7 +168,8 @@ function CancelDialog({ a, db, setDb, me, say, onClose }) {
         <p>{petName(db, a.petId)} · {a.date} at {fmt12(a.time)}</p>
         <Field id="why" label="Reason for cancelling" req type="select" value={f.v.why} onChange={x => f.set("why", x)} onBlur={() => f.blur("why")} options={CANCEL_WHY.map(r => [r, r])} error={f.show("why")} valid={f.ok("why")} hint="This helps the clinic plan its day" />
         {f.v.why === "Other" && <Field id="other" label="Tell us more" req type="textarea" rows={2} max={120} value={f.v.other} onChange={x => f.set("other", x)} onBlur={() => f.blur("other")} error={f.show("other")} valid={f.ok("other")} hint="A few words is enough" />}
-        <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Keep visit</button><button className="btn danger">Cancel visit</button></div>
+        {saveError && <p className="err" role="alert">{saveError}</p>}
+        <div className="row end"><button type="button" className="btn ghost" disabled={saving} onClick={onClose}>Keep visit</button><button className="btn danger" disabled={saving}>{saving ? "Cancelling…" : "Cancel visit"}</button></div>
       </form>
     </Modal>
   );
@@ -230,6 +234,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
   const [modal, setModal] = useState(() => prefill.data ? { book: true, start: prefill.data } : null), [q, setQ] = useState(""), [view, setView] = useState("upcoming"), [pet, setPet] = useState(""), [svc, setSvc] = useState(""), [day, setDay] = useState("");
   useEffect(() => { prefill.data = null; }, []);
   const pets = scope(db, me, "pets");
+  const selectedVisit = scope(db, me, "appts").find(a => a.id === (modal?.view?.id || modal?.cancel?.id));
   let list = scope(db, me, "appts").slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   const live = a => OPEN.includes(a.status) || ["Checked-in", "In consultation"].includes(a.status);
   if (day) list = list.filter(a => a.date === day && a.status !== "Cancelled");
@@ -376,7 +381,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
       </div>
     </div>
     {modal && modal.book && <BookForm db={db} setDb={setDb} me={me} say={say} editing={modal.editing} start={modal.start} onClose={() => setModal(null)} />}
-    {modal && modal.view && <ApptDetails a={modal.view} db={db} note={STATUS_NOTE[modal.view.status]} onClose={() => setModal(null)} onEdit={() => setModal({ book: true, editing: modal.view })} onCancel={() => setModal({ cancel: modal.view })} />}
-    {modal && modal.cancel && <CancelDialog a={modal.cancel} db={db} setDb={setDb} me={me} say={say} onClose={() => setModal(null)} />}
+    {modal && modal.view && selectedVisit && <ApptDetails a={selectedVisit} db={db} note={STATUS_NOTE[selectedVisit.status]} onClose={() => setModal(null)} onEdit={() => setModal({ book: true, editing: selectedVisit })} onCancel={() => setModal({ cancel: selectedVisit })} />}
+    {modal && modal.cancel && selectedVisit && <CancelDialog a={selectedVisit} db={db} setDb={setDb} me={me} say={say} onClose={() => setModal(null)} />}
   </>);
 }

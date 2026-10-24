@@ -1,12 +1,14 @@
 import CareFollowUps from "./CareFollowUps.jsx";
 import CheckoutInbox from "./CheckoutInbox.jsx";
 import ReminderStatus from "./ReminderStatus.jsx";
-import { currentVaccinationDue } from "../vaccinationDue.js";
+import { currentVaccinationDue, vaccinationAppointment, vaccinationBooking, vaccinationStatus } from "../ownerVaccination.js";
+import { today, nowHM, plus } from "../booking.js";
+import { setPrefill } from "./owner/ui.jsx";
 import { useState } from "react";
 import {
   CalendarDays, AlertTriangle, PawPrint, ConciergeBell, Thermometer, Scale, UserCheck, Receipt, ArrowRight, X, Phone, Syringe,
 } from "lucide-react";
-import { Stats, Hero, TODAY, plus, moveAppt, Badge, dueState, ICON, I, uid, addLog } from "../lib.jsx";
+import { Stats, Hero, moveAppt, Badge, ICON, I, uid, addLog } from "../lib.jsx";
 import { api } from "../api.js";
 import InClinicRegistration from "./InClinicRegistration.jsx";
 import BillingModal from "./BillingModal.jsx";
@@ -25,6 +27,7 @@ const sameOwner = (o, id) => !!id && (o.id === id || o.id === id.replace(/^o(\d+
 const tempTone = s => (s === "normal" ? "" : s === "high_fever" || s === "hypothermia" ? "er" : "wa");
 
 function Dash({ db, setDb, me, go, say }) {
+  const TODAY = today();
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [showExistingWalkIn, setShowExistingWalkIn] = useState(false);
   const [billingAppt, setBillingAppt] = useState(null);
@@ -211,11 +214,7 @@ function Dash({ db, setDb, me, go, say }) {
               {calls.map(v => {
                 const p = db.pets.find(x => x.id === v.petId) || {};
                 const o = db.owners.find(x => sameOwner(x, p.ownerId)) || {};
-                const hasAppt = (db.appts || []).find(a =>
-                  a.petId === (p.id || v.petId) &&
-                  !["Cancelled", "No-show"].includes(a.status) &&
-                  (a.date === v.nextDue || (a.date >= TODAY && (a.reason || "").toLowerCase().includes((v.vaccine || "").toLowerCase())))
-                );
+                const hasAppt = vaccinationAppointment(v, db.appts || []);
                 return (
                   <div className="sf-row" key={v.id}>
                     <div className="sf-body">
@@ -230,14 +229,14 @@ function Dash({ db, setDb, me, go, say }) {
                       <div className="sf-sub"><Phone size={12} aria-hidden="true" style={{ verticalAlign: "-1px" }} /> {o.phone || "No phone on file"}</div>
                     </div>
                     <div className="sf-row-act">
-                      <Badge v={hasAppt ? "Scheduled" : dueState(v.nextDue)} />
+                      <Badge v={hasAppt ? "Scheduled" : vaccinationStatus(v, calls)} />
                       <button className="btn sm ghost" onClick={() => openCard(p.id || v.petId)}>Card</button>
                       {hasAppt ? (
                         <button className="btn sm ghost" style={{ color: "#15803d", borderColor: "#86efac", background: "#f0fdf4" }} onClick={() => go("cal")} title="View scheduled appointment in calendar">
                           ✓ Scheduled
                         </button>
                       ) : (
-                        <button className="btn sm gold" title="Book the booster visit in the clinic calendar" onClick={() => { go("cal"); say(`Booking booster for ${p.name || "patient"} (${v.vaccine}).`); }}>Book booster</button>
+                        <button className="btn sm gold" title="Book the booster visit in the clinic calendar" onClick={() => { setPrefill(vaccinationBooking(v)); go("cal"); say(`Booking booster for ${p.name || "patient"} (${v.vaccine}).`); }}>Book booster</button>
                       )}
                       <button className="btn ghost sm" onClick={() => setLogCallTarget({ v, p, o })} title="Log call notes and dispatch reminders via Email and SMS">Log call</button>
                     </div>
@@ -246,7 +245,7 @@ function Dash({ db, setDb, me, go, say }) {
               })}
             </div>
           ) : (
-            <div className="empty sm">All patient vaccinations are up to date.</div>
+            <div className="empty sm">No certified booster recalls due within 30 days.</div>
           )}
         </section>
       </div>
@@ -321,6 +320,7 @@ function Dash({ db, setDb, me, go, say }) {
 
 /* Walk-in for a patient who is already on file: creates today's appointment, then hands off to check-in (vitals). */
 function ExistingPatientCheckInModal({ db, setDb, me, onClose, onCheckIn, say }) {
+  const TODAY = today();
   const [search, setSearch] = useState("");
   const [selectedPetId, setSelectedPetId] = useState("");
   const [reason, setReason] = useState("Walk-in consultation and routine exam");
@@ -345,8 +345,8 @@ function ExistingPatientCheckInModal({ db, setDb, me, onClose, onCheckIn, say })
     if (!selectedPetId || busy) return;
     setBusy(true);
     const payload = {
-      petId: selectedPetId, vetId, date: TODAY, bookingKind: "walk-in",
-      time: new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" }),
+      petId: selectedPetId, vetId, date: today(), bookingKind: "walk-in",
+      time: nowHM(),
       reason: reason.trim() || "Walk-in consultation",
       status: "Scheduled", billingStatus: "Unbilled", amount: 600,
       actorName: me?.name || "Assistant", actorRole: me?.role || "assistant",

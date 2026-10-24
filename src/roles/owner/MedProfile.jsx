@@ -4,11 +4,7 @@ import { Icon } from "./ui.jsx";
 
 const byDate = a => [...a].sort((x, y) => x.date.localeCompare(y.date));
 
-/* Read-Only Official Clinical Medical Profile for Pet Owners:
-   - All medical data (Allergies, Weights, Care Notes) is loaded directly from PostgreSQL Neon DB.
-   - Clinical governance rule: Weight cannot be manually edited by the owner; it is officially
-     recorded on calibrated clinic digital scales by the Vet Assistant during arrival check-in.
-*/
+/* Owners can read recorded clinical data; corrections are handled by clinic staff. */
 export default function MedProfile({ p }) {
   const weights = byDate(p.weights || []);
   const allergies = p.allergies || [];
@@ -30,7 +26,7 @@ export default function MedProfile({ p }) {
       <section aria-labelledby="mp-al" style={{ marginBottom: "24px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
           <h4 id="mp-al" style={{ margin: 0, fontSize: "1.1rem", color: "var(--navy)", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-            <span>🛡️</span> <span>Verified Allergies &amp; Sensitivities</span>
+            <span>🛡️</span> <span>Recorded Allergies &amp; Sensitivities</span>
           </h4>
           <span style={{ fontSize: "0.78rem", color: "#64748b", background: "#f1f5f9", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>
             Official Clinical Record
@@ -62,7 +58,7 @@ export default function MedProfile({ p }) {
           </ul>
         ) : (
           <div style={{ background: "#f8fafc", border: "1px dashed var(--ln)", borderRadius: "10px", padding: "14px 18px", color: "#64748b", fontSize: "0.88rem" }}>
-            <span>✅ No known clinical allergies on record for {p.name}. Verified by clinic veterinary staff during physical consultations.</span>
+            <span>No allergies recorded for {p.name}. Tell the clinic about any known reactions.</span>
           </div>
         )}
       </section>
@@ -74,13 +70,13 @@ export default function MedProfile({ p }) {
             <span>⚖️</span> <span>Official Weight History &amp; Vital Growth</span>
           </h4>
           <div style={{ background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: "8px", padding: "4px 12px", fontSize: "0.85rem", color: "#1e40af", fontWeight: 700 }}>
-            Current Weighed Vitals: <b>{p.weight != null ? `${p.weight} kg` : "—"}</b>
+            Last recorded weight: <b>{p.weight != null ? `${p.weight} kg` : "—"}</b>
           </div>
         </div>
 
         {/* Clinical Policy Notice */}
         <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", color: "#166534", fontSize: "0.82rem", lineHeight: 1.45 }}>
-          <b>🔒 Official Clinical Policy:</b> Patient body weight is measured and verified on calibrated digital scales by the <b>Vet Assistant</b> during clinic arrival check-in. This ensures 100% accurate dosage calculation for vaccinations and parasite preventatives.
+          <b>Weight records:</b> This history may include registration weights and clinic measurements. The assistant records arrival measurements, and the veterinarian reviews them when deciding treatment. Ask the clinic to correct any inaccurate entry.
         </div>
 
         {weights.length > 1 && (
@@ -123,7 +119,7 @@ export default function MedProfile({ p }) {
                   <th style={{ padding: "10px 12px" }}>Date Weighed</th>
                   <th style={{ padding: "10px 12px" }}>Measured Weight</th>
                   <th style={{ padding: "10px 12px" }}>Weight Change</th>
-                  <th style={{ padding: "10px 12px" }}>Verified Source</th>
+                  <th style={{ padding: "10px 12px" }}>Recorded source</th>
                 </tr>
               </thead>
               <tbody>
@@ -137,7 +133,7 @@ export default function MedProfile({ p }) {
                         ? "Front Desk Arrival Check-in"
                         : w.by === "registration" || w.by === "Initial Registration"
                         ? "Pet Registration Record"
-                        : w.by || "PawCare Clinic Vitals";
+                        : w.by || "Source not recorded";
                     return (
                       <tr key={w.date} style={{ borderBottom: "1px solid var(--ln)" }}>
                         <td style={{ padding: "10px 12px", fontWeight: 600 }}>{w.date}</td>
