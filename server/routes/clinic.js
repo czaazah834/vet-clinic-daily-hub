@@ -1,3 +1,6 @@
+import { validateBoosterDate } from "../reminders.js";
+import { ensureSchedulingSchema } from "../database/schedulingSchema.js";
+import { availableSlots, assertAvailable, lockSchedule, clinicClock, inferBookingService, bookingError, minutes, validDate } from "../scheduling.js";
 import { ensureCheckoutSchema } from "../database/clinicSchema.js";
 import express from "express";
 import { query, withTransaction } from "../db.js";
@@ -133,7 +136,8 @@ clinicRouter.get("/state", async (req, res) => {
       petId: a.pet_id,
       vetId: a.vet_id,
       date: toDateStr(a.date),
-      time: a.time,
+      time: Number.isFinite(minutes(a.time)) ? `${String(Math.floor(minutes(a.time) / 60)).padStart(2, "0")}:${String(minutes(a.time) % 60).padStart(2, "0")}` : a.time,
+      service: a.service, durationMinutes: a.duration_minutes || 30, bookingKind: a.booking_kind || "reservation", notes: a.notes || "",
       reason: a.reason,
       status: a.status,
       billingStatus: a.billing_status,
@@ -158,6 +162,7 @@ clinicRouter.get("/state", async (req, res) => {
       brand: v.brand || "",
       batch: v.batch || "",
       date: toDateStr(v.date),
+      createdAt: v.created_at,
       nextDue: v.next_due ? toDateStr(v.next_due) : null,
       doseNo: v.dose_no,
       doseOf: v.dose_of,
@@ -1446,29 +1451,8 @@ clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
         [actorName || "Vet Assistant", newPetId, cardId, reqId]
       );
 
-      // 5. Automatically pre-schedule the earliest upcoming preventive care visit
-      const earliestDue = seeded.filter(v => v.next_due).sort((a, b) => a.next_due.localeCompare(b.next_due))[0];
-      let preAppt = null;
-      if (earliestDue) {
-        const apptId = "a_pre_" + Math.random().toString(36).slice(2, 8);
-        const insAppt = await client.query(
-          `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount)
-           VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', 'Pending', 0) RETURNING *`,
-          [apptId, newPetId, "v1", earliestDue.next_due, "10:00", `${earliestDue.vaccine} (Pre-scheduled)`]
-        );
-        const aRow = insAppt.rows[0];
-        preAppt = {
-          id: aRow.id,
-          petId: aRow.pet_id,
-          vetId: aRow.vet_id,
-          date: toDateStr(aRow.date),
-          time: aRow.time,
-          reason: aRow.reason,
-          status: aRow.status,
-          billingStatus: aRow.billing_status,
-          amount: parseFloat(aRow.amount || 0)
-        };
-      }
+      // Registration approval does not reserve clinical time or choose a doctor.
+      const preAppt = null;
 
       const qPet = await client.query("SELECT * FROM pets WHERE id = $1", [newPetId]);
       return { petId: newPetId, cardId, request: upd.rows[0], pet: qPet.rows[0], vaccs: seeded, appointment: preAppt };
@@ -1497,89 +1481,75 @@ clinicRouter.post("/pet-requests/:id/decline", async (req, res) => {
 });
 
 /* 5. APPOINTMENTS & CHECK-IN INTAKE FLOW */
-clinicRouter.post("/appointments", async (req, res) => {
-  const { id, petId, vetId, date, time, reason, amount, actorName, actorRole } = req.body;
-  const apptId = id || ("a_" + Math.random().toString(36).slice(2, 8));
-
+// Owners receive open times only, never other clients or internal timetables.
+clinicRouter.get("/appointments/availability", async (req, res) => {
   try {
-    const result = await query(
-      `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, amount)
-       VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', $7)
-       RETURNING *`,
-      [apptId, petId, vetId || "v1", date, time, reason, amount || 600.00]
-    );
-
-    await recordAudit(actorName || "User", actorRole || "user", `Booked appointment for pet ${petId} on ${date} ${time}`);
-    const row = result.rows[0];
-    res.json({
-      success: true,
-      appointment: {
-        id: row.id,
-        petId: row.pet_id,
-        vetId: row.vet_id,
-        date: toDateStr(row.date),
-        time: row.time,
-        reason: row.reason,
-        status: row.status,
-        billingStatus: row.billing_status,
-        amount: parseFloat(row.amount)
-      }
-    });
-  } catch (err) {
-    console.error("Booking error:", err.message);
-    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
-  }
-});
-
-clinicRouter.put("/appointments/:id", async (req, res) => {
-  const apptId = req.params.id;
-  const { petId, vetId, date, time, reason, status, actorName, actorRole } = req.body;
-
-  try {
-    const result = await query(
-      `UPDATE appointments
-       SET pet_id = COALESCE($1, pet_id),
-           vet_id = COALESCE($2, vet_id),
-           date = COALESCE($3, date),
-           time = COALESCE($4, time),
-           reason = COALESCE($5, reason),
-           status = COALESCE($6, status)
-       WHERE id = $7
-       RETURNING *`,
-      [petId, vetId, date, time, reason, status, apptId]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: "Appointment not found" });
+    await ensureSchedulingSchema();
+    const { vetId, date, service, excludeId } = req.query;
+    if (!validDate(date)) throw bookingError("Choose a valid appointment date.");
+    const doctor = (await query("SELECT id, vet_id FROM users WHERE role = 'vet' AND (vet_id = $1 OR id = $1)", [vetId])).rows[0];
+    if (!doctor) throw bookingError("Choose a current veterinarian.");
+    let excluded;
+    if (excludeId) {
+      excluded = (await query("SELECT * FROM appointments WHERE id = $1", [excludeId])).rows[0];
+      if (!excluded || (req.user.role === "owner" && !(await query("SELECT id FROM pets WHERE id = $1 AND owner_id = $2", [excluded.pet_id, req.user.ownerId])).rows.length)) throw bookingError("Appointment not found.", 404);
     }
-
-    await recordAudit(actorName || "User", actorRole || "user", `Updated appointment ${apptId} on ${date} ${time}`);
-    const row = result.rows[0];
-    res.json({
-      success: true,
-      appointment: {
-        id: row.id,
-        petId: row.pet_id,
-        vetId: row.vet_id,
-        date: toDateStr(row.date),
-        time: row.time,
-        reason: row.reason,
-        status: row.status,
-        billingStatus: row.billing_status,
-        amount: parseFloat(row.amount)
-      }
-    });
-  } catch (err) {
-    console.error("Update appointment error:", err.message);
-    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
-  }
+    const rows = (await query("SELECT * FROM appointments WHERE date = $1 AND vet_id = $2", [date, doctor.vet_id || doctor.id])).rows;
+    res.json({ slots: availableSlots(rows, { date, service, excludeId: excluded?.id }) });
+  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Unable to load availability. Choose a valid date and retry." }); }
 });
+
+async function saveBooking(req, res, editing = false) {
+  try {
+    await ensureSchedulingSchema();
+    const row = await withTransaction(async client => {
+      await lockSchedule(client);
+      const previous = editing ? (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [req.params.id])).rows[0] : null;
+      if (editing && !previous) throw bookingError("Appointment not found.", 404);
+      if (previous && !["Scheduled", "Confirmed"].includes(previous.status)) throw bookingError("Only upcoming appointments can be edited.", 409);
+      const b = req.body;
+      const v = { petId: b.petId ?? previous?.pet_id, vetId: b.vetId ?? previous?.vet_id, date: b.date ?? previous?.date, time: b.time ?? previous?.time, reason: b.reason ?? previous?.reason, notes: b.notes ?? previous?.notes ?? "" };
+      v.service = b.service ?? previous?.service ?? inferBookingService(v.reason);
+      if (typeof v.reason !== "string" || v.reason.trim().length < 3 || v.reason.length > 300 || typeof v.notes !== "string" || v.notes.length > 200) throw bookingError("Add a visit reason (3–300 characters) and keep notes under 200 characters.");
+      // Recheck ownership inside the transaction, after any simultaneous change.
+      if (req.user.role === "owner") {
+        for (const id of new Set([v.petId, previous?.pet_id].filter(Boolean))) {
+          if (!(await client.query("SELECT id FROM pets WHERE id = $1 AND owner_id = $2", [id, req.user.ownerId])).rows.length) throw bookingError("Pet not found.", 404);
+        }
+      }
+      const walkIn = !editing && b.bookingKind === "walk-in" && req.user.role === "assistant";
+      let duration;
+      if (walkIn) {
+        const clock = clinicClock(); v.date = clock.date; v.time = clock.time;
+        const existing = (await client.query("SELECT * FROM appointments WHERE date = $1 AND (vet_id = $2 OR pet_id = $3)", [v.date, v.vetId, v.petId])).rows;
+        if (existing.some(a => a.pet_id === v.petId && !["Cancelled", "No-show", "Completed"].includes(a.status))) throw bookingError("This pet already has an active visit today. Check in that visit.", 409);
+        duration = 30;
+      } else {
+        duration = await assertAvailable(client, v, previous?.id);
+      }
+      const changedSlot = previous && (v.petId !== previous.pet_id || v.vetId !== previous.vet_id || v.date !== previous.date || v.time !== previous.time || v.service !== previous.service);
+      const values = [editing ? previous.id : b.id || `a_${crypto.randomUUID()}`, v.petId, v.vetId, v.date, v.time, v.reason.trim(), req.user.role === "owner" ? previous?.amount ?? 600 : Number(b.amount) || previous?.amount || 600, v.service, duration, walkIn ? "walk-in" : "reservation", v.notes];
+      const sql = editing ? `UPDATE appointments SET pet_id=$2,vet_id=$3,date=$4,time=$5,reason=$6,amount=$7,status=$12,service=$8,duration_minutes=$9,booking_kind=$10,notes=$11 WHERE id=$1 RETURNING *` : `INSERT INTO appointments (id,pet_id,vet_id,date,time,reason,amount,service,duration_minutes,booking_kind,notes,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Scheduled') RETURNING *`;
+      if (editing) values.push(changedSlot ? "Scheduled" : previous.status);
+      // UPDATE uses the same parameter positions as INSERT.
+      const saved = await client.query(sql, values);
+      await client.query("INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)", [req.user.name,req.user.role,`${editing ? "Updated" : "Booked"} appointment ${values[0]} on ${v.date} ${v.time}`]);
+      return saved.rows[0];
+    });
+    res.json({ success: true, appointment: { id: row.id, petId: row.pet_id, vetId: row.vet_id, date: toDateStr(row.date), time: row.time, reason: row.reason, notes: row.notes, service: row.service, durationMinutes: row.duration_minutes, bookingKind: row.booking_kind, status: row.status, billingStatus: row.billing_status, amount: Number(row.amount) } });
+  } catch (error) {
+    res.status(error.status || (error.code === "23505" ? 409 : 500)).json({ error: error.status ? error.message : error.code === "23505" ? "This booking already exists. Refresh before retrying." : "Unable to save the booking. Please retry." });
+  }
+}
+clinicRouter.post("/appointments", (req, res) => saveBooking(req, res));
+clinicRouter.put("/appointments/:id", (req, res) => saveBooking(req, res, true));
 
 clinicRouter.patch("/appointments/:id/status", async (req, res) => {
   const apptId = req.params.id;
   const { status, intakeVitals, cancelReason, billingStatus, date, time, reason, actorName, actorRole } = req.body;
 
   try {
+    if (date !== undefined || time !== undefined) await ensureSchedulingSchema();
     const result = await withTransaction(async (client) => {
       const current = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
       if (!current) throw Object.assign(new Error("Appointment not found."), { status: 404 });
@@ -1590,6 +1560,12 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
       const params = [status];
       let pIdx = 2;
 
+      if (date !== undefined || time !== undefined) {
+        if (status !== "Checked-in") throw bookingError("Use rescheduling to change a reserved slot.");
+        const clock = clinicClock();
+        if ((date !== undefined && date !== clock.date) || (time !== undefined && time !== clock.time)) throw bookingError("Arrivals must use the current clinic date and time.");
+      }
+      if (date !== undefined || time !== undefined) q += ", booking_kind = 'walk-in'";
       if (date !== undefined) {
         q += `, date = $${pIdx++}`;
         params.push(date);
@@ -1745,9 +1721,10 @@ clinicRouter.post("/walk-in", async (req, res) => {
   const ownerId = "o_" + Math.random().toString(36).slice(2, 8);
   const petId = "p_" + Math.random().toString(36).slice(2, 8);
   const cardId = "VACC-" + new Date().getFullYear() + "-" + Math.floor(1000 + Math.random() * 9000);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = clinicClock().date;
 
   try {
+    await ensureSchedulingSchema();
     const result = await withTransaction(async (client) => {
       // 1. Insert Owner (or match existing by explicit ownerId, or by phone/email)
       let effectiveOwner = null;
@@ -2028,7 +2005,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
       let appt = null;
       if (addToQueue) {
         const apptId = "a_walk_" + Math.random().toString(36).slice(2, 8);
-        const timeNow = new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" });
+        const timeNow = clinicClock().time;
         
         let visitReason = (reason || "").trim();
         if (!visitReason) {
@@ -2050,8 +2027,8 @@ clinicRouter.post("/walk-in", async (req, res) => {
         const triageLvl = serviceCategory === "emergency" ? "Emergency" : "Routine";
 
         const insAppt = await client.query(
-          `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount, intake_vitals)
-           VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', 'Unbilled', 600, $7)
+          `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount, intake_vitals, booking_kind)
+           VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', 'Unbilled', 600, $7, 'walk-in')
            RETURNING *`,
           [
             apptId,
@@ -2121,6 +2098,7 @@ clinicRouter.post("/vaccinations", async (req, res) => {
   const isDone = done !== undefined ? Boolean(done) : true;
 
   try {
+    validateBoosterDate(date, nextDue);
     if (isDone) {
       // Reconcile with any existing unadministered placeholder for this pet
       const existingPlaceholder = await query(
@@ -2215,6 +2193,7 @@ clinicRouter.post("/consultations", async (req, res) => {
   if (vaccination?.nextDue && (!/^\d{4}-\d{2}-\d{2}$/.test(vaccination.nextDue) || vaccination.nextDue <= date)) return res.status(400).json({ error: "The booster date must follow the vaccination date." });
   if (weight !== undefined && (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0 || weight > 120)) return res.status(400).json({ error: "Enter a valid weight." });
   try {
+    if (vaccination) validateBoosterDate(date, vaccination.nextDue);
     const result = await withTransaction(async client => {
       const appt = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
       if (!appt || appt.pet_id !== petId || !assignedTo(appt, req.user)) throw Object.assign(new Error("An assigned visit is required."), { status: 403 });
@@ -2430,6 +2409,19 @@ async function handleSendReminder(req, res) {
     res.status(500).json({ error: "Failed to process reminder call: " + err.message });
   }
 }
+
+clinicRouter.get("/reminders/status", async (req, res) => {
+  try {
+    await ensureSchedulingSchema();
+    const summary = (await query("SELECT status, COUNT(*)::integer AS count FROM vaccination_reminders GROUP BY status")).rows;
+    const attention = (await query(`SELECT r.id,r.channel,r.status,r.due_date,v.vaccine,p.name AS pet_name
+      FROM vaccination_reminders r JOIN vaccinations v ON v.id=r.vaccination_id JOIN pets p ON p.id=v.pet_id
+      WHERE r.status IN ('failed','uncertain') ORDER BY r.scheduled_at DESC LIMIT 100`)).rows;
+    const health = (await query("SELECT * FROM reminder_worker_health WHERE id=1")).rows[0];
+    const overdue = (await query("SELECT COUNT(*)::integer AS count FROM vaccination_reminders WHERE status='pending' AND next_attempt_at < NOW() - INTERVAL '1 day'")).rows[0]?.count || 0;
+    res.json({ health: { lastRun: health?.last_completed_at || null, overdue, emailConfigured: Boolean(process.env.BREVO_API_KEY && process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER && process.env.SMTP_PASS), smsConfigured: Boolean((process.env.TEXTBEE_API_KEY || process.env.TEXTBEE_KEY) && process.env.TEXTBEE_DEVICE_ID) }, summary: Object.fromEntries(summary.map(r => [r.status,r.count])), attention: attention.map(r => ({ id:r.id,channel:r.channel,status:r.status,dueDate:toDateStr(r.due_date),vaccine:r.vaccine,petName:r.pet_name })) });
+  } catch { res.status(500).json({ error:"Unable to load reminder status." }); }
+});
 
 clinicRouter.post("/reminders/log-call", handleSendReminder);
 clinicRouter.post("/reminders/send", handleSendReminder);

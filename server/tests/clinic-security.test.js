@@ -13,6 +13,8 @@ const fakeQuery = async (sql, params = []) => {
   if (failSql && failSql.test(sql)) throw Error('synthetic database failure');
   const rows = value => ({ rows: structuredClone(value), rowCount: value.length });
   if (sql.includes('FROM sessions s')) return rows(users[params[0]] ? [users[params[0]]] : []);
+  if (sql.startsWith('SELECT to_regclass')) return rows([]);
+  if (sql.startsWith('-- Idempotent migration') || sql.startsWith('SELECT pg_advisory_xact_lock')) return rows([]);
   if (sql.startsWith('ALTER TABLE')) return rows([]);
   if (sql.startsWith('SELECT')) {
     if (sql.startsWith("SELECT id, vet_id FROM users")) return rows(['v1', 'u_vet'].includes(params[0]) ? [{ id: 'u_vet', vet_id: 'v1' }] : []);
@@ -24,6 +26,7 @@ const fakeQuery = async (sql, params = []) => {
     if (sql.includes('FROM pets WHERE id = $1')) return rows(db.pets.filter(p => p.id === params[0] && (!sql.includes('AND owner_id') || p.owner_id === params[1])));
     if (sql.includes('FROM pet_requests WHERE id = $1')) return rows(db.requests.filter(r => r.id === params[0] || sql.includes('OR pet_id') && r.pet_id === params[0]));
     if (sql.includes('FROM appointments WHERE id = $1')) return rows(db.appts.filter(a => a.id === params[0]));
+    if (sql.includes('FROM appointments WHERE date = $1')) return rows(db.appts.filter(a => a.date === params[0] && (a.vet_id === params[1] || a.pet_id === params[2])));
     if (sql.includes('FROM appointments WHERE pet_id = $1')) return rows(db.appts.filter(a => a.pet_id === params[0] && params[1].includes(a.vet_id) && ['Checked-in', 'In consultation'].includes(a.status)));
     if (sql.includes('FROM consultations WHERE appt_id')) return rows(db.consults.filter(c => c.appt_id === params[0]));
     if (sql.includes('FROM vaccinations WHERE id')) return rows(db.vaccs.filter(v => v.id === params[0]));
@@ -55,6 +58,9 @@ const fakeQuery = async (sql, params = []) => {
 mock.module('../db.js', { exports: { query: fakeQuery, withTransaction: async cb => { const snapshot = structuredClone(db); try { return await cb({ query: fakeQuery }); } catch (error) { db = snapshot; rollbacks++; throw error; } } } });
 mock.module('../services.js', { exports: { serverOutbox: [], sendMail: async () => { throw Error('Unexpected email'); }, sendSms: async () => { throw Error('Unexpected SMS'); } } });
 const { clinicRouter } = await import('../routes/clinic.js');
+const { clinicClock, shiftDate } = await import('../scheduling.js');
+const { holidayName } = await import('../../src/booking.js');
+const futureDate = () => { let d = shiftDate(clinicClock().date,1); while (holidayName(d)) d=shiftDate(d,1); return d; };
 const app = express(); app.use(express.json()); app.use(cookieParser()); app.use('/api', clinicRouter);
 const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
 after(() => new Promise(resolve => server.close(resolve)));
@@ -66,7 +72,7 @@ const request = async (role, method, path, body) => {
   const res = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer session-${role}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   return { status: res.status, data: await res.json() };
 };
-const endpoints = [['GET', '/state'], ['GET', '/logs'], ['GET', '/services/prices'], ['POST', '/owners'], ['POST', '/pets'], ['POST', '/owner/contact'], ['POST', '/owner/pets'], ['POST', '/pets/p1/weights'], ['POST', '/pets/p1/photo'], ['POST', '/owner/pets/p1/photo'], ['POST', '/pet-requests'], ['DELETE', '/pet-requests/r1'], ['POST', '/pet-requests/r1/approve'], ['POST', '/pet-requests/r1/decline'], ['POST', '/appointments'], ['PUT', '/appointments/a1'], ['PATCH', '/appointments/a1/status'], ['DELETE', '/appointments/a1'], ['POST', '/appointments/a1/billing'], ['POST', '/walk-in'], ['POST', '/vaccinations'], ['DELETE', '/vaccinations/v1'], ['POST', '/consultations'], ['POST', '/logs'], ['POST', '/reminders/send'], ['POST', '/reminders/log-call']];
+const endpoints = [['GET', '/appointments/availability'], ['GET', '/reminders/status'], ['GET', '/state'], ['GET', '/logs'], ['GET', '/services/prices'], ['POST', '/owners'], ['POST', '/pets'], ['POST', '/owner/contact'], ['POST', '/owner/pets'], ['POST', '/pets/p1/weights'], ['POST', '/pets/p1/photo'], ['POST', '/owner/pets/p1/photo'], ['POST', '/pet-requests'], ['DELETE', '/pet-requests/r1'], ['POST', '/pet-requests/r1/approve'], ['POST', '/pet-requests/r1/decline'], ['POST', '/appointments'], ['PUT', '/appointments/a1'], ['PATCH', '/appointments/a1/status'], ['DELETE', '/appointments/a1'], ['POST', '/appointments/a1/billing'], ['POST', '/walk-in'], ['POST', '/vaccinations'], ['DELETE', '/vaccinations/v1'], ['POST', '/consultations'], ['POST', '/logs'], ['POST', '/reminders/send'], ['POST', '/reminders/log-call']];
 test('all clinic endpoints reject anonymous access before any database query', async () => {
   for (const [method, path] of endpoints) assert.equal((await request(null, method, path, method === 'GET' ? undefined : {})).status, 401, path);
   assert.equal(calls.length, 0);
@@ -104,7 +110,7 @@ test('owner registration request uses session identity, ignoring supplied owner 
   assert.equal(db.logs.at(-1).user_name, 'Synthetic owner'); assert.equal(db.logs.at(-1).user_role, 'owner');
 });
 test('owner booking cannot set invoice pricing or overwrite existing ID through upsert', async () => {
-  const result = await request('owner', 'POST', '/appointments', { id: 'new', petId: 'p1', vetId: 'v1', date: '2026-10-25', time: '10:00', reason: 'Visit', amount: -99 });
+  const result = await request('owner', 'POST', '/appointments', { id: 'new', petId: 'p1', vetId: 'v1', date: futureDate(), time: '10:00', reason: 'Visit', amount: -99 });
   assert.equal(result.status, 200); assert.equal(result.data.appointment.amount, 600);
   assert.doesNotMatch(calls.find(c => c.sql.startsWith('INSERT INTO appointments')).sql, /ON CONFLICT/);
 });
@@ -196,4 +202,30 @@ test('checkout rolls back payment if its durable audit write fails', async () =>
   failSql = /INSERT INTO audit_logs/;
   assert.equal((await request('assistant', 'POST', '/appointments/a1/billing', bill())).status, 500);
   assert.equal(db.appts[0].billing_status, 'Unbilled'); assert.equal(rollbacks, 1);
+});
+
+test('availability reveals only open slot strings and accounts for another owner reservation', async () => {
+  const date=futureDate();
+  db.appts.push({id:'other-reservation',pet_id:'p2',vet_id:'v1',date,time:'10:00',duration_minutes:120,status:'Scheduled'});
+  const r=await request('owner','GET',`/appointments/availability?vetId=v1&date=${date}&service=checkup`);
+  assert.equal(r.status,200); assert.deepEqual(Object.keys(r.data),['slots']);
+  assert.ok(r.data.slots.every(s=>/^\d{2}:\d{2}$/.test(s))); assert.ok(!r.data.slots.includes('11:30')); assert.ok(r.data.slots.includes('12:00'));
+});
+test('availability excludes only the caller own appointment',async()=>{
+  assert.equal((await request('owner','GET',`/appointments/availability?vetId=v1&date=${futureDate()}&service=checkup&excludeId=a2`)).status,404);
+});
+test('server rejects invalid booking dates, slot grids and conflicting durations',async()=>{
+  for (const patch of [{date:'2026-02-30'},{date:'2099-01-01'},{time:'10:15'},{time:'16:30'},{service:'invalid'}]) {
+    const r=await request('owner','POST','/appointments',{petId:'p1',vetId:'v1',date:futureDate(),time:'10:00',reason:'Annual checkup',...patch});
+    assert.equal(r.status,400,JSON.stringify(patch));
+  }
+  db.appts.push({id:'other',pet_id:'p2',vet_id:'v1',date:futureDate(),time:'09:30',duration_minutes:120,status:'Scheduled'});
+  assert.equal((await request('owner','POST','/appointments',{petId:'p1',vetId:'v1',date:futureDate(),time:'10:30',reason:'Checkup'})).status,409);
+});
+test('owners cannot bypass reservation validation by calling a booking a walk-in',async()=>{
+  assert.equal((await request('owner','POST','/appointments',{petId:'p1',vetId:'v1',bookingKind:'walk-in',date:'2000-01-01',time:'10:15',reason:'Checkup'})).status,400);
+});
+test('only reception and administrators can inspect automatic reminder status',async()=>{
+  for (const role of ['owner','vet']) assert.equal((await request(role,'GET','/reminders/status')).status,403);
+  for (const role of ['vet','admin']) assert.equal((await request(role,'GET',`/appointments/availability?vetId=v1&date=${futureDate()}&service=checkup`)).status,403);
 });

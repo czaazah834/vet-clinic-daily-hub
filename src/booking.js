@@ -1,11 +1,12 @@
-/* Booking rules shared by the owner screens (live) and the server (final check).
+/* Booking service catalog and legacy client helpers.
    Pure JS, no React. "Today" is read from the clock each time, so a long-running server never goes stale. */
 
 export const pad = n => String(n).padStart(2, "0");
 export const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-export const plus = n => { const d = new Date(); d.setDate(d.getDate() + n); return ymd(d); };
-export const today = () => plus(0);
-export const nowHM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const clinicParts = () => Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(p => [p.type, p.value]));
+export const today = () => { const p = clinicParts(); return `${p.year}-${p.month}-${p.day}`; };
+export const plus = n => new Date(Date.parse(today() + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10);
+export const nowHM = () => { const p = clinicParts(); return `${p.hour}:${p.minute}`; };
 export const fmt12 = t => { const [h, m] = t.split(":").map(Number); return `${h % 12 || 12}:${pad(m)} ${h < 12 ? "AM" : "PM"}`; };
 
 export const VETS = [["v1", "Dr. Ana Cruz"], ["v2", "Dr. Ben Lim"]];
@@ -19,6 +20,9 @@ const LEGACY_DUR = 30;   // visits booked without a service (e.g. by staff) coun
 export const SERVICES = {
   vaccination: { label: "Vaccination", icon: "💉", dur: 30, blurb: "Shots and deworming", pick: "Which vaccine or treatment?", hint: "Not sure? Choose “Not sure” and the vet will advise", prefix: "Vaccination – ",
     options: ["Anti-rabies", "5-in-1", "6-in-1", "8-in-1", "Kennel cough", "Feline 4-in-1", "Deworming", "Not sure, ask the vet", "Other"] },
+  deworming: { label: "Deworming", icon: "💊", dur: 30, blurb: "Parasite prevention", pick: "Reason for visit", hint: "Treatment is decided by your veterinarian", prefix: "Deworming – ", options: ["Routine deworming", "Follow-up", "Other"] },
+  surgery: { label: "Surgery / Dental", icon: "🩺", dur: 120, blurb: "Assessment and procedure slot", pick: "Reason for visit", hint: "The clinic confirms preparation and suitability", prefix: "Surgery – ", options: ["Surgical assessment", "Dental assessment", "Follow-up", "Other"] },
+  grooming: { label: "Grooming", icon: "✂️", dur: 60, blurb: "Grooming and sanitary care", pick: "Reason for visit", hint: "The clinic confirms the service", prefix: "Grooming – ", options: ["Routine grooming", "Sanitary care", "Other"] },
   checkup: { label: "Check-up", icon: "🩺", dur: 60, blurb: "Exam and consultation", pick: "Reason for the check-up", hint: "Choose the closest match", prefix: "",
     options: ["Annual check-up", "Skin or ear problem", "Limping or injury", "Vomiting or diarrhea", "Not eating or drinking", "Dental check", "Follow-up visit", "Other"] },
 };
@@ -63,7 +67,7 @@ export const inferService = r => {
   return "checkup";
 };
 export const serviceOf = a => a.service && SERVICES[a.service] ? a.service : inferService(a.reason);
-export const durOf = a => (SERVICES[a.service] || { dur: LEGACY_DUR }).dur;
+export const durOf = a => a.durationMinutes || (SERVICES[a.service] || { dur: LEGACY_DUR }).dur;
 
 export const makeReason = (service, sel, other) => {
   const S = SERVICES[service], d = sel === "Other" ? other : sel;
@@ -83,8 +87,8 @@ export const splitReason = (service, reason) => {
 const everyone = db => [...(db.appts || []), ...(db.busy || [])];
 
 export function openSlots(db, { service, vetId, date }, editing) {
-  const S = SERVICES[service]; if (!S || !vetId || !date || holidayName(date)) return [];
-  const busy = everyone(db).filter(a => (!editing || a.id !== editing.id) && !BUSY.includes(a.status) && a.vetId === vetId && a.date === date).map(a => [toMin(a.time), toMin(a.time) + durOf(a)]);
+  const S = SERVICES[service]; if (!S || !vetId || !date || date < today() || date > lastDay() || holidayName(date)) return [];
+  const busy = everyone(db).filter(a => (!editing || a.id !== editing.id) && !BUSY.includes(a.status) && a.bookingKind !== "walk-in" && a.vetId === vetId && a.date === date).map(a => [toMin(a.time), toMin(a.time) + durOf(a)]);
   const out = [], end = toMin(DAY_END), t0 = today(), now = nowHM();
   for (let m = toMin(DAY_START); m + S.dur <= end; m += STEP) {
     const t = toHM(m);
@@ -148,4 +152,10 @@ export const ACT = { Confirmed: ["assistant", "admin"], "Checked-in": ["assistan
 export function vetConflict(appts, a) {
   const s = toMin(a.time), e = s + durOf(a);
   return appts.find(x => x.id !== a.id && !BUSY.includes(x.status) && x.vetId === a.vetId && x.date === a.date && s < toMin(x.time) + durOf(x) && toMin(x.time) < e) || null;
+}
+
+export function reservationCovers(appointment, time) {
+  if (BUSY.includes(appointment.status) || appointment.bookingKind === "walk-in") return false;
+  const start = toMin(appointment.time), slot = toMin(time);
+  return slot >= start && slot < start + durOf(appointment);
 }

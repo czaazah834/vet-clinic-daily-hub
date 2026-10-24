@@ -13,7 +13,11 @@
   "test:email": "node server/scripts/test-email.js",
   "build": "vite build",
   "preview": "vite preview",
-  "test:clinic": "node --experimental-test-module-mocks --test server/tests/clinic-security.test.js server/tests/calendar-state.test.js tests/clinic-client.test.js tests/calendar-doctors.test.js"
+  "test:clinic": "node --experimental-test-module-mocks --test server/tests/clinic-security.test.js server/tests/calendar-state.test.js tests/clinic-client.test.js tests/calendar-doctors.test.js",
+  "reminders:worker": "node server/scripts/reminder-worker.js",
+  "reminders:once": "node server/scripts/reminder-worker.js --once",
+  "test:scheduling": "node --test server/tests/scheduling.test.js server/tests/reminder-delivery.test.js",
+  "test:scheduling:postgres": "node --test server/tests/scheduling-postgres.test.js"
  },
  "dependencies": {
   "bcryptjs": "^3.0.3",

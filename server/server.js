@@ -1,3 +1,4 @@
+import { jobsRouter } from "./routes/jobs.js";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -72,6 +73,8 @@ app.post("/api/check/email", async (req, res) => {
   }
   res.json(r);
 });
+
+app.use("/api/jobs", jobsRouter);
 
 // Mount Routes
 app.use("/api/geo", geoRouter);

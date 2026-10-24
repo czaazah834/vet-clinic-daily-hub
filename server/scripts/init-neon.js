@@ -31,6 +31,7 @@ async function main() {
     const schemaSql = fs.readFileSync(schemaPath, "utf-8");
     console.log("Executing schema DDL...");
     await query(schemaSql);
+    await query(fs.readFileSync(path.join(__dirname, "../database/scheduling.sql"), "utf-8"));
     console.log("Tables and indexes successfully verified.");
 
     // 2. Default Seed Passwords (satisfies 12-128 chars, uppercase, lowercase, number, symbol)
