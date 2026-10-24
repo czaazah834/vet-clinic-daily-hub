@@ -1,3 +1,4 @@
+import { OwnerBillDetails } from "./Bills.jsx";
 import { today } from "../../booking.js";
 import { ownerFollowUp, ownerFollowUpBooking } from "../../ownerCare.js";
 import { useState } from "react";
@@ -17,6 +18,7 @@ export function OwnerVisits({ db, me, go }) {
   const all = scope(db, me, "records").slice().sort((a, b) => b.date.localeCompare(a.date));
   const appointments = scope(db, me, "appts");
   const open = all.find(r => r.id === openId);
+  const billedVisit = open ? appointments.find(a => a.id === open.apptId) : null;
   const plan = open ? ownerFollowUp(open, appointments) : null;
   const book = r => { setPrefill(ownerFollowUpBooking(r)); go("appts"); };
   let list = all;
@@ -69,6 +71,7 @@ export function OwnerVisits({ db, me, go }) {
           {[["Care status", open.careStatus || "Routine care"], ["Veterinarian", vetName(open.vetId)], ["Diagnosis", open.diagnosis], ["Treatment", open.treatment || "—"], ["Full prescription & home-care instructions", open.prescription || (open.prescriptionItems?.length ? "See prescribed products and directions above." : "No prescription recorded")], open.notes ? ["Notes", open.notes] : null].filter(Boolean).map(([k, x]) =>
             <div key={k}><dt style={{ fontSize: 12.5, fontWeight: 700, color: "var(--mu)" }}>{k}</dt><dd style={{ margin: "2px 0 0", ...wrap }}>{x}</dd></div>)}
         </dl>
+        {billedVisit && <OwnerBillDetails appointment={billedVisit} />}
       </div>
       <div className="row end" style={{ marginTop: 14 }}><button className="btn" onClick={() => setOpenId(null)}>Close</button></div>
     </Modal>}

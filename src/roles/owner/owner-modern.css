@@ -450,3 +450,31 @@
 .shell.th-owner .vh-rx ul{list-style:none;margin:0;padding:0}
 .shell.th-owner .vh-rx li{border:1px solid var(--ow-line);border-radius:14px;padding:14px;margin-top:10px;overflow-wrap:anywhere}
 .shell.th-owner .vh-care-details dl{padding-top:12px;border-top:1px solid var(--ow-line)}
+
+/* Owner billing reads saved checkout data without editing prices or payments. */
+.shell.th-owner .ow-bill-filters{display:grid;grid-template-columns:minmax(0,2fr) repeat(2,minmax(0,1fr));gap:14px;margin:18px 0}
+.shell.th-owner .ow-bill-filters label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600}
+.shell.th-owner .ow-bill-filters input,.shell.th-owner .ow-bill-filters select{width:100%;min-width:0}
+.shell.th-owner .ow-bill-list,.shell.th-owner .ow-bill-lines{list-style:none;margin:0;padding:0}
+.shell.th-owner .ow-bill-list>li{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:18px 0;border-top:1px solid var(--ow-line)}
+.shell.th-owner .ow-bill-list>li>div{min-width:0;overflow-wrap:anywhere}
+.shell.th-owner .ow-bill-list h4{margin:0 0 8px}
+.shell.th-owner .ow-bill-list p{margin:6px 0}
+.shell.th-owner .ow-bill-scroll{max-height:70vh;overflow-y:auto}
+.shell.th-owner .ow-bill-details{margin-top:18px;overflow-wrap:anywhere}
+.shell.th-owner .ow-bill-details h4{margin-bottom:10px;color:var(--navy)}
+.shell.th-owner .ow-bill-details p{line-height:1.6;margin:10px 0}
+.shell.th-owner .ow-bill-lines li{display:flex;justify-content:space-between;gap:16px;border-top:1px solid var(--ow-line);padding:12px 0}
+.shell.th-owner .ow-bill-lines li>div{min-width:0}
+.shell.th-owner .ow-bill-lines small{display:block;margin-top:5px;color:#526487}
+.shell.th-owner .ow-bill-lines strong{white-space:nowrap}
+.shell.th-owner .ow-bill-totals>div,.shell.th-owner .ow-bill-total{display:flex;justify-content:space-between;gap:14px}
+.shell.th-owner .ow-bill-totals dd,.shell.th-owner .ow-bill-payment dd{margin:0}
+.shell.th-owner .ow-bill-total{background:var(--ow-soft);padding:12px;border-radius:12px;font-weight:700}
+.shell.th-owner .ow-bill-payment>div{margin:12px 0}
+.shell.th-owner .ow-bill-payment dt{font-size:12px;color:#526487;margin-bottom:4px}
+@media(max-width:820px){.ow-tabbar{grid-auto-columns:minmax(54px,1fr);overflow-x:auto}}
+@media(max-width:600px){
+  .shell.th-owner .ow-bill-filters{grid-template-columns:minmax(0,1fr)}
+  .shell.th-owner .ow-bill-list>li{align-items:flex-start;flex-direction:column}
+}

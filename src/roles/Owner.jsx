@@ -1,3 +1,4 @@
+import OwnerBills from "./owner/Bills.jsx";
 import { today as bookingToday } from "../booking.js";
 import { currentVaccinationDue, vaccinationAppointment, vaccinationStatus } from "../ownerVaccination.js";
 import CareFollowUps from "./CareFollowUps.jsx";
@@ -40,6 +41,7 @@ function Dash({ db, setDb, me, go, say }) {
           <p>Here’s how your pets are doing.</p>
         </div>
         <div className="ow-hero-acts">
+          <button className="btn glass" onClick={() => go("bills")}>Bills & payments</button>
           <button className="btn glass" onClick={() => go("prices")}>View services & prices</button>
           {pets.length > 0 && <button className="btn gold" onClick={() => book()}><Icon n="calendar" size={16} /> Book a visit</button>}
           <button className={pets.length ? "btn glass" : "btn gold"} disabled={!!blocked} title={blocked} onClick={() => setModal({ form: true })}><Icon n="plus" size={16} /> Add my pet</button>
@@ -97,5 +99,6 @@ export const owner = { portal: "Pet Owner Portal", Dash, Header: OwnerHeader, me
   { k: "home", l: "My Pets", s: "Pets", i: "paw", dash: 1, sub: "Your pets, their profiles, next vaccines and visits." },
   P("appts", "My Appointments", "calendar", "Book, change or cancel a visit. Switch between the list and the calendar.", OwnerAppts, "Visits"),
   P("prices", "Services & Prices", "file", "Official clinic service and product prices.", Prices, "Prices"),
+  P("bills", "Bills & Payments", "receipt", "View saved charges, checkout status and payment records.", OwnerBills, "Bills"),
   P("vacc", "Vaccination Cards", "syringe", "Pick a pet to see its vaccination card.", OwnerVacc, "Vaccines"),
   P("records", "Visit History", "file", "Diagnoses and treatments from past visits.", OwnerVisits, "History")] };
