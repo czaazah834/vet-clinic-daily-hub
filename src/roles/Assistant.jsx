@@ -1,6 +1,7 @@
+import CheckoutInbox from "./CheckoutInbox.jsx";
 import ReminderStatus from "./ReminderStatus.jsx";
 import { currentVaccinationDue } from "../vaccinationDue.js";
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import {
   CalendarDays, AlertTriangle, PawPrint, ConciergeBell, Thermometer, Scale, UserCheck, Receipt, ArrowRight, X, Phone, Syringe,
 } from "lucide-react";
@@ -42,21 +43,6 @@ function Dash({ db, setDb, me, go, say }) {
   const todayRevenue = todayPaid.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
   const unbilledCompleted = q.filter(a => a.status === "Completed" && a.billingStatus !== "Paid");
 
-  // When the doctor completes a consultation, open billing for that visit automatically.
-  const prevCompletedRef = useRef(null);
-  useEffect(() => {
-    const ids = unbilledCompleted.map(a => a.id);
-    if (prevCompletedRef.current === null) { prevCompletedRef.current = ids; return; }
-    const fresh = unbilledCompleted.find(a => !prevCompletedRef.current.includes(a.id));
-    if (fresh && !billingAppt) {
-      const pet = db.pets?.find(p => p.id === fresh.petId) || {};
-      if (typeof say === "function") say(`Consultation finished for ${pet.name || "patient"}. Opening billing.`);
-      setBillingAppt(fresh);
-    }
-    prevCompletedRef.current = ids;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unbilledCompleted.map(a => a.id).join("|"), billingAppt]);
-
   const openCard = (petId, appt = null) => { setCardPetId(petId); setCardAppt(appt); };
   const closeCard = () => { setCardPetId(null); setCardAppt(null); };
 
@@ -86,6 +72,13 @@ function Dash({ db, setDb, me, go, say }) {
           ["phone", calls.length, "Vaccine reminders due"],
         ]}
       />
+
+      <CheckoutInbox me={me} blocked={Boolean(billingAppt || showWalkIn || showExistingWalkIn || checkInAppt || reviewReq || cardPetId || logCallTarget)} onOpen={task => {
+        const visit=db.appts.find(a=>a.id===task.appointmentId);
+        if(!visit){say("The visit is loading. Please retry in a moment.");return false;}
+        setBillingAppt(visit);
+        return true;
+      }} />
 
       <div className="sf-banner">
         <div className="sf-banner-main">

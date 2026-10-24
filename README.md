@@ -140,3 +140,31 @@ The PostgreSQL integration test requires a disposable local database and permiss
 to create/drop an isolated test schema. It checks concurrent reservations,
 reminder claims, milestone creation, retries, supersession and crash recovery;
 provider delivery is replaced with synthetic adapters.
+
+### Durable consultation checkout
+
+Apply `server/database/checkout-inbox.sql` to existing databases after
+`schema.sql`, using the migration role. `npm run db:init` includes it for new
+databases. Checkout endpoints also attempt this idempotent migration; apply it
+before deployment when the runtime database role cannot run DDL.
+
+Finalizing a consultation creates its reception task in the same transaction.
+The front desk inbox recovers unpaid completed visits from earlier dates and
+persists them across refreshes. New handoffs open checkout when reception is
+idle; an open profile, intake form, invoice or receipt is kept on screen. Tasks
+arriving during that work wait until the form closes. The inbox refreshes every
+three seconds and shows failures with a retry action. No separate worker is
+needed for checkout.
+
+Opening an unpaid invoice reserves it for that receptionist and browser window
+for five minutes, renewed every minute while open. Other receptionists can see
+who is handling it. Closing releases the reservation; a disconnected or crashed
+window recovers through expiry. A lost claim disables payment and offers retry
+without clearing invoice entries. Payment and task completion commit together;
+failed payments keep the invoice open and do not issue a receipt. Only assistants
+can claim tasks or record payments. Existing payment integrations without a claim
+remain supported when no active reservation exists; they cannot override one.
+
+The PostgreSQL integration suite above also verifies checkout rollback,
+prior-day recovery, competing receptionists, claim renewal/release/expiry,
+failed-payment recovery and payment/task atomicity.
