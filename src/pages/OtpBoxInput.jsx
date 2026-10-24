@@ -5,16 +5,17 @@ export default function OtpBoxInput({
   onChange,
   autoFocus = true,
   hasError = false,
+  disabled = false,
   onComplete = null
 }) {
   const digits = Array.from({ length: 6 }, (_, i) => value[i] || "");
   const inputRefs = useRef([]);
 
   useEffect(() => {
-    if (autoFocus && inputRefs.current[0]) {
+    if (autoFocus && !disabled && inputRefs.current[0]) {
       inputRefs.current[0].focus();
     }
-  }, [autoFocus]);
+  }, [autoFocus, disabled]);
 
   const handleChange = (e, idx) => {
     const raw = e.target.value;
@@ -72,6 +73,7 @@ export default function OtpBoxInput({
 
   const handlePaste = (e) => {
     e.preventDefault();
+    if (disabled) return;
     const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
     if (!pasted) return;
 
@@ -91,6 +93,7 @@ export default function OtpBoxInput({
           <input
             ref={(el) => (inputRefs.current[i] = el)}
             type="text"
+            disabled={disabled}
             inputMode="numeric"
             pattern="[0-9]*"
             maxLength={2}

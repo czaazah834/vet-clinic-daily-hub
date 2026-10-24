@@ -918,6 +918,8 @@ async function call(method, path, body) {
         if (data?.errors) err.fields = data.errors;
         if (data?.remainingCooldown) err.remainingCooldown = data.remainingCooldown;
         err.status = res.status;
+        if (data?.unverified) err.unverified = true;
+        if (res.status === 401) err.expired = true;
         if (data?.limit) err.limit = true;
         if (data?.lockout) err.lockout = true;
         err.isApiError = true;
