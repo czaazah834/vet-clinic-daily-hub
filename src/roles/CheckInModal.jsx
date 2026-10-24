@@ -1,5 +1,5 @@
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Thermometer,
   Scale,
@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   Flame,
   Snowflake,
-  Clock,
   Check,
   Dog,
   Cat,
@@ -23,7 +22,7 @@ import { addLog, ICON, petName, ownerName, I } from "../lib.jsx";
 import { assessWeight, assessTemp, SPECIES_DEFAULTS } from "./vitals.js";
 import { computeWeightBracket, normalizeSpecies } from "../preventiveSchedule.js";
 import { today, nowHM } from "../booking.js";
-import { intakeVisitSnapshot, sameIntakeVisit, savedIntakeVisit } from "../intakeVisit.js";
+import { checkInDateError, intakeVisitSnapshot, sameIntakeVisit, savedIntakeVisit } from "../intakeVisit.js";
 import { api } from "../api.js";
 
 export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn }) {
@@ -39,7 +38,12 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const speciesConfig = SPECIES_DEFAULTS[species] || SPECIES_DEFAULTS.Other;
   const lastWeight = pet.weight || (pet.weights && pet.weights.length ? pet.weights[pet.weights.length - 1].kg : null);
 
-  const TODAY = today();
+  const [TODAY, setToday] = useState(today);
+  useEffect(() => {
+    const timer = setInterval(() => setToday(today()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+  const dateError = checkInDateError(appt, TODAY);
   const saved = appt?.status === "Checked-in" ? appt.intakeVitals : null;
   const inFlight = useRef(false);
   const [weight, setWeight] = useState(saved?.weight ?? "");
@@ -75,7 +79,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const normSpecies = normalizeSpecies(pet.species);
   const clinicalBracket = computeWeightBracket(weight, pet.species, pet.birth);
 
-  const review = useSubmissionReview([weight,temp,triage,serviceReason,notes,fasted,currentVisit,pet,owner,stale]);
+  const review = useSubmissionReview([weight,temp,triage,serviceReason,notes,fasted,currentVisit,pet,owner,stale,TODAY]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -84,6 +88,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       setValErr("This visit or patient record has changed. Close this form, refresh clinic records and reopen intake.");
       return;
     }
+    const currentDateError = checkInDateError(appt, today());
+    if (currentDateError) { setValErr(currentDateError); return; }
     const w = parseFloat(weight);
     const t = parseFloat(temp);
 
@@ -102,7 +108,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       fields:[
         ["Patient / owner",`${pet.name} / ${owner.name}`],
         ["Veterinarian",db.vets?.find(v=>v.id===appt.vetId)?.name],
-        ["Visit date",today()],
+        ["Visit date",appt.date],
         ["Weight",`${w} kg`],
         ["Temperature",`${t}°C`],
         ["Triage",triage],
@@ -110,7 +116,9 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
         ["Fasted",fasted ? "Yes" : "No"],
         ["Intake notes",notes.trim()]]
     })) return;
-    const arrivalDate = today(), arrivalTime = nowHM();
+    const confirmedDateError = checkInDateError(appt, today());
+    if (confirmedDateError) { setToday(today()); setValErr(confirmedDateError); return; }
+    const arrivalTime = nowHM();
     const intakeVitals = {
       weight: !isNaN(w) ? w : null,
       temp: !isNaN(t) ? t : null,
@@ -124,8 +132,6 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       checkedInBy: me?.name || "Assistant",
     };
 
-    const isEarlyArrival = appt.date !== arrivalDate;
-
     const patchPayload = {
       status: "Checked-in",
       expectedVisit: baseline.current,
@@ -134,10 +140,6 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       actorName: me?.name || "Assistant",
       actorRole: me?.role || "assistant"
     };
-    if (isEarlyArrival) {
-      patchPayload.date = arrivalDate;
-      patchPayload.time = arrivalTime;
-    }
 
     inFlight.current = true;
     setSaving(true);
@@ -232,15 +234,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
           </div>
         )}
 
-        {/* Early Arrival Notice if booked for a different date */}
-        {appt.date !== TODAY && (
-          <div style={{ background: "#eff6ff", border: "1.5px solid #93c5fd", padding: "10px 14px", borderRadius: "10px", marginBottom: "14px", fontSize: "12.5px", color: "#1e40af", display: "flex", alignItems: "center", gap: "10px" }}>
-            <Clock size={18} color="#2563eb" />
-            <div>
-              <b>Walk-in Arrival:</b> Patient was booked for <b>{appt.date}</b>. Checking in now will move their visit to <b>Today ({TODAY})</b> and queue them directly for the doctor.
-            </div>
-          </div>
-        )}
+        {dateError && <p className="err" role="alert">{dateError}</p>}
 
         <form onSubmit={submit}>
           {review.card}
@@ -544,7 +538,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
           <div className="row end" style={{ marginTop: "20px", gap: "10px", flexWrap: "wrap" }}>
             <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn gold" disabled={saving || stale || !pet.id || !owner.id}>
+            <button type="submit" className="btn gold" disabled={saving || stale || !!dateError || !pet.id || !owner.id}>
               Review check-in
             </button>
           </div>

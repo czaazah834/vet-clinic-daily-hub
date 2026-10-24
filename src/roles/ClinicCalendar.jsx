@@ -1,3 +1,4 @@
+import { checkInDateError } from "../intakeVisit.js";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { confirmedBooking } from "../receptionSaves.js";
 import { completedVisitRecord } from "../vetQueue.js";
@@ -34,7 +35,7 @@ import {
   Activity,
   X,
 } from "lucide-react";
-import { VETS, TODAY, scope, petName, ownerName, dueState, moveAppt, LABEL, Badge, uid, addLog } from "../lib.jsx";
+import { VETS, scope, petName, ownerName, dueState, moveAppt, LABEL, Badge, uid, addLog } from "../lib.jsx";
 import { calendarDoctors } from "./calendarDoctors.js";
 import "./clinic-calendar.css";
 import { api } from "../api.js";
@@ -79,7 +80,8 @@ export function getServiceCategory(reason = "") {
 }
 
 export default function ClinicCalendar({ db, setDb, me, go, say }) {
-  const t = new Date();
+  const TODAY = bookingToday();
+  const t = new Date(`${TODAY}T00:00:00`);
   const curYearMin = t.getFullYear();
   const curMonthMin = t.getMonth();
   const [cur, setCur] = useState({ y: curYearMin, m: curMonthMin });
@@ -602,7 +604,8 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                       className="btn sm gold"
                                       onClick={() => setCheckInAppt(apptMatch.appt)}
                                       style={{ fontSize: "12px", padding: "4px 8px" }}
-                                      title="Intake triage and record vitals"
+                                      disabled={!!checkInDateError(apptMatch.appt, bookingToday())}
+                                      title={checkInDateError(apptMatch.appt, bookingToday()) || "Intake triage and record vitals"}
                                     >
                                       Check in
                                     </button>
@@ -733,7 +736,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                         <button className="btn sm" disabled={!!confirming[e.id]} onClick={() => handleAction(e.appt, "Confirmed")}>{confirming[e.id] ? "Confirming…" : "Confirm"}</button>
                       )}
                       {me.role === "assistant" && ["Scheduled", "Confirmed"].includes(e.status) && (
-                        <button className="btn sm gold" onClick={() => setCheckInAppt(e.appt)}>Check in</button>
+                        <button className="btn sm gold" disabled={!!checkInDateError(e.appt, bookingToday())} title={checkInDateError(e.appt, bookingToday()) || "Record intake vitals"} onClick={() => setCheckInAppt(e.appt)}>Check in</button>
                       )}
                       {manageAppointment(e.appt)}
                       {doctorActions(e.appt, e.petObj)}

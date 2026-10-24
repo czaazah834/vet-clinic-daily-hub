@@ -748,3 +748,9 @@ require another confirmation card.
 The review dialog traps keyboard focus, starts on Back to edit, scrolls for long
 clinical notes and uses a stacked layout on small screens. After confirmation,
 the existing pending/error/server-acknowledgment behavior still applies.
+
+### Scheduled-day arrival validation
+
+Reception can initially check in a Scheduled or Confirmed visit only on its saved appointment date, using the clinic date in Asia/Manila. Same-day early arrival is allowed. If a patient arrives on another day, use **Manage appointment** in the calendar to reschedule before check-in. Status changes cannot rewrite the date/time or convert a reservation into a walk-in; new walk-ins use the existing arrival workflow. The API validates the locked saved appointment, so sending today's date cannot bypass this rule.
+
+Already Checked-in patients can have vitals remeasured and continue care after midnight without changing their original visit date or time.
