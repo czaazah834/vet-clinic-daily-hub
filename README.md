@@ -477,3 +477,17 @@ information; it does not grant owner sign-in access.
 Checks: `node --test tests/walk-in-registration.test.js server/tests/walk-in-registration.test.js`,
 `npm run test:clinic`, `npm run test:registration:postgres` with a disposable
 local database, and `npm run build`.
+
+
+### Existing-patient arrivals
+
+Reception can continue today's saved visit directly from Existing patient
+check-in, keeping its assigned veterinarian and reason. Checked-in visits open
+the saved intake for review. Visits already in consultation remain with the
+veterinarian. Completed, cancelled and missed visits do not prevent a new
+arrival; the server still enforces active patient/day uniqueness.
+
+New arrivals require a saved patient/owner and a veterinarian in the current
+directory. Saving blocks repeated submissions, keeps the form on failure and
+opens measured intake only after the server confirms that patient's appointment.
+No new appointment is needed to review an existing arrival.
