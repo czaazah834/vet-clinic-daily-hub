@@ -1,3 +1,4 @@
+import {HistoryControls,useHistoryComplete} from "../ClinicHistory.jsx";
 import { today as bookingToday } from "../booking.js";
 import ExistingPatientCheckInModal from "./ExistingPatientCheckInModal.jsx";
 import { canBookAppointments } from "../appointmentPermissions.js";
@@ -38,6 +39,7 @@ function stateOf(v) {
 }
 
 export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBook, onCheckIn, onBill }) {
+  const historyComplete=useHistoryComplete();
   const [walkIn, setWalkIn] = useState(false);
   const [actionError, setActionError] = useState("");
   const p = (db.pets || []).find(x => x.id === petId) || {};
@@ -100,6 +102,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1000, display: "grid", placeItems: "center", padding: "16px" }}>
       <div className="modal" style={{ width: "min(880px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "20px 24px" }}>
+        <HistoryControls auto />
         
         {actionError && <p className="err" role="alert">{actionError}</p>}
         {/* Top Control Bar */}
@@ -127,7 +130,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
             <button
               type="button"
               className="btn sm ghost"
-              onClick={() => window.print()}
+              disabled={!historyComplete} title={!historyComplete?"Load all saved history before printing the complete card.":undefined} onClick={() => window.print()}
               title="Print official document"
               style={{ display: "flex", alignItems: "center", gap: "6px" }}
             >
@@ -441,7 +444,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               {/* Status Metrics Footer */}
               <div style={{ background: "#f8fafc", padding: "12px 24px", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
                 <div style={{ display: "flex", gap: "18px", fontSize: "12px" }}>
-                  <div><span style={{ color: "#64748b" }}>TOTAL PROTOCOLS:</span> <b style={{ color: "var(--navy)" }}>{vaccs.length}</b></div>
+                  <div><span style={{ color: "#64748b" }}>{historyComplete?"TOTAL PROTOCOLS:":"LOADED PROTOCOLS:"}</span> <b style={{ color: "var(--navy)" }}>{vaccs.length}</b></div>
                   <div><span style={{ color: "#64748b" }}>ON TRACK:</span> <b style={{ color: "#059669" }}>{count("On track")}</b></div>
                   <div><span style={{ color: "#64748b" }}>DUE SOON:</span> <b style={{ color: "#d97706" }}>{count("Due soon")}</b></div>
                   <div><span style={{ color: "#64748b" }}>OVERDUE:</span> <b style={{ color: "#dc2626" }}>{count("Overdue")}</b></div>

@@ -398,7 +398,7 @@ export default function Register({ onDone, onBack, go, limited }) {
     } else if (!r.ok) {
       setRerr(r.d?.error || "Registration failed.");
     } else {
-      onDone(r.d?.email || f.email);
+      onDone(r.d?.email || f.email, r.d);
     }
     setBusy(false);
   };

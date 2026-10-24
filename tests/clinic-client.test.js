@@ -57,3 +57,9 @@ test('conditional state GETs forward cancellation, retain tags and accept body-f
   fetch.mock.mockImplementation(async()=>new Response(JSON.stringify({success:true,data:{pets:[]}}),{headers:{ETag:'"new"'}}));
   assert.deepEqual(await clinicRequest('GET', '/api/state', undefined, {responseMetadata:true}), {data:{pets:[]},etag:'"new"',notModified:false});
 });
+
+
+test('verification errors retain unverified state and durable resend timing for login recovery',async()=>{
+ mock.method(globalThis,'fetch',async()=>new Response(JSON.stringify({error:'Verify your email.',unverified:true,retryAfter:42}),{status:403,headers:{'Content-Type':'application/json'}}));
+ await assert.rejects(clinicRequest('POST','/api/auth/login',{email:'synthetic@example.invalid'}),error=>error.status===403 && error.unverified===true && error.retryAfter===42);
+});

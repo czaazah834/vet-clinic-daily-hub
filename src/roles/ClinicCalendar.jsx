@@ -1,3 +1,4 @@
+import {useFollowingClinicDay} from "../useClinicDay.js";
 import { checkInDateError } from "../intakeVisit.js";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { confirmedBooking } from "../receptionSaves.js";
@@ -92,7 +93,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const [selectedVet, setVetFilter] = useState("");
   const vetFilter = isDoctor ? me?.vetId || me?.id : selectedVet;
   const visibleDoctors = doctors.filter(([id]) => !vetFilter || id === vetFilter);
-  const [sel, setSel] = useState(TODAY);
+  const [sel, setSel] = useFollowingClinicDay();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const confirmingRef = useRef(new Set());

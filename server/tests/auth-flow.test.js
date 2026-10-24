@@ -9,6 +9,7 @@ let steps = [];
 const sentSms = [];
 const sentMail = [];
 async function query(sql, params = []) {
+  if(sql.includes('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_requested_at'))return {rows:[]};
   const step = steps.shift();
   assert.ok(step, `Unexpected SQL: ${sql}`);
   assert.match(sql.replace(/\s+/g, ' '), step.sql);
@@ -18,8 +19,8 @@ async function query(sql, params = []) {
 }
 mock.module('../db.js', { exports: { query, withTransaction: async fn => fn({ query }) } });
 mock.module('../services.js', { exports: {
-  sendSms: async (...args) => sentSms.push(args),
-  sendMail: async (...args) => sentMail.push(args),
+  sendSms: async (...args) => {sentSms.push(args);return{ok:true,via:"synthetic"};},
+  sendMail: async (...args) => {sentMail.push(args);return{ok:true,via:"synthetic"};},
   serverOutbox: [],
 } });
 const { authRouter } = await import('../routes/auth.js');
@@ -48,7 +49,9 @@ test('registration sends an email link without signing in or sending SMS', async
     { sql: /SELECT id FROM users/, rows: [] },
     { sql: /INSERT INTO users/, check: p => { assert.equal(p[11], null); assert.equal(p[12], false); } },
     { sql: /INSERT INTO addresses/ }, { sql: /INSERT INTO owners/ },
+    { sql: /UPDATE users SET email_verification_requested_at/ },
     { sql: /INSERT INTO verification_tokens.*'email_verify'/ },
+    { sql: /UPDATE verification_tokens SET delivery_confirmed/,rows:[{id:'issued'}] },
   ];
   const { res, data } = await request('/register', { body: { firstName: 'Test', lastName: 'Owner', email: 'synthetic.signup@gmail.com', password: 'Synthetic123!', confirm_password:'Synthetic123!', birthday:'01/01/1990', country:'PH', state:'Metro Manila', city:'Quezon City', zip_code:'1100', house_street:'12 Synthetic St', mobile: user.mobile_number } });
   assert.equal(res.status, 200);
@@ -95,8 +98,11 @@ test('valid email link verifies only its owner and sends that account an OTP', a
     { sql: /UPDATE users SET email_verified_at/, params: [user.id] },
     { sql: /DELETE FROM verification_tokens WHERE id/, params: ['email-token-a'] },
     { sql: /INSERT INTO sessions/, check: p => assert.equal(p[1], user.id) },
-    { sql: /DELETE FROM verification_tokens WHERE user_id/, params: [user.id] },
-    { sql: /INSERT INTO verification_tokens.*'mobile_otp'/, check: p => assert.equal(p[0], user.id) },
+    { sql: /SELECT .*retry_after FROM users WHERE id=\$1 FOR UPDATE/, rows:[user] },
+    { sql: /UPDATE users SET mobile_otp_requested_at/ },
+    { sql: /DELETE FROM verification_tokens WHERE user_id=\$1 AND type=\$2/,params:[user.id,'mobile_otp'] },
+    { sql: /INSERT INTO verification_tokens/, check:p=>assert.equal(p[0],user.id) },
+    { sql: /UPDATE verification_tokens SET delivery_confirmed/,rows:[{id:'issued'}],check:p=>assert.equal(p[1],user.id) },
   ];
   const { res, data } = await request('/verify-email?token=valid-link');
   assert.equal(res.status, 200);
@@ -115,41 +121,41 @@ test('OTP info, resend and verify require a session instead of guessing an accou
 });
 
 test('OTP info is scoped to the session account', async () => {
-  steps = [session(), { sql: /WHERE user_id = \$1 AND type = 'mobile_otp'/, params: [user.id], rows: [{ id: 'otp-a' }] }];
+  steps = [session(), { sql: /WHERE user_id = \$1 AND type = 'mobile_otp'/, params: [user.id,user.mobile_number], rows: [{ id: 'otp-a' }] }];
   const { data } = await request('/otp/info', { session: true });
   assert.equal(data.phone, user.mobile_number);
   assert.equal(data.hasActiveOtp, true);
 });
 
 test('resend sends to the session account only', async () => {
-  steps = [session(), { sql: /DELETE FROM verification_tokens WHERE user_id/, params: [user.id] }, { sql: /INSERT INTO verification_tokens/, check: p => assert.equal(p[0], user.id) }];
+  steps = [session(), {sql:/SELECT .*retry_after FROM users WHERE id=\$1 FOR UPDATE/,rows:[user]}, {sql:/UPDATE users SET mobile_otp_requested_at/}, {sql:/DELETE FROM verification_tokens WHERE user_id=\$1 AND type=\$2/,params:[user.id,'mobile_otp']}, {sql:/INSERT INTO verification_tokens/,check:p=>assert.equal(p[0],user.id)}, {sql:/UPDATE verification_tokens SET delivery_confirmed/,rows:[{id:'issued'}],check:p=>assert.equal(p[1],user.id)}];
   const { res } = await request('/otp/resend', { body: {}, session: true });
   assert.equal(res.status, 200);
   assert.equal(sentSms[0][0], user.mobile_number);
 });
 
 test('another account code fails and consumes an attempt on this account only', async () => {
-  steps = [session(), { sql: /WHERE user_id = \$1 AND type = 'mobile_otp'/, params: [user.id], rows: [{ id: 'otp-a', token_hash: sha256('111111'), attempts: 0 }] }, { sql: /UPDATE verification_tokens SET attempts/, params: [1, 'otp-a'] }];
+  steps = [session(), {sql:/SELECT \* FROM users WHERE id=\$1 FOR UPDATE/,rows:[user]}, {sql:/FROM verification_tokens WHERE user_id=\$1 AND type='mobile_otp'/,params:[user.id,user.mobile_number],rows:[{id:'otp-a',token_hash:sha256('111111'),attempts:0}]},{sql:/UPDATE verification_tokens SET attempts=attempts\+1/,params:['otp-a']}];
   const { res } = await request('/otp/verify', { body: { code: '222222' }, session: true });
   assert.equal(res.status, 400);
 });
 
 test('expired codes cannot fall back to a code belonging to someone else', async () => {
-  steps = [session(), { sql: /WHERE user_id = \$1 AND type = 'mobile_otp'/, params: [user.id] }];
+  steps = [session(),{sql:/SELECT \* FROM users WHERE id=\$1 FOR UPDATE/,rows:[user]}, { sql: /WHERE user_id=\$1 AND type='mobile_otp'/, params: [user.id,user.mobile_number] }];
   const { res } = await request('/otp/verify', { body: { code: '222222' }, session: true });
   assert.equal(res.status, 400);
 });
 
 test('three wrong attempts invalidate the OTP', async () => {
-  steps = [session(), { sql: /FROM verification_tokens WHERE user_id/, rows: [{ id: 'otp-a', token_hash: sha256('111111'), attempts: 2 }] }, { sql: /DELETE FROM verification_tokens WHERE id/, params: ['otp-a'] }];
+  steps = [session(),{sql:/SELECT \* FROM users WHERE id=\$1 FOR UPDATE/,rows:[user]}, { sql: /FROM verification_tokens WHERE user_id/, rows: [{ id: 'otp-a', token_hash: sha256('111111'), attempts: 2 }] }, { sql: /UPDATE verification_tokens SET attempts=attempts\+1/, params: ['otp-a'] }];
   const { res, data } = await request('/otp/verify', { body: { code: '222222' }, session: true });
   assert.equal(res.status, 400);
-  assert.match(data.error, /Too many/);
+  assert.match(data.error, /three attempts/);
 });
 
 test('successful OTP completes verification and revokes sessions, requiring password login', async () => {
-  steps = [session(), { sql: /FROM verification_tokens WHERE user_id/, rows: [{ id: 'otp-a', token_hash: sha256('111111') }] },
-    { sql: /DELETE FROM verification_tokens WHERE id.*RETURNING user_id/, params: ['otp-a', sha256('111111')], rows: [{ user_id: user.id }] },
+  steps = [session(),{sql:/SELECT \* FROM users WHERE id=\$1 FOR UPDATE/,rows:[user]}, { sql: /FROM verification_tokens WHERE user_id/, rows: [{ id: 'otp-a', token_hash: sha256('111111') }] },
+    { sql: /DELETE FROM verification_tokens WHERE id=\$1/, params: ['otp-a'] },
     { sql: /UPDATE users SET mobile_verified = true/, params: [user.id] },
     { sql: /DELETE FROM verification_tokens WHERE user_id/, params: [user.id] },
     { sql: /DELETE FROM sessions WHERE user_id/, params: [user.id] },
@@ -166,9 +172,8 @@ test('successful OTP completes verification and revokes sessions, requiring pass
 });
 
 test('a concurrently consumed or expired OTP cannot complete registration again', async () => {
-  steps = [session(), { sql: /FROM verification_tokens WHERE user_id/, rows: [{ id: 'otp-a', token_hash: sha256('111111') }] }, { sql: /DELETE FROM verification_tokens WHERE id.*RETURNING user_id/, rows: [] }];
-  const { res } = await request('/otp/verify', { body: { code: '111111' }, session: true });
-  assert.equal(res.status, 400);
+  steps=[session(),{sql:/SELECT \* FROM users WHERE id=\$1 FOR UPDATE/,rows:[user]},{sql:/FROM verification_tokens WHERE user_id/,rows:[]}];
+  const {res}=await request('/otp/verify',{body:{code:'111111'},session:true});assert.equal(res.status,400);
 });
 
 test('fully verified account can log in normally and receive a new session', async () => {
@@ -200,7 +205,7 @@ test('inactive account cannot sign in or use an existing session', async () => {
 test('invitation response preserves the admin login token and reports provider status', async () => {
   steps=[session({...user,role:'admin',mobile_verified:true}),{sql:/SELECT id FROM users/,rows:[]},{sql:/INSERT INTO staff_invitations/},{sql:/INSERT INTO audit_logs/}];
   const result=await request('/staff/invite',{session:true,body:{name:'Synthetic Staff',email:'staff@example.test',role:'vet'}});
-  assert.equal(result.res.status,200);assert.equal(result.data.token,undefined);assert.match(result.data.inviteLink,/\?invite=/);assert.equal(result.data.delivery,'unknown');
+  assert.equal(result.res.status,200);assert.equal(result.data.token,undefined);assert.match(result.data.inviteLink,/\?invite=/);assert.equal(result.data.delivery,'accepted');
 });
 
 test('a login using a credential snapshot from before reset cannot create a new session',async()=>{

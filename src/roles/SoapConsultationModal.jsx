@@ -1,3 +1,4 @@
+import {HistoryControls} from "../ClinicHistory.jsx";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { validateSoapFields } from "../soapValidation.js";
 import PrescriptionBuilder from "./PrescriptionBuilder.jsx";
@@ -201,6 +202,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !inFlight.current && onClose()}>
       <div className="modal clinical-soap" style={{ width: "min(760px, 100%)", maxHeight: "94vh" }}>
+        <HistoryControls auto />
         {review.card}
         <style>{`.clinical-soap input[type=checkbox]{width:auto;flex:0 0 auto}.clinical-soap .service-check{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}.clinical-soap .tabs{flex-wrap:wrap}.clinical-soap .tabs button{white-space:normal;max-width:100%;min-width:0}`}</style>
         {followUpRequest && <div className="ow-note info"><b>Linked {followUpRequest.careStatus}</b><p>Target: {followUpRequest.followUpDate} · {followUpRequest.followUpReason}</p></div>}

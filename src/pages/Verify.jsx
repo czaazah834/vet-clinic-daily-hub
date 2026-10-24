@@ -1,3 +1,4 @@
+import {useResendTimer} from "../useResendTimer.js";
 import { useState, useEffect, useRef } from "react";
 import { Logo, I } from "../lib.jsx";
 import { validateCode } from "../validate.js";
@@ -22,18 +23,14 @@ import "./auth.css";
 import "./brand.css";
 
 /* ---------- 1. "Check your email" after registering ---------- */
-export function CheckEmail({ email, go }) {
+export function CheckEmail({ email, receipt, go }) {
+  const [accepted,setAccepted]=useState(receipt?.delivery === "accepted");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
-  const [err, setErr] = useState("");
-  const [cool, setCool] = useState(30);
+  const [err, setErr] = useState(receipt?.delivery === "failed" ? receipt.message : "");
+  const [cool, setCool] = useResendTimer(receipt?.retryAfter ?? 0);
+  const sending = useRef(false);
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (cool <= 0) return;
-    const t = setTimeout(() => setCool((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [cool]);
 
   const copyEmail = () => {
     if (!email) return;
@@ -43,17 +40,22 @@ export function CheckEmail({ email, go }) {
   };
 
   const resend = async () => {
-    if (busy || cool > 0) return;
+    if (sending.current || cool > 0) return;
+    sending.current = true;
     setBusy(true);
     setMsg("");
     setErr("");
     try {
-      await auth.resendVerification(email);
-      setMsg("A fresh verification link has been sent to your email!");
-      setCool(30);
+      const result=await auth.resendVerification(email);
+      setAccepted(result.delivery === "accepted");
+      setMsg(result.message);
+      setErr("");
+      setCool(result.retryAfter ?? 60);
     } catch (x) {
       setErr(x.offline ? OFFLINE_MSG : x.message || "Please try again.");
+      setCool(x.retryAfter || (x.status===429 || x.status===503 ? 60 : 0));
     }
+    sending.current=false;
     setBusy(false);
   };
 
@@ -104,7 +106,7 @@ export function CheckEmail({ email, go }) {
 
         <h2>Check your inbox</h2>
         <p className="card-subtitle">
-          We sent a secure verification link to activate your PawCare portal account.
+          {accepted ? "The email provider accepted your verification email. Check your inbox and spam folder." : "Your account is saved. Request a verification email to activate it."}
         </p>
 
         {/* User Email Pill with Copy */}
@@ -214,22 +216,23 @@ export function Otp({ onDone, onBack, enabled = true }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
-  const [n, setN] = useState(60);
+  const [n, setN] = useResendTimer(60);
   const verifying = useRef(false);
+  const sending = useRef(false);
+  const [sendingCode,setSendingCode]=useState(false);
 
   const fail = (x) => setErr(x.offline ? OFFLINE_MSG : x.message || "Something went wrong. Please try again.");
 
-  const send = async (first = false) => {
-    setErr("");
-    setInfo("");
+  const send = async () => {
+    if(sending.current || verifying.current)return;
+    sending.current=true;setSendingCode(true);setReady(false);
+    setErr("");setInfo("");
     try {
-      await auth.otpSend();
-      setReady(true);
-      setN(60);
-      if (!first) setInfo("A new 6-digit SMS security code was sent to your phone.");
-    } catch (x) {
-      fail(x);
-    }
+      const result=await auth.otpSend();
+      setReady(true);setN(result.retryAfter ?? 60);
+      setInfo(result.message || "The SMS provider accepted your verification code.");
+    } catch(x) {fail(x);setN(x.retryAfter || (x.status===429 || x.status===503?60:0));}
+    finally {sending.current=false;setSendingCode(false);}
   };
 
   const started = useRef(false);
@@ -240,22 +243,17 @@ export function Otp({ onDone, onBack, enabled = true }) {
       try {
         const i = await auth.otpInfo();
         if (i.mobileVerified) return onDone(); // already verified
-        if (!i.hasActiveOtp) await auth.otpSend();
         if (i.phone) setPhone(i.phone);
-        setReady(true);
-        setN(60);
+        setN(i.retryAfter || 0);
+        if(i.hasActiveOtp)setReady(true);
+        else if(i.retryAfter>0)setErr("The SMS code is unavailable. Retry when the resend timer ends.");
+        else await send();
       } catch (x) {
         fail(x);
         setN(0);
       }
     })();
   }, [enabled]); // eslint-disable-line
-
-  useEffect(() => {
-    if (!enabled || n <= 0) return;
-    const t = setTimeout(() => setN((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [n, enabled]);
 
   const handleVerify = async (codeToVerify) => {
     const code = (codeToVerify || f.v.code || "").trim();
@@ -369,11 +367,11 @@ export function Otp({ onDone, onBack, enabled = true }) {
           <button
             type="button"
             className="lnk"
-            disabled={!enabled || n > 0 || busy}
+            disabled={!enabled || n > 0 || busy || sendingCode}
             onClick={() => send(false)}
             style={{ fontWeight: 600, color: n > 0 ? "#94a3b8" : "#2563eb" }}
           >
-            {n > 0 ? `Resend SMS in ${n}s` : "Resend SMS code"}
+            {sendingCode ? "Sending…" : n > 0 ? `Resend SMS in ${n}s` : "Resend SMS code"}
           </button>
         </div>
       </form>

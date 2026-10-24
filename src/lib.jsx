@@ -1,3 +1,4 @@
+import {today as currentClinicDate} from "./booking.js";
 import { changeAppointmentStatus } from "./appointmentStatus.js";
 import { useState } from "react";
 import {
@@ -87,8 +88,10 @@ export function I({ e, size = 20, color }) {
 }
 /* ---------- helpers & mock data (in memory only, no backend) ---------- */
 export const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-export const plus = n => { const d = new Date(); d.setDate(d.getDate() + n); return ymd(d); };
-export const TODAY = plus(0);
+export {plus} from "./booking.js";
+import {plus} from "./booking.js";
+export {TODAY} from "./clinicDate.js";
+import {TODAY} from "./clinicDate.js";
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const VETS = [["v1", "Dr. Ana Cruz"], ["v2", "Dr. Ben Lim"]];
 export const ICON = {
@@ -154,20 +157,20 @@ export const E = {
     chk: (d, id, db) => db.owners.some(o => o.id !== id && o.email.toLowerCase() === d.email.toLowerCase()) ? { email: "Another owner already uses this email" } : {} },
   pets: { title: "Pets", sub: "Every furry, feathery and fluffy patient.", one: "pet", cols: ["name", "ownerId", "species", "breed", "weight"], perm: { admin: "crud", vet: "cru", assistant: "cru", owner: "r" },
     f: [{ k: "ownerId", l: "Owner", t: "select", o: db => db.owners.map(o => [o.id, o.name]), req: 1 }, { k: "name", l: "Pet name", req: 1, max: 40 }, { k: "species", l: "Species", t: "select", o: () => Object.keys(ICON), req: 1 }, { k: "breed", l: "Breed", max: 40 }, { k: "sex", l: "Sex", t: "select", o: () => ["Male", "Female"], req: 1 }, { k: "birth", l: "Birth date", t: "date", req: 1 }, { k: "weight", l: "Weight (kg)", t: "number", lo: 0.1, hi: 120, req: 1 }],
-    chk: (d, id, db) => { const e = {}; if (d.birth > TODAY) e.birth = "Birth date can’t be in the future"; if (db.pets.some(p => p.id !== id && p.ownerId === d.ownerId && p.name.toLowerCase() === d.name.trim().toLowerCase())) e.name = "This owner already has a pet with that name"; return e; } },
+    chk: (d, id, db) => { const e = {}; if (d.birth > currentClinicDate()) e.birth = "Birth date can’t be in the future"; if (db.pets.some(p => p.id !== id && p.ownerId === d.ownerId && p.name.toLowerCase() === d.name.trim().toLowerCase())) e.name = "This owner already has a pet with that name"; return e; } },
   appts: { title: "Appointments", sub: "Schedule, update and track clinic visits.", one: "appointment", cols: ["date", "time", "petId", "vetId", "reason", "status"], perm: { admin: "crud", vet: "cru", assistant: "cru", owner: "cru" }, sort: (a, b) => (a.date + a.time).localeCompare(b.date + b.time), def: { status: "Scheduled" },
     f: [{ k: "petId", l: "Pet", t: "select", o: petOpts, req: 1 }, { k: "vetId", l: "Veterinarian", t: "select", o: () => VETS, req: 1 }, { k: "date", l: "Date", t: "date", req: 1 }, { k: "time", l: "Time (08:00–17:00)", t: "time", req: 1 }, { k: "reason", l: "Reason for visit", t: "textarea", req: 1, min: 3, max: 200 }],
     chk: (d, id, db) => { const e = {}, live = !["Cancelled", "Completed"].includes(d.status), old = db.appts.find(a => a.id === id);
-      if (live && d.date < TODAY && (!old || old.date !== d.date)) e.date = "Date can’t be in the past";
+      if (live && d.date < currentClinicDate() && (!old || old.date !== d.date)) e.date = "Date can’t be in the past";
       if (d.time < "08:00" || d.time > "17:00") e.time = "Clinic hours are 08:00–17:00";
       else if (live && db.appts.some(a => a.id !== id && a.vetId === d.vetId && a.date === d.date && a.time === d.time && a.status !== "Cancelled")) e.time = "This veterinarian is already booked then";
       return e; } },
   vacc: { title: "Vaccinations", sub: "History and upcoming shots for every pet.", one: "vaccination", cols: ["petId", "vaccine", "brand", "batch", "date", "nextDue", "_due"], perm: { admin: "crud", vet: "crud", assistant: "cru", owner: "r" }, sort: (a, b) => b.date.localeCompare(a.date),
     f: [{ k: "petId", l: "Pet", t: "select", o: petOpts, req: 1 }, { k: "vaccine", l: "Vaccine", t: "select", o: () => ["Anti-rabies", "5-in-1", "Kennel cough", "Feline 4-in-1", "Deworming", "Other"], req: 1 }, { k: "brand", l: "Brand", max: 40 }, { k: "batch", l: "Batch / Lot #", max: 40 }, { k: "date", l: "Date given", t: "date", req: 1 }, { k: "nextDue", l: "Next dose due (auto-calculated, editable)", t: "date" }, { k: "notes", l: "Notes", t: "textarea", max: 200 }],
-    chk: d => { const e = {}; if (d.date > TODAY) e.date = "Date given can’t be in the future"; if (d.nextDue && d.nextDue <= d.date) e.nextDue = "Next dose must be after the date given"; return e; } },
+    chk: d => { const e = {}; if (d.date > currentClinicDate()) e.date = "Date given can’t be in the future"; if (d.nextDue && d.nextDue <= d.date) e.nextDue = "Next dose must be after the date given"; return e; } },
   records: { title: "Consultations", sub: "SOAP veterinary notes, diagnoses and treatments.", one: "consultation", cols: ["date", "petId", "vetId", "diagnosis", "treatment"], perm: { admin: "r", vet: "crud", assistant: "r", owner: "r" }, sort: (a, b) => b.date.localeCompare(a.date),
     f: [{ k: "petId", l: "Pet", t: "select", o: petOpts, req: 1 }, { k: "date", l: "Consultation date", t: "date", req: 1 }, { k: "symptoms", l: "Subjective: Symptoms & History", t: "textarea", max: 300 }, { k: "objective", l: "Objective: Exam & Vitals", t: "textarea", max: 300 }, { k: "diagnosis", l: "Assessment: Diagnosis", t: "textarea", req: 1, min: 3, max: 300 }, { k: "treatment", l: "Plan: Treatment & Procedures", t: "textarea", req: 1, min: 3, max: 300 }, { k: "prescription", l: "Prescription & Home Care", t: "textarea", max: 300 }],
-    chk: d => d.date > TODAY ? { date: "Date can’t be in the future" } : {} },
+    chk: d => d.date > currentClinicDate() ? { date: "Date can’t be in the future" } : {} },
 };
 export const LAB = { ownerId: "Owner", petId: "Pet", vetId: "Veterinarian", nextDue: "Next dose", _due: "Status", brand: "Brand", batch: "Batch #", symptoms: "Subjective", objective: "Objective", diagnosis: "Assessment", treatment: "Plan", prescription: "Prescription", billingStatus: "Billing", amount: "Amount (₱)" };
 export const NAV = [["dashboard", "Dashboard", "home"], ["owners", "Owners", "user"], ["pets", "Pets", "paw"], ["appts", "Appointments", "calendar"], ["vacc", "Vaccinations", "syringe"], ["records", "Consultations", "file"], ["reports", "Reports", "chart"]];
@@ -178,7 +181,7 @@ export const can = (ent, me, a) => {
   if (me.role === "admin" || ent === "users") return false;
   return (ent === "appts" && ["owner", "assistant"].includes(me.role) && ["c", "u"].includes(a)) || (["owners", "pets"].includes(ent) && me.role === "assistant" && a === "c");
 };
-export const dueState = n => !n ? "" : n < TODAY ? "Overdue" : n <= plus(14) ? "Due soon" : "On track";
+export const dueState = n => !n ? "" : n < currentClinicDate() ? "Overdue" : n <= plus(14) ? "Due soon" : "On track";
 export function scope(db, me, ent) {
   if (me.role !== "owner") return db[ent];
   const ps = db.pets.filter(p => p.ownerId === me.ownerId).map(p => p.id);

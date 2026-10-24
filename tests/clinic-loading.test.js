@@ -84,3 +84,10 @@ test('a cached response never turns a later authorization or connection failure 
   });
   await load();await assert.rejects(load(),error=>error.status===401);
 });
+
+
+test('background loader only polls the summary endpoint and retains aggregate counts',async()=>{
+ const remote={summary:true,totals:{consultations:120,appointment_status:{Completed:100}},owners:[],pets:[],appts:[],vaccs:[],consults:[],petRequests:[],vets:[],log:[]};
+ let calls=0;const load=createClinicStateLoader(async(method,path,body,options)=>{calls++;assert.equal(method,'GET');assert.equal(path,'/api/state/summary');assert.equal(body,undefined);return calls===1?{data:remote,etag:'"summary"'}:{notModified:true};});
+ const first=await load();assert.equal(first.summary,true);assert.equal(first.totals.consultations,120);assert.strictEqual(await load(),first);assert.equal(calls,2);
+});

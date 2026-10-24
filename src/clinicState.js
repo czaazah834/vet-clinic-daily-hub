@@ -15,10 +15,10 @@ function shareRecords(previous = [], incoming = []) {
 // started before a local saved mutation cannot undo that acknowledged change.
 export function applyClinicState(previous, remote, baseline) {
   if (baseline && Object.keys(collections).some(key => previous[key] !== baseline[key])) return previous;
-  const next = {...previous};
+  const next = {...previous, totals:remote.totals, summary:remote.summary};
   const shared = {};
   for (const [key, source] of Object.entries(collections)) {
     next[key] = shared[source] ||= shareRecords(previous[key], remote[source] || []);
   }
-  return Object.keys(collections).every(key => previous[key] === next[key]) ? previous : next;
+  return Object.keys(collections).every(key => previous[key] === next[key]) && JSON.stringify(previous.totals)===JSON.stringify(next.totals) && previous.summary===next.summary ? previous : next;
 }

@@ -209,8 +209,8 @@ export default function App() {
   const screen =
     view === "login" ? <Login role={role} notice={notice} bad={bad} onLogin={onLogin} onBack={() => go("landing")} go={go} />
     : view === "staff-setup" ? <StaffSetup token={flow.inviteToken} onDone={r => { if (r.needsOtp) { setNotice(""); enterOtp(); } else { setMe(r.user); saveCachedUser(r.user); } }} onCancel={() => go("landing")} />
-    : view === "register" ? <Register onDone={email => { setFlow({ email }); setView("checkemail"); }} onBack={() => go("landing")} go={go} limited={() => toLogin("Registration limit reached. To prevent bot spam, each IP address can make at most 5 registration attempts per hour. Please try again later, or log in if you already have an account.", true)} />
-    : view === "checkemail" ? <CheckEmail email={flow.email} go={go} />
+    : view === "register" ? <Register onDone={(email, receipt) => { setFlow({ email, receipt }); setView("checkemail"); }} onBack={() => go("landing")} go={go} limited={() => toLogin("Registration limit reached. To prevent bot spam, each IP address can make at most 5 registration attempts per hour. Please try again later, or log in if you already have an account.", true)} />
+    : view === "checkemail" ? <CheckEmail email={flow.email} receipt={flow.receipt} go={go} />
     : view === "otp" ? <Otp enabled={otpEnabled} onDone={() => logout("Account verified successfully. Please log in to continue.")} onBack={() => logout("Log in to continue verification.")} />
     : view === "unlock" ? <Unlock token={flow.token} onDone={(msg, isBad) => toLogin(msg, isBad)} />
     : view === "forgot" ? <Forgot onBack={() => go("login")} go={go} />

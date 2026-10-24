@@ -275,7 +275,7 @@ function Dash({ db, setDb, me, go, say }) {
           ["shield", staff.data?.accountCount ?? "—", "Registered accounts"],
           ["calendar", db.appts.filter(a => a.date === TODAY).length, "Today's Appointments"],
           ["alert", currentVaccinationDue(db.vacc).filter(v=>v.nextDue<TODAY).length, "Certified booster recalls overdue"],
-          ["file", db.records.length, "Consultations on File"],
+          ["file", db.totals?.consultations ?? db.records.length, "Consultations on File"],
         ]}
       />
 
@@ -292,7 +292,7 @@ function Dash({ db, setDb, me, go, say }) {
       </section>
       <ReminderStatus />
       <div className="two" style={{ marginTop: "16px" }}>
-        <Bars title="Appointments by Status" data={by(db.appts, "status")} />
+        <Bars title="Appointments by Status" data={db.totals?.appointment_status || by(db.appts, "status")} />
         {staff.data && <Bars title="Staff accounts by role" data={by(staff.data.staff, "role")} />}
       </div>
 

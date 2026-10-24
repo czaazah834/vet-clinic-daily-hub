@@ -1,3 +1,4 @@
+import {HistoryControls,useHistoryComplete} from "../../ClinicHistory.jsx";
 import { useSubmissionReview } from "../../components/SubmissionReview.jsx";
 import { useRef, useState } from "react";
 import { TODAY, scope, uid, addLog, ICON } from "../../lib.jsx";
@@ -554,7 +555,9 @@ export function RequestList({ db, setDb, me, say, onEdit }) {
 }
 
 /* ---------- Full profile of an approved pet ---------- */
-export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
+export function PetProfileModal({ pet, db, me, onClose, onVacc, onBook }) {
+  const historyComplete=useHistoryComplete();
+  const p=db.pets.find(row=>row.id===pet.id)||pet;
   const V = scope(db, me, "vacc").filter(v => v.petId === p.id), A = scope(db, me, "appts").filter(a => a.petId === p.id);
   const current = currentVaccinationDue(V);
   const over = current.filter(v => vaccinationStatus(v, current) === "Overdue").length;
@@ -579,6 +582,7 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
 
   return (
     <Modal title={p.name} onClose={onClose}>
+      <HistoryControls auto />
       <dl className="op-dl">{rows.map(([k, x]) => <div key={k}><dt>{k}</dt><dd>{x}</dd></div>)}</dl>
 
       {(p.allergies || []).length > 0 && <div className="op-sec"><h4>Allergies</h4><ul className="ow-tags">{p.allergies.map(a => <li className="ow-tag" key={a}>{a}</li>)}</ul></div>}
@@ -586,7 +590,7 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
       
       <div className="op-sec">
         <h4>Health at a glance</h4>
-        <p className="op-line"><Icon n="syringe" size={16} /> {V.length ? <>{V.length} vaccine record{V.length > 1 ? "s" : ""}{over ? <span className="op-chip no">{over} overdue</span> : soon ? <span className="op-chip wait">{soon} due soon</span> : current.length ? <span className="op-chip ok">Approved boosters on track</span> : <span className="op-chip">No approved booster date</span>}{pending > 0 && <span className="op-chip wait">{pending} awaiting vet review</span>}</> : "No vaccine records yet"}</p>
+        <p className="op-line"><Icon n="syringe" size={16} /> {V.length ? <>{V.length} {historyComplete?"":"loaded "}vaccine record{V.length > 1 ? "s" : ""}{over ? <span className="op-chip no">{over} overdue</span> : soon ? <span className="op-chip wait">{soon} due soon</span> : current.length ? <span className="op-chip ok">Approved boosters on track</span> : <span className="op-chip">No approved booster date</span>}{pending > 0 && <span className="op-chip wait">{pending} awaiting vet review</span>}</> : "No vaccine records yet"}</p>
         <p className="op-line"><Icon n="calendar" size={16} /> {next ? `Next visit: ${next.date} at ${fmt12(next.time)} (${next.status})` : "No visit booked"}</p>
       </div>
 
