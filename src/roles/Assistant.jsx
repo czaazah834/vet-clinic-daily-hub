@@ -61,7 +61,7 @@ function Dash({ db, setDb, me, go, say }) {
     if (newlyCompleted && !billingAppt) {
       const pet = db.pets?.find(p => p.id === newlyCompleted.petId) || {};
       if (typeof say === "function") {
-        say(`🔔 Doctor finished consultation for ${pet.name || "Patient"}! Proceeding directly to billing checkout...`);
+        say(`Doctor finished consultation for ${pet.name || "Patient"}! Proceeding directly to billing checkout...`);
       }
       setBillingAppt(newlyCompleted);
     }

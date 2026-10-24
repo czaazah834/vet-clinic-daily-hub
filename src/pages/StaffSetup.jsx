@@ -258,7 +258,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                 required
               />
               <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
-                📲 A 6-digit verification code will be sent to this phone number via TextBee.
+                A 6-digit verification code will be sent to this phone number via TextBee SMS.
               </span>
             </div>
 

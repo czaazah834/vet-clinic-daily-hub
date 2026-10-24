@@ -678,7 +678,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
             {/* Section 3: Today's Clinical Purpose & Arrival Queue */}
             <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px" }}>
               <b style={{ display: "block", color: "var(--navy)", fontSize: "13.5px", marginBottom: "8px" }}>
-                🎯 3. Today&rsquo;s Visit Purpose &amp; Queue Admission
+                3. Today&rsquo;s Visit Purpose &amp; Queue Admission
               </b>
 
               <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 700, color: "var(--navy)", fontSize: "13px", marginBottom: "12px" }}>
@@ -775,7 +775,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
                 <div>
                   <b style={{ color: "#854d0e", fontSize: "13.5px", display: "flex", alignItems: "center", gap: "6px" }}>
-                    💉 4. Prior Vaccinations from Previous Vet Clinics (Reference Guide)
+                    4. Prior Vaccinations from Previous Vet Clinics (Reference Guide)
                   </b>
                   <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#713f12" }}>
                     Since records from external clinics are not automatically transferred, record past shots here as a clinical guide to calibrate the upcoming schedule.

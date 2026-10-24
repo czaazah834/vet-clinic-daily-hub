@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { TODAY, VETS, ICON, I, petName, ownerName } from "../lib.jsx";
 import { formatSpeciesLabel } from "../preventiveSchedule.js";
+import { isVet } from "./clinicValidation.js";
 import PetCardModal from "./PetCardModal.jsx";
 import SoapConsultationModal from "./SoapConsultationModal.jsx";
 
@@ -53,7 +54,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
                 Official Medical EMR Record
               </span>
               <span style={{ fontSize: "12px", color: "#64748b" }}>Case ID: <b>REC-{record.id.slice(-6).toUpperCase()}</b></span>
-              {me.role !== "vet" && (
+              {!isVet(me?.role) && (
                 <span style={{ background: "#f1f5f9", color: "#475569", padding: "2px 7px", borderRadius: "4px", fontSize: "11px", fontWeight: 600 }}>
                   Read-Only Clinical View
                 </span>
@@ -264,7 +265,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
             Authenticated by <b>{vetInfo[1]}</b> &bull; Signed Electronic Record
           </div>
           <div style={{ display: "flex", gap: "10px" }}>
-            {me.role === "vet" && onEdit && (
+            {isVet(me?.role) && onEdit && (
               <button
                 type="button"
                 className="btn sm gold"

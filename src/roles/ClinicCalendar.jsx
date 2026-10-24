@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { VETS, TODAY, scope, petName, ownerName, dueState, moveAppt, LABEL, Badge, uid, addLog } from "../lib.jsx";
 import { api } from "../api.js";
+import { isVet } from "./clinicValidation.js";
 import CheckInModal from "./CheckInModal.jsx";
 import SoapConsultationModal from "./SoapConsultationModal.jsx";
 import BillingModal from "./BillingModal.jsx";
@@ -68,12 +69,18 @@ export function getServiceCategory(reason = "") {
 
 export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const t = new Date();
-  const [cur, setCur] = useState({ y: t.getFullYear(), m: t.getMonth() });
-  const [viewMode, setViewMode] = useState("timeline"); // 'timeline' | 'month' | 'list'
-  const [vetFilter, setVetFilter] = useState(me.role === "vet" ? me.vetId || "v1" : "");
+  const curYearMin = t.getFullYear();
+  const curMonthMin = t.getMonth();
+  const [cur, setCur] = useState({ y: curYearMin, m: curMonthMin });
+  const isDoctor = isVet(me?.role);
+  const [viewMode, setViewMode] = useState(me?.role === "owner" ? "month" : "timeline"); // 'timeline' | 'month' | 'list'
+  const [vetFilter, setVetFilter] = useState(isDoctor ? me?.vetId || "v1" : "");
   const [sel, setSel] = useState(TODAY);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+
+  const canGoPrevMonth = cur.y > curYearMin || (cur.y === curYearMin && cur.m > curMonthMin);
+  const canGoNextMonth = cur.y < curYearMin + 1 || (cur.y === curYearMin + 1 && cur.m < 11);
 
   // Modals
   const [bookingSlot, setBookingSlot] = useState(null); // { date, time, vetId }
@@ -110,7 +117,12 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 
   const first = new Date(cur.y, cur.m, 1);
   const cells = Array.from({ length: 42 }, (_, i) => new Date(cur.y, cur.m, 1 - first.getDay() + i));
-  const moveMonth = n => { const d = new Date(cur.y, cur.m + n, 1); setCur({ y: d.getFullYear(), m: d.getMonth() }); };
+  const moveMonth = n => {
+    if (n < 0 && !canGoPrevMonth) return;
+    if (n > 0 && !canGoNextMonth) return;
+    const d = new Date(cur.y, cur.m + n, 1);
+    setCur({ y: d.getFullYear(), m: d.getMonth() });
+  };
 
   const moveDay = n => {
     const d = new Date(sel + "T00:00:00");
@@ -166,8 +178,17 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
       log: addLog(p, me, `${me.name} scheduled appointment for ${petName(p, petId)} with ${(VETS.find(v => v[0] === targetVetId) || [])[1]} on ${targetDate} at ${targetTime}.`),
     }));
 
+    // Auto-update Doctor Timeline to the booked date and focus on that slot
+    setSel(targetDate);
+    const dTarget = new Date(targetDate + "T00:00:00");
+    if (!isNaN(dTarget.getTime())) {
+      setCur({ y: dTarget.getFullYear(), m: dTarget.getMonth() });
+    }
+    if (me.role !== "owner") {
+      setViewMode("timeline");
+    }
     setBookingSlot(null);
-    say && say(`Appointment booked for ${petName(db, petId)} at ${targetTime}!`);
+    say && say(`Appointment booked for ${petName(db, petId)} on ${targetDate} at ${targetTime}!`);
   };
 
   return (
@@ -178,14 +199,28 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
             {viewMode === "month" ? (
               <>
-                <button className="btn ghost sm" onClick={() => moveMonth(-1)} aria-label="Previous month">
+                <button
+                  className="btn ghost sm"
+                  onClick={() => moveMonth(-1)}
+                  disabled={!canGoPrevMonth}
+                  style={{ opacity: canGoPrevMonth ? 1 : 0.35, cursor: canGoPrevMonth ? "pointer" : "not-allowed" }}
+                  aria-label="Previous month"
+                  title={canGoPrevMonth ? "Previous month" : "Cannot navigate to past months"}
+                >
                   <ChevronLeft size={16} />
                 </button>
                 <h2 style={{ margin: 0, fontSize: "19px", display: "flex", alignItems: "center", gap: "8px" }}>
                   <Calendar size={20} color="var(--navy)" />
                   <span>{MONTHS[cur.m]} {cur.y}</span>
                 </h2>
-                <button className="btn ghost sm" onClick={() => moveMonth(1)} aria-label="Next month">
+                <button
+                  className="btn ghost sm"
+                  onClick={() => moveMonth(1)}
+                  disabled={!canGoNextMonth}
+                  style={{ opacity: canGoNextMonth ? 1 : 0.35, cursor: canGoNextMonth ? "pointer" : "not-allowed" }}
+                  aria-label="Next month"
+                  title={canGoNextMonth ? "Next month" : "Booking permitted up to next calendar year"}
+                >
                   <ChevronRight size={16} />
                 </button>
               </>
@@ -223,15 +258,17 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             {/* View Mode Toggle */}
             <div style={{ display: "flex", background: "#f1f5f9", padding: "3px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-              <button
-                type="button"
-                className={`btn sm ${viewMode === "timeline" ? "gold" : "ghost"}`}
-                style={{ padding: "4px 10px", fontSize: "12.5px", display: "flex", alignItems: "center", gap: "6px" }}
-                onClick={() => setViewMode("timeline")}
-              >
-                <Columns size={15} />
-                <span>Doctor Timeline (Day)</span>
-              </button>
+              {me.role !== "owner" && (
+                <button
+                  type="button"
+                  className={`btn sm ${viewMode === "timeline" ? "gold" : "ghost"}`}
+                  style={{ padding: "4px 10px", fontSize: "12.5px", display: "flex", alignItems: "center", gap: "6px" }}
+                  onClick={() => setViewMode("timeline")}
+                >
+                  <Columns size={15} />
+                  <span>Doctor Timeline (Day)</span>
+                </button>
+              )}
               <button
                 type="button"
                 className={`btn sm ${viewMode === "month" ? "gold" : "ghost"}`}
@@ -260,15 +297,15 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                 onChange={e => setVetFilter(e.target.value)}
                 style={{ width: "auto", padding: "6px 10px", fontSize: "13px" }}
               >
-                {me.role !== "vet" && <option value="">All Veterinarians</option>}
+                {!isDoctor && <option value="">All Veterinarians</option>}
                 {VETS.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
               </select>
             </label>
 
-            {me.role !== "vet" && (
+            {!isDoctor && (
               <button
                 className="btn sm gold"
-                onClick={() => setBookingSlot({ date: sel, time: "09:00", vetId: vetFilter || "v1" })}
+                onClick={() => setBookingSlot({ date: sel < TODAY ? TODAY : sel, time: "09:00", vetId: vetFilter || "v1" })}
                 style={{ display: "flex", alignItems: "center", gap: "5px" }}
               >
                 <Plus size={16} />
@@ -288,17 +325,19 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
               const out = d.getMonth() !== cur.m;
               const isToday = k === TODAY;
               const isSel = k === sel;
+              const isPast = k < TODAY;
               const loadCount = items.length;
 
               // Daily capacity meter status
-              const loadBadge =
-                loadCount === 0 ? null : loadCount <= 3 ? (
-                  <span style={{ fontSize: "10px", color: "#16a34a", fontWeight: "700" }}>● Light ({loadCount})</span>
-                ) : loadCount <= 7 ? (
-                  <span style={{ fontSize: "10px", color: "#d97706", fontWeight: "700" }}>● Optimal ({loadCount})</span>
-                ) : (
-                  <span style={{ fontSize: "10px", color: "#dc2626", fontWeight: "700" }}>● Full ({loadCount})</span>
-                );
+              const loadBadge = isPast ? (
+                <span style={{ fontSize: "10px", color: "#94a3b8", fontWeight: "600" }}>Past</span>
+              ) : loadCount === 0 ? null : loadCount <= 3 ? (
+                <span style={{ fontSize: "10px", color: "#16a34a", fontWeight: "700" }}>Light ({loadCount})</span>
+              ) : loadCount <= 7 ? (
+                <span style={{ fontSize: "10px", color: "#d97706", fontWeight: "700" }}>Optimal ({loadCount})</span>
+              ) : (
+                <span style={{ fontSize: "10px", color: "#dc2626", fontWeight: "700" }}>Full ({loadCount})</span>
+              );
 
               return (
                 <button
@@ -308,7 +347,13 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                     setSel(k);
                     if (out) setCur({ y: d.getFullYear(), m: d.getMonth() });
                   }}
-                  style={{ minHeight: "88px", textAlign: "left", padding: "6px" }}
+                  style={{
+                    minHeight: "88px",
+                    textAlign: "left",
+                    padding: "6px",
+                    background: isPast ? "#f8fafc" : "#ffffff",
+                    opacity: isPast && !isSel ? 0.75 : 1
+                  }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <b>{d.getDate()}</b>
@@ -359,7 +404,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
       </div>
 
       {/* Main Schedule Container */}
-      {viewMode === "timeline" ? (
+      {viewMode === "timeline" && me.role !== "owner" ? (
         /* Doctor Column Schedule (Hourly Timeline) */
         <div className="card" style={{ padding: "20px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
@@ -516,7 +561,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                     </button>
                                   )}
 
-                                  {me.role === "vet" && apptMatch.status === "In consultation" && (
+                                  {isDoctor && apptMatch.status === "In consultation" && (
                                     <button
                                       className="btn sm gold"
                                       onClick={() => setActiveSoap({ appt: apptMatch.appt, pet: apptMatch.petObj })}
@@ -534,7 +579,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                         // Empty slot
                         return (
                           <td key={vetId} style={{ padding: "6px 12px", borderRight: "1px solid #e2e8f0" }}>
-                            {me.role !== "vet" ? (
+                            {!isDoctor && sel >= TODAY ? (
                               <button
                                 type="button"
                                 className="btn ghost sm"
@@ -569,7 +614,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                   background: "#f8fafc"
                                 }}
                               >
-                                Available
+                                {sel < TODAY ? "Past" : "Available"}
                               </div>
                             )}
                           </td>
@@ -644,7 +689,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                       {me.role === "assistant" && ["Scheduled", "Confirmed"].includes(e.status) && (
                         <button className="btn sm gold" onClick={() => setCheckInAppt(e.appt)}>Check in</button>
                       )}
-                      {me.role === "vet" && e.status === "Checked-in" && (
+                      {isDoctor && e.status === "Checked-in" && (
                         <button className="btn sm gold" onClick={() => {
                           moveAppt(setDb, e.appt.id, "In consultation", me);
                           setActiveSoap({ appt: e.appt, pet: e.petObj });
@@ -690,7 +735,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
               </select>
             </div>
 
-            {me.role !== "vet" && (
+            {!isDoctor && (
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <button
                   className="btn sm gold"
@@ -932,17 +977,46 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 function QuickBookModal({ slot, db, onClose, onBook }) {
   const [petId, setPetId] = useState(db.pets[0] ? db.pets[0].id : "");
   const [vetId, setVetId] = useState(slot.vetId || "v1");
-  const [date, setDate] = useState(slot.date || TODAY);
+  const [date, setDate] = useState(slot.date && slot.date >= TODAY ? slot.date : TODAY);
   const [time, setTime] = useState(slot.time || "09:00");
   const [service, setService] = useState("Consultation");
   const [reason, setReason] = useState("");
+  const [dateErr, setDateErr] = useState("");
+
+  const curYear = new Date().getFullYear();
+  const maxBookingDate = `${curYear + 1}-12-31`;
 
   const selectedPet = db.pets.find(p => p.id === petId) || {};
   const owner = db.owners.find(o => o.id === selectedPet.ownerId) || {};
 
+  const validateDate = (val) => {
+    if (!val) return "Please choose an appointment date.";
+    if (val < TODAY) return "Appointments cannot be booked for past dates. Please select today or a future date.";
+    const yr = parseInt(val.slice(0, 4), 10);
+    if (isNaN(yr) || yr < curYear || yr > curYear + 1) {
+      return `Invalid year (${yr}). Appointments can only be scheduled for ${curYear} or ${curYear + 1}.`;
+    }
+    return "";
+  };
+
+  const handleDateChange = (val) => {
+    setDate(val);
+    setDateErr(validateDate(val));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!petId) return;
+    const err = validateDate(date);
+    if (err) {
+      setDateErr(err);
+      return;
+    }
+    const dup = (db.appts || []).find(a => a.petId === petId && a.date === date && a.time === time && a.status !== "Cancelled");
+    if (dup) {
+      setDateErr(`${selectedPet.name || "Patient"} already has a scheduled visit at ${time} on this date.`);
+      return;
+    }
     onBook(petId, service, reason || "General visit", vetId, date, time);
   };
 
@@ -1000,8 +1074,21 @@ function QuickBookModal({ slot, db, onClose, onBook }) {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div className="fld">
-                <label>Date</label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+                <label>Date *</label>
+                <input
+                  type="date"
+                  value={date}
+                  min={TODAY}
+                  max={maxBookingDate}
+                  onChange={e => handleDateChange(e.target.value)}
+                  className={dateErr ? "bad" : ""}
+                  required
+                />
+                {dateErr && (
+                  <span style={{ fontSize: "11px", color: "#dc2626", marginTop: "3px", display: "block", fontWeight: "600" }}>
+                    {dateErr}
+                  </span>
+                )}
               </div>
 
               <div className="fld">

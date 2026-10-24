@@ -178,7 +178,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
                 required
               />
               <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
-                ✉️ An invitation email will be sent to this address via Brevo with a secure setup link.
+                An invitation email will be sent to this address via Brevo with a secure setup link.
               </span>
             </div>
 

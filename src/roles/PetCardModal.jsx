@@ -1,9 +1,10 @@
 import { useState, useRef } from "react";
-import { PawPrint, Printer, RotateCw, Calendar, CheckCircle2, Clock, CreditCard } from "lucide-react";
+import { PawPrint, Printer, RotateCw, Calendar, CheckCircle2, Clock, CreditCard, Receipt, ArrowRight, X } from "lucide-react";
 import { Badge, VETS, TODAY, ICON, I, moveAppt, uid } from "../lib.jsx";
 import { Avatar, Icon, toSquare } from "./owner/ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails } from "../preventiveSchedule.js";
 import { auth, OFFLINE_MSG } from "../authApi.js";
+import { isVet } from "./clinicValidation.js";
 
 const CLINIC = {
   name: "PawCare Veterinary Clinic",
@@ -263,10 +264,11 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                     onClose();
                     onBill && onBill(activeAppt);
                   }}
-                  style={{ fontWeight: 700 }}
+                  style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
                   title="Search clinic prices, invoice items, and record payment"
                 >
-                  {activeAppt.billingStatus === "Paid" ? "🧾 View Paid Receipt" : "🧾 Settle Bill / Checkout"}
+                  <Receipt size={15} />
+                  <span>{activeAppt.billingStatus === "Paid" ? "View Paid Receipt" : "Settle Bill / Checkout"}</span>
                 </button>
               )}
             </div>
@@ -468,7 +470,8 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                   onClick={() => setIsFlipped(true)}
                   style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
                 >
-                  Turn to Page 2 (Immunization Log) ➜
+                  <span>Turn to Page 2 (Immunization Log)</span>
+                  <ArrowRight size={15} />
                 </button>
               </div>
             </div>
@@ -568,7 +571,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
 
         {/* Action row */}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>
-          {onBook && (
+          {onBook && !isVet(me?.role) && (
             <button className="btn gold sm" onClick={() => { onClose(); onBook(p.id); }}>
               + Book Visit for {p.name}
             </button>

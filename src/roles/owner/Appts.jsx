@@ -19,6 +19,11 @@ const mkRules = (db, me, editing) => v => {
   else if (isNaN(new Date(v.date + "T00:00:00"))) e.date = "Enter a valid date";
   else if (v.date < TODAY && !sameDay) e.date = "Date can’t be in the past";
   else if (v.date > LAST) e.date = `You can book up to ${MAX_DAYS} days ahead (until ${LAST})`;
+  else if ((() => {
+    const yr = parseInt(v.date.slice(0, 4), 10);
+    const curYr = new Date().getFullYear();
+    return isNaN(yr) || yr < curYr || yr > curYr + 1;
+  })()) e.date = `Please select a valid date in ${new Date().getFullYear()} or ${new Date().getFullYear() + 1}`;
   else if (holidayName(v.date) && !sameDay) e.date = `The clinic is closed on ${holidayName(v.date)} (holiday). Please pick another day`;
   const others = db.appts.filter(a => (!editing || a.id !== editing.id) && !BUSY.includes(a.status));
   if (!v.time) e.time = !v.service ? "Choose a service first" : v.date && v.vetId ? "Choose a time" : "Choose a veterinarian and date first";

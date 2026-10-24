@@ -14,7 +14,8 @@ import {
   User,
   PawPrint,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Coins
 } from "lucide-react";
 import { TODAY, plus, ymd, petName, ownerName } from "../lib.jsx";
 import BillingModal from "./BillingModal.jsx";
@@ -129,7 +130,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             onClick={() => window.print()}
             style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, border: "1px solid #cbd5e1" }}
           >
-            <Printer size={15} /> 🖨️ Print Daily Z-Reading
+            <Printer size={15} /> Print Daily Z-Reading
           </button>
         </div>
       </div>
@@ -163,7 +164,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             <span style={{ fontSize: "12px", fontWeight: 700, textTransform: "uppercase", color: "#64748b" }}>
               Cash Received
             </span>
-            <span style={{ fontSize: "18px" }}>💵</span>
+            <Coins size={18} color="#166534" />
           </div>
           <div style={{ fontSize: "24px", fontWeight: 800, color: "#166534" }}>
             ₱{cashTotal.toLocaleString()}
@@ -231,9 +232,10 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                     key={a.id}
                     className="btn sm gold"
                     onClick={() => setReceiptAppt(a)}
-                    style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "5px" }}
+                    style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}
                   >
-                    <span>🧾 Bill {p.name || "Patient"}</span>
+                    <Receipt size={14} />
+                    <span>Bill {p.name || "Patient"}</span>
                     <span>(₱{a.amount})</span>
                   </button>
                 );

@@ -359,7 +359,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                         <td style={{ padding: "12px 14px" }}>
                           <b style={{ color: "#1e293b" }}>{o.name || "Walk-in Client"}</b>
                           <div style={{ fontSize: "12px", color: "#64748b", display: "flex", alignItems: "center", gap: "6px" }}>
-                            <span>📞 {o.phone || "No phone"}</span>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Phone size={12} /> {o.phone || "No phone"}</span>
                             {o.address && <span>&bull; {o.address}</span>}
                           </div>
                         </td>
@@ -505,8 +505,8 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                       <tr key={o.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                         <td style={{ padding: "12px 14px" }}>
                           <b style={{ color: "var(--navy)", fontSize: "14px" }}>{o.name}</b>
-                          <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
-                            <span>📞 {o.phone || "No phone"}</span> &bull; <span>✉️ {o.email || "No email"}</span>
+                          <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px", display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Phone size={12} /> {o.phone || "No phone"}</span> &bull; <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Mail size={12} /> {o.email || "No email"}</span>
                           </div>
                         </td>
 

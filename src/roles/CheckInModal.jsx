@@ -15,6 +15,8 @@ import {
   Bird,
   PawPrint,
   X,
+  ShieldAlert,
+  ShieldCheck,
 } from "lucide-react";
 import { TODAY, addLog, ICON, petName, ownerName, I } from "../lib.jsx";
 import { assessWeight, assessTemp, SPECIES_DEFAULTS } from "./vitals.js";
@@ -268,15 +270,16 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
               {clinicalBracket && normSpecies === "Canine" && (
                 <div style={{ marginTop: "12px", background: "#fff", border: "1.5px solid #fed7aa", borderRadius: "10px", padding: "10px 12px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-                    <span style={{ fontSize: "14px" }}>⚖️</span>
+                    <Scale size={15} color="#9a3412" />
                     <b style={{ color: "#9a3412", fontSize: "12.5px", textTransform: "uppercase" }}>
                       Clinical Dispensing Brackets ({clinicalBracket.kg} kg Weighed)
                     </b>
                   </div>
 
                   {clinicalBracket.heartwormAlert && (
-                    <div style={{ background: "#fef2f2", border: "1px solid #f87171", color: "#991b1b", padding: "6px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, marginBottom: "8px" }}>
-                      🛡️ {clinicalBracket.heartwormAlert}
+                    <div style={{ background: "#fef2f2", border: "1px solid #f87171", color: "#991b1b", padding: "6px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <ShieldAlert size={14} />
+                      <span>{clinicalBracket.heartwormAlert}</span>
                     </div>
                   )}
 
@@ -303,13 +306,15 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
               {/* Species Toxicity Interceptors for Front Desk */}
               {normSpecies === "Lagomorph" && (
-                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px" }}>
-                  <b>🚫 Clinical Toxicology Interceptor:</b> Strict ban on Fipronil (Frontline) due to fatal rabbit neurotoxicity.
+                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <ShieldAlert size={15} />
+                  <span><b>Clinical Toxicology Interceptor:</b> Strict ban on Fipronil (Frontline) due to fatal rabbit neurotoxicity.</span>
                 </div>
               )}
               {normSpecies === "Feline" && (
-                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px" }}>
-                  <b>🚫 Clinical Toxicology Interceptor:</b> Completely restrict formulas containing Permethrin on felines.
+                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <ShieldAlert size={15} />
+                  <span><b>Clinical Toxicology Interceptor:</b> Completely restrict formulas containing Permethrin on felines.</span>
                 </div>
               )}
             </div>
