@@ -116,6 +116,7 @@ export default function App() {
     const sync = startClinicSync({
       load: createClinicStateLoader(),
       getBaseline: () => dbRef.current,
+      interval: 10000,
       onLoading: value => { if (showProgress) setRefreshing(value); },
       onData: (remote, baseline) => {
         const expectedBaseline = hasData ? baseline : undefined;

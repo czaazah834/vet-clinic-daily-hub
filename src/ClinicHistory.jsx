@@ -16,7 +16,17 @@ export function ClinicHistory({db,me,children}) {
   const [stale,setStale]=useState(false);
   const pending=useRef(null),mounted=useRef(true),baseline=useRef(null);
   useEffect(()=>{mounted.current=true;return ()=>{mounted.current=false;pending.current?.abort();};},[]);
-  useEffect(()=>{if(history && baseline.current && (baseline.current.appts!==db.appts || baseline.current.vacc!==db.vacc || baseline.current.records!==db.records || JSON.stringify(baseline.current.totals)!==JSON.stringify(db.totals)))setStale(true);},[db.appts,db.vacc,db.records,db.totals,history]);
+  useEffect(()=>{
+    if(history && baseline.current) {
+      const apptsChanged = (baseline.current.appts?.length !== db.appts?.length);
+      const vaccChanged = (baseline.current.vacc?.length !== db.vacc?.length);
+      const recordsChanged = (baseline.current.records?.length !== db.records?.length);
+      const totalsChanged = JSON.stringify(baseline.current.totals) !== JSON.stringify(db.totals);
+      if (apptsChanged || vaccChanged || recordsChanged || totalsChanged) {
+        setStale(true);
+      }
+    }
+  },[db.appts,db.vacc,db.records,db.totals,history]);
   const load=async(reset=false)=>{
     if(pending.current)return;
     const controller=new AbortController();pending.current=controller;setLoading(true);setError('');
@@ -35,20 +45,45 @@ export function ClinicHistory({db,me,children}) {
     }catch(err){if(mounted.current)setError(controller.signal.aborted?'History loading timed out. Please retry.':err.message);}
     finally{clearTimeout(timeout);pending.current=null;if(mounted.current)setLoading(false);}
   };
-  const value={loading,error,stale,started:!!history,complete:!!history&&!history.page.hasMore&&!stale,hasMore:!history||history.page.hasMore,load};
+  const value={loading,error,stale,started:!!history,complete:!!history&&!history.page?.hasMore,hasMore:!history||history.page?.hasMore,load};
   const merged=mergeClinicHistory(db,history,me);
   return <Context.Provider value={value}>{children({...merged,historyComplete:value.complete})}</Context.Provider>;
 }
 export function HistoryControls({auto=false}) {
   const history=useContext(Context);
-  useEffect(()=>{if(auto && history && !history.started && !history.loading)history.load();},[auto,history?.started]);
+  useEffect(()=>{
+    if(auto && history && !history.started && !history.loading) {
+      history.load();
+    }
+  },[auto,history?.started,history?.loading]);
+
+  useEffect(()=>{
+    if(auto && history?.stale && !history.loading) {
+      history.load(true);
+    }
+  },[auto,history?.stale,history?.loading]);
+
   if(!history)return null;
-  return <section className="card history-controls" aria-label="Saved history loading" style={{padding:12,marginBottom:12}}>
-    <p role="status">{history.complete?'All saved history is loaded.':'Current care is shown. Searches and lists cover loaded records; load more to include older history.'}</p>
-    {history.stale && <p role="status">Clinic records changed. Refresh saved history before using historical totals or reports.</p>}
-    {history.error && <p className="err" role="alert">{history.error}</p>}
-    {(history.hasMore || history.error || history.stale) && <button className="btn sm ghost" disabled={history.loading} onClick={()=>history.load(history.stale)}>{history.loading?'Loading history…':history.error?'Retry loading history':history.stale?'Refresh saved history':history.started?'Load more saved history':'Load saved history'}</button>}
-    {history.started && !history.stale && <button className="btn sm ghost" disabled={history.loading} onClick={()=>history.load(true)}>Refresh history</button>}
-  </section>;
+
+  if(history.error) {
+    return (
+      <div className="clinic-data-error" role="alert" style={{margin:'0 0 14px',padding:'10px 14px',borderRadius:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span>{history.error}</span>
+        <button className="btn sm ghost" onClick={()=>history.load(true)}>Retry loading history</button>
+      </div>
+    );
+  }
+
+  if(!auto && history.hasMore) {
+    return (
+      <div style={{margin:'0 0 12px'}}>
+        <button className="btn sm ghost" disabled={history.loading} onClick={()=>history.load()}>
+          {history.loading ? 'Loading older records…' : 'Load older history'}
+        </button>
+      </div>
+    );
+  }
+
+  return null;
 }
 export function useHistoryComplete(){return useContext(Context)?.complete ?? true;}

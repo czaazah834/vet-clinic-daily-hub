@@ -48,7 +48,7 @@ function PortalBody({ cfg, me, db, setDb, onLogout, dataLoading = false, dataErr
       </aside>
       {open && <div className="veil" onClick={() => setOpen(false)} />}
       <div className="main">
-        <header className="top"><button className="burger" onClick={() => setOpen(true)} aria-label="Open menu" aria-expanded={open}><Menu size={20} aria-hidden="true" /></button><div><h1>{cur.l}</h1><p>{cur.sub}</p></div>{dataLoading ? <span>{me.name}</span> : cfg.Header ? <cfg.Header db={db} setDb={setDb} me={me} go={go} say={say} onLogout={onLogout} /> : <StaffHeader db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} />}</header>
+        <header className="top"><button className="burger" onClick={() => setOpen(true)} aria-label="Open menu" aria-expanded={open}><Menu size={20} aria-hidden="true" /></button><div><h1>{cur.l}</h1><p>{cur.sub}</p></div>{cfg.Header ? <cfg.Header db={db} setDb={setDb} me={me} go={go} say={say} onLogout={onLogout} /> : <StaffHeader db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} />}</header>
         <main className="content" aria-busy={dataLoading && refreshing}>
           {dataError && <section className="clinic-data-error" role="alert">
             <p>{dataLoading ? "Clinic records could not load." : "Records may be out of date. Changes still require a successful server save."} {dataError}</p>

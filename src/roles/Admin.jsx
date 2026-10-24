@@ -597,7 +597,14 @@ function Dash({ db, setDb, me, go, say }) {
       <ReminderStatus />
       <div className="two" style={{ marginTop: "16px" }}>
         <Bars title="Appointments by Status" data={db.totals?.appointment_status || by(db.appts, "status")} />
-        {staff.data && <Bars title="Staff accounts by role" data={by(staff.data.staff, "role")} />}
+        {staff.data ? (
+          <Bars title="Staff accounts by role" data={by(staff.data.staff, "role")} />
+        ) : (
+          <section className="card" style={{ padding: "20px", minHeight: "180px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", color: "#94a3b8" }}>
+            <span style={{ fontSize: "13px", fontWeight: 600 }}>Staff accounts by role</span>
+            <span style={{ fontSize: "12px", marginTop: "4px" }}>Loading breakdown…</span>
+          </section>
+        )}
       </div>
 
       {/* Security & Activity Audit Log */}

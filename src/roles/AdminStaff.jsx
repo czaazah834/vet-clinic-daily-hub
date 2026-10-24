@@ -175,7 +175,15 @@ export default function AdminStaff({ onInvite }) {
 
         {/* Staff Directory Cards Grid */}
         <div style={{ marginTop: "20px" }}>
-          {data && !staff.length ? (
+          {!data && loading ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "14px" }}>
+              {[1, 2].map(k => (
+                <div key={k} className="card" style={{ padding: "20px", minHeight: "160px", background: "#f8fafc", border: "1.5px dashed #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>
+                  <span style={{ fontSize: "13px" }}>Loading staff accounts…</span>
+                </div>
+              ))}
+            </div>
+          ) : data && !staff.length ? (
             <div className="empty sm" style={{ padding: "32px 16px" }}>
               <p style={{ margin: 0, fontWeight: 600, color: "#64748b" }}>
                 {filter.trim() ? "No staff accounts match your search filter." : "No staff accounts found. Click '+ Invite Staff Member' to get started."}
@@ -330,7 +338,11 @@ export default function AdminStaff({ onInvite }) {
           </span>
         </div>
 
-        {data && !invitations.length ? (
+        {!data && loading ? (
+          <div className="empty sm" style={{ padding: "24px 16px", color: "#94a3b8" }}>
+            <p style={{ margin: 0 }}>Loading invitation records…</p>
+          </div>
+        ) : data && !invitations.length ? (
           <div className="empty sm" style={{ padding: "24px 16px" }}>
             <p style={{ margin: 0, color: "#64748b" }}>No staff invitations created yet.</p>
           </div>

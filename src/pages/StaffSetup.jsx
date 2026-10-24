@@ -278,7 +278,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
               </div>
             </div>
 
-            {err && (
+            {err && !err.includes("Missing staff invitation token") && (
               <div role="alert" style={{
                 background: "#fef2f2",
                 border: "1px solid #fecaca",

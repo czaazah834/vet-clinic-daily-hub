@@ -80,9 +80,9 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
 
   const all = (scope(db, me, "vacc") || []).slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const current = currentVaccinationDue(all);
-  const hasBooster = v => current.some(x => x.id === v.id);
-  const stateOf = v => vaccinationStatus(v, current);
-  const getApptForRecord = v => v && hasBooster(v) ? vaccinationAppointment(v, scope(db, me, "appts")) : null;
+  const hasBooster = v => Boolean(v && v.nextDue);
+  const stateOf = v => vaccinationStatus(v, current.length ? current : mine.filter(x => x.nextDue));
+  const getApptForRecord = v => v && v.nextDue ? vaccinationAppointment(v, scope(db, me, "appts")) : null;
 
   const over = all.filter(v => stateOf(v) === "Overdue"), soon = all.filter(v => stateOf(v) === "Due soon");
   const p = pets.find(x => x.id === sel), o = (db.owners || []).find(x => x.id === me.ownerId) || {};

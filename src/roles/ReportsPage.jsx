@@ -505,3 +505,4 @@ export default function ReportsPage({ db, me }) {
     </>
   );
 }
+
