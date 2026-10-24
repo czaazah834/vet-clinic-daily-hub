@@ -41,7 +41,7 @@ const mkRules = (db, me, editing) => v => {
 function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   const pets = scope(db, me, "pets"), owner = db.owners.find(o => o.id === me.ownerId) || {};
   const prev = editing ? serviceOf(editing) : "", svc0 = editing ? prev : start && start.reason ? inferService(start.reason) : "";
-  const [rs, ro] = editing ? splitReason(prev, editing.reason) : start && start.reason === "Deworming" ? ["Deworming", ""] : ["", ""];
+  const [rs, ro] = editing ? splitReason(prev, editing.reason) : start && start.reason ? splitReason(svc0, start.reason) : ["", ""];
   const f = useLive({ service: svc0, petId: editing ? editing.petId : (start && start.petId) || (pets.length === 1 ? pets[0].id : ""), vetId: editing ? editing.vetId : "", date: editing ? editing.date : (start && start.date) || "", time: editing ? editing.time : "", reasonSel: rs, reasonOther: ro, notes: editing ? editing.notes || "" : "" }, mkRules(db, me, editing));
   const { v } = f, S = SERVICES[v.service];
   const times = allowedTimes(db, v, editing), vetName = (VETS.find(x => x[0] === v.vetId) || [])[1];
@@ -99,6 +99,13 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   return (
     <Modal title={editing ? "Edit appointment" : "Book a visit"} onClose={onClose}>
       <form onSubmit={submit} noValidate>
+        {start && (start.fromVaccineCard || start.vaccineName) && (
+          <div className="ow-banner ok" style={{ marginBottom: 12 }}>
+            <span>
+              💉 <b>Vaccine Booster Schedule:</b> Booking for <b>{start.vaccineName || start.reason}</b> on <b>{start.date || "your scheduled date"}</b>. Please select your veterinarian and preferred time slot!
+            </span>
+          </div>
+        )}
         {!pets.length && <p className="ow-note">You have no pets on your account yet. Please ask the clinic front desk to register your pet first.</p>}
         {moved && <p className="ow-note">Changing the service, date, time or veterinarian sends this visit back to “Scheduled” so the clinic can re-confirm it.</p>}
         <ServicePicker value={v.service} onChange={x => { if (x === v.service) return; f.set("service", x); f.quiet({ time: "", reasonSel: "", reasonOther: "" }); }} error={f.show("service")} />
@@ -287,15 +294,24 @@ export default function OwnerAppts({ db, setDb, me, say }) {
                       View appointment
                     </button>
                   ) : (
-                    (x.kind === "due" || x.kind === "over") && (
+                    (x.kind === "due" || x.kind === "over" || x.kind === "sched" || x.vacc?.nextDue) && (
                       <button
                         type="button"
                         className="btn sm"
                         disabled={!pets.length}
                         style={{ whiteSpace: "nowrap" }}
-                        onClick={() => setModal({ book: true, start: { petId: x.vacc.petId, reason: x.vacc.vaccine === "Deworming" ? "Deworming" : "Vaccination", date: day } })}
+                        onClick={() => setModal({
+                          book: true,
+                          start: {
+                            petId: x.vacc.petId,
+                            reason: x.vacc.vaccine || "Vaccination",
+                            date: day,
+                            fromVaccineCard: true,
+                            vaccineName: x.vacc.vaccine
+                          }
+                        })}
                       >
-                        Book a visit
+                        Book visit by time
                       </button>
                     )
                   )}

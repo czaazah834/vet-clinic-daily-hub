@@ -74,8 +74,17 @@ export const makeReason = (service, sel, other) => {
 };
 export const splitReason = (service, reason) => {
   const S = SERVICES[service]; if (!S || !reason) return ["", ""];
-  if (service === "vaccination" && reason === "Deworming") return ["Deworming", ""];
-  if (service === "vaccination" && reason === "Vaccination") return ["Not sure, ask the vet", ""];
+  if (service === "vaccination") {
+    const lower = reason.toLowerCase();
+    if (lower.includes("deworm")) return ["Deworming", ""];
+    if (lower.includes("rabies")) return ["Anti-rabies", ""];
+    if (lower.includes("5-in-1") || lower.includes("dhpp")) return ["5-in-1", ""];
+    if (lower.includes("6-in-1")) return ["6-in-1", ""];
+    if (lower.includes("8-in-1")) return ["8-in-1", ""];
+    if (lower.includes("kennel") || lower.includes("bordetella")) return ["Kennel cough", ""];
+    if (lower.includes("feline") || lower.includes("fvrcp") || lower.includes("4-in-1")) return ["Feline 4-in-1", ""];
+    if (reason === "Vaccination" || lower.includes("not sure")) return ["Not sure, ask the vet", ""];
+  }
   const rest = S.prefix && reason.startsWith(S.prefix) ? reason.slice(S.prefix.length) : reason;
   return S.options.includes(rest) && rest !== "Other" ? [rest, ""] : ["Other", rest];
 };

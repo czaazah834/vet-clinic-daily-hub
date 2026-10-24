@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Badge, VETS, scope, petName, dueState, TODAY, ICON, I } from "../../lib.jsx";
 import { auth, OFFLINE_MSG } from "../../authApi.js";
-import { setPrefill, Avatar, toSquare, pick, petAge, Icon, Modal } from "./ui.jsx";
+import { setPrefill, Avatar, toSquare, pick, petAge, Icon, Modal, fmt12 } from "./ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails } from "../../preventiveSchedule.js";
 import MedProfile from "./MedProfile.jsx";
 
@@ -74,6 +74,17 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
   useEffect(() => { setIsFlipped(false); }, [sel]);
 
   const all = (scope(db, me, "vacc") || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+  const myAppts = (scope(db, me, "appts") || []).filter(a => !["Cancelled", "No-show"].includes(a.status));
+  const getApptForRecord = v => {
+    if (!v) return null;
+    let found = v.nextDue ? myAppts.find(a => a.petId === v.petId && a.date === v.nextDue) : null;
+    if (!found && v.vaccine) {
+      const q = v.vaccine.toLowerCase();
+      found = myAppts.find(a => a.petId === v.petId && a.date >= TODAY && (a.reason || "").toLowerCase().includes(q));
+    }
+    return found;
+  };
+
   const over = all.filter(v => stateOf(v) === "Overdue"), soon = all.filter(v => stateOf(v) === "Due soon");
   const p = pets.find(x => x.id === sel), o = (db.owners || []).find(x => x.id === me.ownerId) || {};
   const ageDetails = p?.birth ? computeAgeDetails(p.birth) : null;
@@ -104,7 +115,16 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
   if (q.trim()) list = list.filter(v => [v.vaccine, v.notes, v.brand, v.batch].join(" ").toLowerCase().includes(q.trim().toLowerCase()));
   const filtered = !!(st || q.trim());
 
-  const book = v => { setPrefill({ petId: v.petId, reason: v.vaccine === "Deworming" ? "Deworming" : "Vaccination" }); go("appts"); };
+  const book = v => {
+    setPrefill({
+      petId: v.petId,
+      reason: v.vaccine || "Vaccination",
+      date: v.nextDue || TODAY,
+      fromVaccineCard: true,
+      vaccineName: `${v.vaccine}${doseLabel(v) ? ` (${doseLabel(v)})` : ""}`
+    });
+    go("appts");
+  };
   
   const savePhoto = async photo => {
     try {
@@ -511,6 +531,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                         <tbody>
                           {mine.map(v => {
                             const s = stateOf(v), t = tone(s);
+                            const matchedAppt = getApptForRecord(v);
                             const isSelected = det && det.id === v.id;
                             return (
                               <tr
@@ -536,6 +557,11 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                     <>
                                       <b>{fmtDate(v.nextDue)}</b>
                                       {!v.done && <div style={{ fontSize: "11px", color: s === "Overdue" ? "#dc2626" : s === "Due soon" ? "#d97706" : "#059669" }}>{rel(v.nextDue)}</div>}
+                                      {matchedAppt && (
+                                        <div style={{ fontSize: "10.5px", color: "#15803d", fontWeight: 700, marginTop: "2px" }}>
+                                          ✓ Appt: {fmt12(matchedAppt.time)}
+                                        </div>
+                                      )}
                                     </>
                                   ) : "—"}
                                 </td>
@@ -562,7 +588,13 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                   </span>
                                 </td>
                                 <td style={{ padding: "8px" }}>
-                                  <Badge v={s === "No next dose" ? "Completed" : s} />
+                                  {matchedAppt ? (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "#dcfce7", color: "#15803d", border: "1px solid #86efac", padding: "1px 6px", borderRadius: "8px", fontSize: "10.5px", fontWeight: 700 }}>
+                                      ✓ Scheduled
+                                    </span>
+                                  ) : (
+                                    <Badge v={s === "No next dose" ? "Completed" : s} />
+                                  )}
                                 </td>
                               </tr>
                             );
@@ -651,6 +683,8 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                         <tbody>
                           {list.map(v => {
                             const s = stateOf(v), t = tone(s);
+                            const matchedAppt = getApptForRecord(v);
+                            const hasNext = !!v.nextDue && !v.done;
                             return (
                               <tr
                                 key={v.id}
@@ -678,22 +712,71 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                   <span>
                                     {v.nextDue ? fmtDate(v.nextDue) : "—"}
                                     {v.nextDue && !v.done && <small className={`vc-rel ${t}`}>{rel(v.nextDue)}</small>}
+                                    {matchedAppt && (
+                                      <small style={{ display: "block", color: "#166534", fontWeight: 700, marginTop: "2px" }}>
+                                        ✓ Scheduled {matchedAppt.time ? `• ${fmt12(matchedAppt.time)}` : ""}
+                                      </small>
+                                    )}
                                   </span>
                                 </td>
                                 <td data-label="Status">
                                   <span>
-                                    <Badge v={s === "No next dose" ? "Completed" : s} />
-                                    {v.done && <small className="vc-rel">Completed</small>}
+                                    {matchedAppt ? (
+                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#dcfce7", color: "#15803d", border: "1px solid #86efac", padding: "2px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: 700 }}>
+                                        ✓ Scheduled
+                                      </span>
+                                    ) : (
+                                      <Badge v={s === "No next dose" ? "Completed" : s} />
+                                    )}
+                                    {v.done ? (
+                                      <small className="vc-rel">Completed</small>
+                                    ) : matchedAppt ? (
+                                      <small className="vc-rel" style={{ color: "#166534" }}>Visit confirmed</small>
+                                    ) : null}
                                   </span>
                                 </td>
                                 <td data-label="Product / Batch">
                                   <span>{v.batch ? `Lot ${v.batch}` : "Lot: AUTO-0912"}</span>
                                 </td>
                                 <td className="act vc-noprint">
-                                  {(s === "Overdue" || s === "Due soon") ? (
-                                    <button className="btn sm" onClick={e => { e.stopPropagation(); book(v); }}>Book visit</button>
+                                  {matchedAppt ? (
+                                    <button
+                                      type="button"
+                                      className="btn ghost sm"
+                                      style={{ color: "#15803d", borderColor: "#86efac", background: "#f0fdf4", fontWeight: 700, whiteSpace: "nowrap" }}
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        setPrefill(null);
+                                        go("appts");
+                                      }}
+                                      title={`Visit scheduled for ${fmtDate(matchedAppt.date)} at ${fmt12(matchedAppt.time)}. Click to view in My Appointments.`}
+                                    >
+                                      ✓ Scheduled {matchedAppt.time ? `(${fmt12(matchedAppt.time)})` : ""}
+                                    </button>
+                                  ) : hasNext ? (
+                                    <button
+                                      type="button"
+                                      className={`btn sm ${s === "Overdue" ? "gold" : s === "Due soon" ? "gold" : ""}`}
+                                      style={{ whiteSpace: "nowrap" }}
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        book(v);
+                                      }}
+                                      title={`Book visit on ${fmtDate(v.nextDue)} by picking your time slot`}
+                                    >
+                                      Book visit by time
+                                    </button>
                                   ) : (
-                                    <button className="btn ghost sm" onClick={e => { e.stopPropagation(); handleRowClick(v); }}>View Card</button>
+                                    <button
+                                      type="button"
+                                      className="btn ghost sm"
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        handleRowClick(v);
+                                      }}
+                                    >
+                                      View Card
+                                    </button>
                                   )}
                                 </td>
                               </tr>
@@ -744,11 +827,33 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
           </div>
 
           <div className="row end" style={{ marginTop: 16 }}>
-            {(stateOf(det) === "Overdue" || stateOf(det) === "Due soon") && (
-              <button className="btn" onClick={() => { const v = det; setDet(null); book(v); }}>
-                Book next visit
-              </button>
-            )}
+            {(() => {
+              const detAppt = getApptForRecord(det);
+              if (detAppt) {
+                return (
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    style={{ color: "#15803d", borderColor: "#86efac", background: "#f0fdf4", fontWeight: 700 }}
+                    onClick={() => { setDet(null); go("appts"); }}
+                  >
+                    ✓ Scheduled for {fmtDate(detAppt.date)} at {fmt12(detAppt.time)}
+                  </button>
+                );
+              }
+              if (det.nextDue && !det.done) {
+                return (
+                  <button
+                    type="button"
+                    className="btn gold"
+                    onClick={() => { const v = det; setDet(null); book(v); }}
+                  >
+                    Book visit by time ({fmtDate(det.nextDue)})
+                  </button>
+                );
+              }
+              return null;
+            })()}
             <button className="btn ghost" onClick={() => setDet(null)}>Close</button>
           </div>
         </Modal>

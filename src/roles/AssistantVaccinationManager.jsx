@@ -311,9 +311,21 @@ export default function AssistantVaccinationManager({ db, setDb, me, say }) {
                           {v.nextDue}
                         </span>
                       </div>
-                      <div style={{ color: "#64748b", fontSize: "11.5px", margin: "2px 0 6px" }}>
+                      <div style={{ color: "#64748b", fontSize: "11.5px", margin: "2px 0 4px" }}>
                         {v.vaccine} &bull; {o.name}
                       </div>
+                      {(() => {
+                        const hasAppt = (db.appts || []).find(a =>
+                          a.petId === (p.id || v.petId) &&
+                          !["Cancelled", "No-show"].includes(a.status) &&
+                          (a.date === v.nextDue || (a.date >= TODAY && (a.reason || "").toLowerCase().includes((v.vaccine || "").toLowerCase())))
+                        );
+                        return hasAppt ? (
+                          <div style={{ color: "#15803d", fontSize: "11px", fontWeight: 700, margin: "0 0 6px" }}>
+                            ✓ Scheduled on {hasAppt.date} {hasAppt.time ? `(${hasAppt.time})` : ""}
+                          </div>
+                        ) : null;
+                      })()}
                       <button
                         type="button"
                         className="btn ghost sm"

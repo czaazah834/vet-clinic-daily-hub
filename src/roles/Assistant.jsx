@@ -214,6 +214,11 @@ function Dash({ db, setDb, me, go, say }) {
               {calls.map(v => {
                 const p = db.pets.find(x => x.id === v.petId) || {};
                 const o = db.owners.find(x => sameOwner(x, p.ownerId)) || {};
+                const hasAppt = (db.appts || []).find(a =>
+                  a.petId === (p.id || v.petId) &&
+                  !["Cancelled", "No-show"].includes(a.status) &&
+                  (a.date === v.nextDue || (a.date >= TODAY && (a.reason || "").toLowerCase().includes((v.vaccine || "").toLowerCase())))
+                );
                 return (
                   <div className="sf-row" key={v.id}>
                     <div className="sf-body">
@@ -223,13 +228,20 @@ function Dash({ db, setDb, me, go, say }) {
                       </div>
                       <div className="sf-sub">
                         <Syringe size={12} aria-hidden="true" style={{ verticalAlign: "-1px" }} /> {v.vaccine}, due <b>{v.nextDue}</b>
+                        {hasAppt && <span style={{ marginLeft: 8, color: "#15803d", fontWeight: 700 }}>✓ Appt: {hasAppt.date} {hasAppt.time || ""}</span>}
                       </div>
                       <div className="sf-sub"><Phone size={12} aria-hidden="true" style={{ verticalAlign: "-1px" }} /> {o.phone || "No phone on file"}</div>
                     </div>
                     <div className="sf-row-act">
-                      <Badge v={dueState(v.nextDue)} />
+                      <Badge v={hasAppt ? "Scheduled" : dueState(v.nextDue)} />
                       <button className="btn sm ghost" onClick={() => openCard(p.id || v.petId)}>Card</button>
-                      <button className="btn sm gold" title="Book the booster visit in the clinic calendar" onClick={() => { go("cal"); say(`Booking booster for ${p.name || "patient"} (${v.vaccine}).`); }}>Book booster</button>
+                      {hasAppt ? (
+                        <button className="btn sm ghost" style={{ color: "#15803d", borderColor: "#86efac", background: "#f0fdf4" }} onClick={() => go("cal")} title="View scheduled appointment in calendar">
+                          ✓ Scheduled
+                        </button>
+                      ) : (
+                        <button className="btn sm gold" title="Book the booster visit in the clinic calendar" onClick={() => { go("cal"); say(`Booking booster for ${p.name || "patient"} (${v.vaccine}).`); }}>Book booster</button>
+                      )}
                       <button className="btn ghost sm" onClick={() => setLogCallTarget({ v, p, o })} title="Log call notes and dispatch reminders via Email and SMS">Log call</button>
                     </div>
                   </div>

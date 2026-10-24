@@ -68,13 +68,14 @@ function Dash({ db, setDb, me, go, say }) {
     {pets.length ? <div className="petgrid">{pets.map(p => {
       const nv = V.filter(v => v.petId === p.id && v.nextDue && !v.done).sort((a, b) => a.nextDue.localeCompare(b.nextDue))[0];
       const na = A.filter(a => a.petId === p.id && LIVE.includes(a.status) && a.date >= TODAY).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
+      const nvAppt = nv ? A.find(a => a.petId === p.id && LIVE.includes(a.status) && (a.date === nv.nextDue || (a.date >= TODAY && (a.reason || "").toLowerCase().includes(nv.vaccine.toLowerCase())))) : null;
       return <article className="petcard" key={p.id} role="button" tabIndex={0} aria-label={`${p.name}, open pet details`} onClick={() => setModal({ profile: p })} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModal({ profile: p }); } }}>
         <div className="pc-top">
           <div className="big"><Avatar src={p.photo} fallback={<I e={ICON[p.species]} size={30} />} size={64} round={false} /></div>
           <div className="pc-id"><h3>{p.name}</h3><p>{p.breed || p.species}</p></div>
         </div>
         <div className="pc-tags">{p.sex && <span>{p.sex}</span>}{p.weight ? <span>{p.weight} kg</span> : null}{p.birth ? <span>{petAge(p.birth)}</span> : null}</div>
-        <div className="kv"><span>Next vaccine</span>{nv ? <b>{nv.vaccine} <Badge v={dueState(nv.nextDue)} /></b> : <b>—</b>}</div>
+        <div className="kv"><span>Next vaccine</span>{nv ? <b>{nv.vaccine} <Badge v={nvAppt ? "Scheduled" : dueState(nv.nextDue)} /></b> : <b>—</b>}</div>
         <div className="kv"><span>Next visit</span><b>{na ? <>{na.date} {fmt12(na.time)} <Badge v={na.status} /></> : "None booked"}</b></div>
         <small className="pc-more">View details <Icon n="chevron" size={14} /></small></article>;
     })}</div> : null}
