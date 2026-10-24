@@ -1,10 +1,10 @@
+import { canBookAppointments } from "../appointmentPermissions.js";
 import { useState, useRef } from "react";
 import { PawPrint, Printer, RotateCw, Calendar, CheckCircle2, Clock, CreditCard, Receipt, ArrowRight, X } from "lucide-react";
 import { Badge, VETS, TODAY, ICON, I, moveAppt, uid } from "../lib.jsx";
 import { Avatar, Icon, toSquare } from "./owner/ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails } from "../preventiveSchedule.js";
 import { auth, OFFLINE_MSG } from "../authApi.js";
-import { isVet } from "./clinicValidation.js";
 
 const CLINIC = {
   name: "PawCare Veterinary Clinic",
@@ -573,7 +573,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
 
         {/* Action row */}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>
-          {onBook && !isVet(me?.role) && (
+          {onBook && canBookAppointments(me?.role) && (
             <button className="btn gold sm" onClick={() => { onClose(); onBook(p.id); }}>
               + Book Visit for {p.name}
             </button>

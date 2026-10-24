@@ -665,3 +665,11 @@ are labelled as unrecorded instead of assuming normal temperature or ideal weigh
 
 Check: `node --test tests/soap-validation.test.js`; `npm run test:clinic`;
 `npm run build`.
+
+### Appointment booking permissions
+
+Owners and reception book visits. Doctors view their assigned schedule and start
+care for checked-in patients; they cannot book, reschedule, confirm or cancel
+appointments. A doctor can record a clinical follow-up request in SOAP; reception
+or the owner selects and books its time slot. These permissions apply to calendar
+prefills, patient cards, directory actions and direct API requests.

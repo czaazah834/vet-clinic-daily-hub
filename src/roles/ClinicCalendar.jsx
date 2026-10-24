@@ -1,3 +1,4 @@
+import { canBookAppointments } from "../appointmentPermissions.js";
 import { prefill } from "./owner/ui.jsx";
 import { openFollowUps } from "../clinicalWorkflow.js";
 import { useAvailability } from "../useAvailability.js";
@@ -79,7 +80,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const curMonthMin = t.getMonth();
   const [cur, setCur] = useState({ y: curYearMin, m: curMonthMin });
   const isDoctor = isVet(me?.role);
-  const canBook = ["owner", "assistant"].includes(me?.role);
+  const canBook = canBookAppointments(me?.role);
   const [viewMode, setViewMode] = useState(me?.role === "owner" ? "month" : "timeline"); // 'timeline' | 'month' | 'list'
   const doctors = calendarDoctors(db, me, VETS);
   const [selectedVet, setVetFilter] = useState("");
@@ -96,7 +97,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const canGoNextMonth = cur.y < curYearMin + 1 || (cur.y === curYearMin + 1 && cur.m < 11);
 
   // Modals
-  const [bookingSlot, setBookingSlot] = useState(() => { const start = prefill.data; prefill.data = null; return start ? {...start, time:"", vetId:""} : null; }); // { date, time, vetId }
+  const [bookingSlot, setBookingSlot] = useState(() => { const start = prefill.data; prefill.data = null; return canBook && start ? {...start, time:"", vetId:""} : null; }); // { date, time, vetId }
   const [checkInAppt, setCheckInAppt] = useState(null);
   const [activeSoap, setActiveSoap] = useState(null);
   const [billingAppt, setBillingAppt] = useState(null);
@@ -162,6 +163,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 
   // Quick booking submit saved to PostgreSQL backend
   const handleQuickBook = async (petId, serviceName, reasonText, targetVetId, targetDate, targetTime, followUpId) => {
+    if (!canBook) throw new Error("Only owners and reception can book visits.");
     const newApptId = "a_" + uid();
     const reason = serviceName ? `${SERVICES[serviceName]?.label || serviceName}: ${reasonText}` : reasonText;
     const newAppt = {
@@ -444,7 +446,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                 {isDoctor ? "Your daily schedule" : "Clinic daily schedule"}
               </h3>
               <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                {isDoctor ? "Review your appointments and continue patient care." : canBook ? "View each veterinarian’s day. Choose an open slot to book a visit." : "Review clinic capacity and appointments."}
+                {isDoctor ? "View your assigned visits and continue patient care. Reception manages bookings." : canBook ? "View each veterinarian’s day. Choose an open slot to book a visit." : "Review clinic capacity and appointments."}
               </p>
             </div>
 
@@ -470,7 +472,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
             <div><Activity size={20} /><span><strong>{dayEvents.filter(e => ["Checked-in", "In consultation"].includes(e.status)).length}</strong> in clinic</span></div>
             <div><CheckCircle2 size={20} /><span><strong>{dayEvents.filter(e => e.status === "Completed").length}</strong> completed</span></div>
           </div>
-          {dayEvents.length === 0 && <div className="cc-empty" role="status"><Calendar size={22} /><div><b>No appointments for this day</b><span>{isDoctor ? "Your available time slots are shown below. Choose another date to review upcoming visits." : canBook ? "Choose an open slot below to book the first visit." : "There are no visits to review for this date."}</span></div></div>}
+          {dayEvents.length === 0 && <div className="cc-empty" role="status"><Calendar size={22} /><div><b>No appointments for this day</b><span>{isDoctor ? "Choose another date to review your assigned visits. Reception manages bookings." : canBook ? "Choose an open slot below to book the first visit." : "There are no visits to review for this date."}</span></div></div>}
           {/* Timeline Table */}
           <div className="cc-timeline-scroll" role="region" aria-label="Daily doctor timetable" tabIndex={0}>
             <table className="cc-timeline" style={{ minWidth: `${100 + visibleDoctors.length * 270}px` }}>
@@ -931,7 +933,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
       )}
 
       {/* Quick Booking Modal from Open Slot */}
-      {bookingSlot && (
+      {canBook && bookingSlot && (
         <QuickBookModal
           doctors={doctors}
           slot={bookingSlot}
@@ -998,11 +1000,11 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
             setCardPetId(null);
             setCardAppt(null);
           }}
-          onBook={() => {
+          onBook={canBook ? () => {
             setCardPetId(null);
             setCardAppt(null);
             setBookingSlot({ date: TODAY, time: "10:00", vetId: vetFilter || doctors[0]?.[0] });
-          }}
+          } : undefined}
           onCheckIn={(a) => {
             setCardPetId(null);
             setCardAppt(null);

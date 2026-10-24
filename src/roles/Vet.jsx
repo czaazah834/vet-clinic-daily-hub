@@ -73,7 +73,7 @@ function Dash({ db, setDb, me, go, say }) {
               <Play size={16} aria-hidden="true" />{startingId ? "Starting consultation…" : `Start next consultation (${petName(db, waiting[0].petId)})`}
             </button>
           )}
-          <button className="btn" onClick={() => go("cal")}><CalendarDays size={16} aria-hidden="true" />Schedule calendar</button>
+          <button className="btn" onClick={() => go("cal")}><CalendarDays size={16} aria-hidden="true" />View schedule</button>
           <button className="btn" onClick={() => go("pets")}><Search size={16} aria-hidden="true" />Search patient EMR</button>
         </div>
       </Hero>
@@ -188,7 +188,7 @@ export const vet = {
   Dash,
   menu: [
     { k: "home", l: "Clinical Queue", i: "stethoscope", dash: 1, sub: "Live patient queue, SOAP consultation notes and EMR records." },
-    { k: "cal", l: "Doctor Schedule", i: "calendar", Page: ClinicCalendar, sub: "Clinic appointment calendar and timetable." },
+    { k: "cal", l: "Doctor Schedule", i: "calendar", Page: ClinicCalendar, sub: "View assigned visits. Reception manages bookings." },
     { k: "pets", l: "Patient EMR & Masterlist", i: "paw", Page: ClientsAndPatientsPage, sub: "Digital medical records, patient profiles, and official vaccination cards." },
     { k: "records", l: "SOAP Consultations", i: "file", Page: ConsultationsPage, sub: "Certified SOAP consultation notes, clinical diagnoses, and prescriptions." },
     { k: "vacc", l: "Vaccination Cards", i: "syringe", Page: VaccinationCards, sub: "Review patient cards. Certify administered doses through the consultation." },
