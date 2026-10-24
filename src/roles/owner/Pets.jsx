@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { TODAY, scope, uid, addLog, dueState, ICON } from "../../lib.jsx";
-import { useLive, Field, Modal, petAge, fmt12, onlyDecimal, Icon } from "./ui.jsx";
+import { useLive, Field, Modal, petAge, fmt12, onlyDecimal, Icon, PhotoUpload } from "./ui.jsx";
 import {
   computeAgeDetails,
   getPreventiveSchedule,
@@ -219,7 +219,7 @@ export function validatePet(v, taken = []) {
   else if (!["Male", "Female"].includes(v.sex)) e.sex = "Pick one from the list";
 
   if (!v.birth) e.birth = "Enter the birth date (yesterday or earlier)";
-  else if (isNaN(new Date(v.birth + "T00:00:00"))) e.birth = "Enter a valid date";
+  else if (!/^\d{4}-\d{2}-\d{2}$/.test(v.birth) || isNaN(new Date(v.birth + "T00:00:00Z")) || new Date(v.birth + "T00:00:00Z").toISOString().slice(0,10) !== v.birth) e.birth = "Enter a valid date";
   else if (v.birth >= TODAY) e.birth = "Birth date cannot be today or in the future. Please select yesterday or earlier";
   else if (v.birth < OLDEST) e.birth = "That date is too far back. Check the year";
 
@@ -275,11 +275,15 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
     weight: e0.weight != null ? String(e0.weight) : "",
     neutered: e0.neutered || "",
     color: e0.color || "",
-    dentalOcclusion: e0.dentalOcclusion || "Normal / Aligned (Healthy Occlusion)",
+    dentalOcclusion: e0.dentalOcclusion || "Not Evaluated Yet",
     notes: e0.notes || ""
   }, v => validatePet(v, taken));
 
   const { v } = f, [top, setTop] = useState("");
+  const [photo,setPhoto] = useState(e0.photo || "");
+  const [saving,setSaving] = useState(false);
+  const [uploading,setUploading] = useState(false);
+  const savingRef = useRef(false);
 
   const initialSpeciesBreeds = BREEDS_BY_SPECIES[v.species] || BREEDS_BY_SPECIES[e0.species] || [];
   const isCustomInitial = e0.breed && !initialSpeciesBreeds.includes(e0.breed);
@@ -296,7 +300,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
     setCustomBreed("");
     f.set("breed", "");
     if (newSpecies.includes("Rodent")) {
-      f.set("dentalOcclusion", "Normal / Aligned (Healthy Occlusion)");
+      f.set("dentalOcclusion", "Not Evaluated Yet");
     } else {
       f.set("dentalOcclusion", "");
     }
@@ -331,7 +335,9 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
   };
 
   const submit = async ev => {
-    ev.preventDefault(); setTop(""); f.submit();
+    ev.preventDefault();
+    if (savingRef.current || uploading) return;
+    setTop(""); f.submit();
     if (!f.valid) return;
     if (editing) {
       const cur = (db.petRequests || []).find(r => r.id === editing.id && r.ownerId === me.ownerId);
@@ -351,12 +357,16 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
       neutered: v.neutered,
       color: v.color.trim(),
       dentalOcclusion: canonicalSpecies === "Rodent" ? v.dentalOcclusion : "",
-      notes: v.notes.trim()
+      notes: v.notes.trim(),
+      photo
     };
 
+    savingRef.current = true;
+    setSaving(true);
     try {
-      // 1. Submit pending request to PostgreSQL Neon DB
-      const res = await api.post("/api/pet-requests", { ...data, ownerId: me.ownerId });
+      const res = editing
+        ? await api.put(`/api/pet-requests/${editing.id}`, { ...data, revision:editing.revision ?? 0 })
+        : await api.post("/api/pet-requests", data);
       if (res && res.request) {
         const reqObj = {
           id: res.request.id,
@@ -364,6 +374,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
           requestedAt: TODAY,
           status: "Pending",
           declineReason: "",
+          revision:res.request.revision,
           ...data
         };
         setDb(p => ({
@@ -378,10 +389,10 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
         return;
       }
     } catch (err) {
-      say(err.message);
+      setTop(err.message);
       return;
-    }
-    say("The server did not confirm the registration. Please try again.");
+    } finally { savingRef.current = false; setSaving(false); }
+    setTop("The server did not confirm the registration. Please try again.");
   };
 
   const availableBreeds = BREEDS_BY_SPECIES[v.species] || [];
@@ -393,8 +404,8 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
   const normSpecies = normalizeSpecies(v.species);
 
   return (
-    <Modal title={editing ? "Edit pet request" : "Add my pet"} onClose={onClose}>
-      <form onSubmit={submit} noValidate>
+    <Modal title={editing ? "Edit pet request" : "Add my pet"} onClose={() => {if (!savingRef.current) onClose();}}>
+      <form onSubmit={submit} noValidate aria-busy={saving}>
         <p className="ow-note info">The clinic front desk reviews each patient registration before activating it in the clinical system.</p>
 
         {v.species && GUIDANCE_BY_SPECIES[v.species] && (
@@ -403,6 +414,12 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
           </div>
         )}
 
+        <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
+        <div className="op-sec">
+          <h4>Pet picture (optional)</h4>
+          <PhotoUpload src={photo} fallback={<Icon n="paw" />} label="Choose pet picture" onBusyChange={setUploading} onSave={async value => setPhoto(value)} onRemove={async () => setPhoto("")} />
+          <p className="ow-hint">The picture is saved when you send this request and stays with the approved pet.</p>
+        </div>
         <div className="op-2">
           <Field id="pn" label="Pet name" req value={v.name} filter={petText} filterMsg="Letters, numbers and . ' - only" maxLen={30} onChange={x => f.set("name", x)} onBlur={() => f.blur("name")} error={f.show("name")} valid={f.ok("name")} />
           
@@ -459,9 +476,10 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
           <div className="full"><Field id="pm" label="Anything the clinic should know (optional)" type="textarea" rows={2} max={200} value={v.notes} onChange={x => f.set("notes", x)} onBlur={() => f.blur("notes")} error={f.show("notes")} valid={f.ok("notes")} hint="Health problems, behavior or past treatments" /></div>
         </div>
 
+        </fieldset>
         {top && <p className="err" role="alert">{top}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
-        <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Close</button><button className="btn">{editing ? "Save and resend" : "Send to clinic"}</button></div>
+        <div className="row end"><button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Close</button><button className="btn" disabled={saving || uploading}>{saving ? "Sending…" : uploading ? "Preparing picture…" : editing ? "Save and resend" : "Send to clinic"}</button></div>
       </form>
     </Modal>
   );

@@ -168,3 +168,39 @@ remain supported when no active reservation exists; they cannot override one.
 The PostgreSQL integration suite above also verifies checkout rollback,
 prior-day recovery, competing receptionists, claim renewal/release/expiry,
 failed-payment recovery and payment/task atomicity.
+
+### Pet registration review and correction
+
+Apply `server/database/pet-registration.sql` after `schema.sql` before deploying
+with a runtime database role that cannot run DDL. `npm run db:init` includes it;
+state/registration endpoints also attempt the idempotent migration. It adds
+request photos, dental details and a review revision, and preserves dental
+details on the approved pet. Existing requests start at revision zero.
+
+Owners submit required pet details for reception review. The server validates
+real birth dates before today (Asia/Manila, within 40 years), species, sex,
+spay/neuter status, weight 0.05–120 kg with up to two decimal places, text lengths,
+and bounded JPG/PNG/WEBP data. Photos chosen in the form are resized before
+submission and remain with the approved pet. The same image checks apply to
+later pet-picture changes. Registration weight/dental details are owner reports;
+they do not replace measured clinical intake or a veterinarian examination.
+
+Corrections use `PUT /api/pet-requests/:id` and return the same request to Pending;
+resending a declined request clears its decline reason. The owner can hold up
+to 10 pets/requests and up to 3 pending requests. Name and capacity checks serialize
+per owner to prevent simultaneous submissions bypassing the limits. Owners can
+withdraw pending/declined requests; approved patients remain clinic records.
+
+Edits, approval and decline must include the latest integer `revision` from
+state or the previous response. This tightens the earlier unversioned review
+API: older clients must reload/use the updated form. A stale review returns 409
+and requires reopening the request. Failed saves retain form entries. Creation,
+correction, withdrawal and review audit writes commit with the related data;
+failed approval never leaves a patient or vaccination schedule behind. Approval
+preserves the existing rule that no appointment is reserved automatically.
+
+Validate against a disposable local database (no provider messages):
+
+```bash
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/pawcare npm run test:registration:postgres
+```
