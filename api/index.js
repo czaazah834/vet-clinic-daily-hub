@@ -1,3 +1,4 @@
+import {clinicCors,trustedBrowserOrigin} from '../server/appOrigin.js';
 import { jobsRouter } from "../server/routes/jobs.js";
 import express from "express";
 import cors from "cors";
@@ -16,10 +17,8 @@ const app = express();
 // Trust reverse proxy (Vercel, Cloudflare, Nginx) so req.ip and secure cookies work correctly
 app.set("trust proxy", 1);
 
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+app.use(trustedBrowserOrigin);
+app.use(cors(clinicCors));
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));

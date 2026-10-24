@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Logo, I } from "../lib.jsx";
-import { PW_RULES, pwStrength, validateReset } from "../validate.js";
+import { PW_RULES, pwStrength, validateReset, emOk } from "../validate.js";
 import { useLive, Field, noSpaces } from "../roles/owner/ui.jsx";
 import { auth, OFFLINE_MSG } from "../authApi.js";
 import OtpBoxInput from "./OtpBoxInput.jsx";
@@ -18,7 +18,6 @@ export default function Forgot({ onBack, go }) {
     [busy, setBusy] = useState(false),
     [top, setTop] = useState(""),
     [cool, setCool] = useState(0),
-    [dev, setDev] = useState(""),
     [show, setShow] = useState(false),
     [srv, setSrv] = useState({});
 
@@ -28,6 +27,7 @@ export default function Forgot({ onBack, go }) {
     return () => clearTimeout(t);
   }, [cool]);
 
+  const pending=useRef(false);
   const set = (k, x) => {
     f.set(k, x);
     if (srv[k]) setSrv((s) => ({ ...s, [k]: "" }));
@@ -44,16 +44,18 @@ export default function Forgot({ onBack, go }) {
     e && e.preventDefault();
     setTop("");
     f.blur("identifier");
-    if (f.errs.identifier || busy || cool > 0) return;
+    if (!emOk(v.identifier.trim()) || pending.current || cool > 0) return;
+    pending.current=true;
     setBusy(true);
     try {
       const r = await auth.forgot(v.identifier.trim());
-      setDev((r && r.devCode) || "");
       setStep("reset");
-      setCool(30);
+      setCool(r.retryAfter || 60);
     } catch (x) {
+      if(x.status===429)setCool(60);
       fail(x);
     }
+    pending.current=false;
     setBusy(false);
   };
 
@@ -61,14 +63,16 @@ export default function Forgot({ onBack, go }) {
     e.preventDefault();
     setTop("");
     f.submit();
-    if (!f.valid || busy) return;
+    if (!f.valid || pending.current) return;
+    pending.current=true;
     setBusy(true);
     try {
-      await auth.reset({ identifier: v.identifier.trim(), code: v.code.trim(), password: v.password });
+      await auth.reset({ identifier: v.identifier.trim(), code: v.code.trim(), password: v.password, confirm_password:v.confirm });
       setStep("done");
     } catch (x) {
       fail(x);
     }
+    pending.current=false;
     setBusy(false);
   };
 
@@ -109,17 +113,18 @@ export default function Forgot({ onBack, go }) {
         </div>
       ) : step === "ask" ? (
         <form className="auth-verify-card" onSubmit={send} noValidate style={{ textAlign: "left" }}>
+          <fieldset disabled={busy} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <button type="button" className="lnk" onClick={onBack} style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginBottom: "8px" }}>
             <ArrowLeft size={14} /> Back to log in
           </button>
           <h2 style={{ textAlign: "center", marginBottom: "6px" }}>Find your account</h2>
           <p className="card-subtitle" style={{ textAlign: "center" }}>
-            Enter your email or username and we’ll send a 6-digit verification code.
+            Enter your registered email to request a 6-digit recovery code.
           </p>
 
           <Field
             id="fid"
-            label="Username or email"
+            label="Registered email"
             req
             value={v.identifier}
             filter={noSpaces}
@@ -133,12 +138,14 @@ export default function Forgot({ onBack, go }) {
 
           {top && <p className="err" role="alert" style={{ margin: "10px 0" }}>{top}</p>}
 
-          <button className="btn gold wide" disabled={busy} style={{ marginTop: "16px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-            {busy ? "Sending code..." : "Send me a 6-digit code"} <ArrowRight size={16} />
+          <button className="btn gold wide" disabled={busy || cool > 0} style={{ marginTop: "16px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+            {busy ? "Requesting code..." : cool > 0 ? `Try again in ${cool}s` : "Send me a 6-digit code"} <ArrowRight size={16} />
           </button>
+          </fieldset>
         </form>
       ) : (
         <form className="auth-verify-card" onSubmit={reset} noValidate style={{ textAlign: "left" }}>
+          <fieldset disabled={busy} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <button
             type="button"
             className="lnk"
@@ -152,10 +159,9 @@ export default function Forgot({ onBack, go }) {
           </button>
           <h2 style={{ textAlign: "center", marginBottom: "6px" }}>Enter 6-digit code</h2>
           <p className="card-subtitle" style={{ textAlign: "center" }}>
-            Code sent to <b>{v.identifier}</b>. Enter it below along with your new password.
+            If an eligible account matches <b>{v.identifier}</b>, a code will arrive by email. Check your inbox and spam folder.
           </p>
 
-          {dev && <p className="auth-dev">Dev only: your code is <b>{dev}</b></p>}
 
           <div style={{ textAlign: "center", margin: "14px 0" }}>
             <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--navy)", display: "block", marginBottom: "4px" }}>
@@ -231,7 +237,7 @@ export default function Forgot({ onBack, go }) {
           {top && <p className="err" role="alert" style={{ margin: "12px 0" }}>{top}</p>}
 
           <button className="btn gold wide" disabled={busy || v.code.length < 6} style={{ marginTop: "18px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-            {busy ? "Saving new password..." : "Change Password & Log In"} <ArrowRight size={16} />
+            {busy ? "Saving new password..." : "Change password"} <ArrowRight size={16} />
           </button>
 
           <div className="auth-links" style={{ justifyContent: "center", marginTop: "14px" }}>
@@ -240,6 +246,7 @@ export default function Forgot({ onBack, go }) {
               {cool > 0 ? `Send again in ${cool}s` : "Send again"}
             </button>
           </div>
+          </fieldset>
         </form>
       )}
     </div>

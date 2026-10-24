@@ -8,6 +8,8 @@
   "dev:frontend": "vite",
   "server": "node server/server.js",
   "db:init": "node server/scripts/init-neon.js",
+  "test:recovery:postgres": "node --experimental-test-module-mocks --test server/tests/password-recovery-postgres.test.js",
+  "test:origin": "node --experimental-test-module-mocks --test server/tests/app-origin.test.js",
   "test:account:postgres": "node --experimental-test-module-mocks --test server/tests/contact-changes-postgres.test.js",
   "test:account": "node --experimental-test-module-mocks --test server/tests/account.test.js tests/account-profile.test.js",
   "test:auth": "node --experimental-test-module-mocks --test server/tests/auth-flow.test.js",

@@ -1508,6 +1508,8 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
 
   try {
     const result = await withTransaction(async (client) => {
+      // Serialize arrival/handoff with deactivation so a visit cannot join an inactive vet's queue.
+      await lockSchedule(client);
       const current = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
       if (!current) throw Object.assign(new Error("Appointment not found."), { status: 404 });
       if (req.user.role === "owner" && !(await client.query("SELECT id FROM pets WHERE id = $1 AND owner_id = $2", [current.pet_id, req.user.ownerId])).rows.length) throw Object.assign(new Error("Appointment not found."), { status: 404 });
@@ -1516,6 +1518,10 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
       }
       const invalid = validateStatusChange(current, req.body, req.user);
       if (invalid) throw Object.assign(new Error(invalid), { status: 409 });
+      if (status === 'Checked-in' || status === 'In consultation') {
+        const doctor=(await client.query("SELECT id, vet_id FROM users WHERE role = 'vet' AND (id=$1 OR vet_id=$1) AND COALESCE(to_jsonb(users)->>'is_active','true') <> 'false'",[current.vet_id])).rows[0];
+        if(!doctor)throw bookingError("The assigned veterinarian is inactive. Reception must reassign an upcoming visit before check-in; active care requires a veterinarian handoff.",409);
+      }
       let q = "UPDATE appointments SET status = $1";
       const params = [status];
       let pIdx = 2;
@@ -2329,10 +2335,13 @@ clinicRouter.post('/appointments/:id/handoff', async (req, res) => {
   try {
     await ensureCareSchema();
     const saved = await withTransaction(async client => {
+      await lockSchedule(client);
       const row = (await client.query('SELECT * FROM appointments WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
       if (!row || !assignedTo(row, req.user)) throw Object.assign(new Error('This visit is no longer assigned to you.'), {status: 403});
       if (req.body.expectedVisit !== undefined && !sameIntakeVisit(row, req.body.expectedVisit)) throw Object.assign(new Error('This visit has changed. Refresh clinic records and reopen the handoff.'), {status: 409});
       if (!['Checked-in', 'In consultation'].includes(row.status)) throw Object.assign(new Error('Only an active arrival can be handed over.'), {status: 409});
+      const sender=(await client.query("SELECT id,vet_id FROM users WHERE id=$1 AND role='vet' AND COALESCE(to_jsonb(users)->>'is_active','true') <> 'false'",[req.user.id])).rows[0];
+      if(!sender)throw bookingError('Your account is inactive. Contact the administrator.',403);
       const target = (await client.query("SELECT id,vet_id,first_name,last_name FROM users WHERE role='vet' AND (id=$1 OR vet_id=$1) AND COALESCE(to_jsonb(users)->>'is_active','true') <> 'false' FOR SHARE", [vetId])).rows[0];
       if (!target || [req.user.id, req.user.vetId].includes(target.id) || [req.user.id, req.user.vetId].filter(Boolean).includes(target.vet_id)) throw Object.assign(new Error('Choose another active veterinarian.'), {status: 400});
       const recipient = target.vet_id || target.id;
