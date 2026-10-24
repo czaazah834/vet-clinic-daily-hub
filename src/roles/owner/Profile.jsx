@@ -1,43 +1,37 @@
 import { useState } from "react";
 import "./account.css";
-import { addLog } from "../../lib.jsx";
-import { PW_RULES, pwStrength, validateContact, validatePasswordChange, clean, normEmail, normPhone } from "../../validate.js";
+import { accountProfile, saveAccountProfile, formatAccountAddress } from "../../accountProfile.js";
+import { PW_RULES, pwStrength, validatePasswordChange, clean, normEmail, normPhone } from "../../validate.js";
 import { auth, OFFLINE_MSG } from "../../authApi.js";
 import { useLive, Field, onlyDigitsPlus, noSpaces, PhotoUpload } from "./ui.jsx";
 
-const LABEL = ["Too weak", "Okay", "Good", "Strong", "Very strong"], COLOR = ["#c0392b", "#d98e04", "#2f8f5b", "#1b7a43", "#1b7a43"];
+const LABEL = ["Too weak", "Too weak", "Okay", "Good", "Strong", "Very strong"], COLOR = ["#c0392b", "#c0392b", "#d98e04", "#2f8f5b", "#1b7a43", "#1b7a43"];
 
 /* Turns a server answer into what the form needs: field messages, or one message for the top. */
 const explain = x => x.offline ? { top: OFFLINE_MSG } : x.fields ? { fields: x.fields } : { top: x.message || "Something went wrong. Please try again." };
 
 /* Popup bodies (shown inside a Modal from the header menu). */
 export function ProfileBody({ db, setDb, me, say }) {
-  const o = (db.owners || []).find(x => x.id === me.ownerId || x.userId === me.id || (me.email && x.email?.toLowerCase() === me.email.toLowerCase())) || {
-    id: me.ownerId || me.id || "owner_me",
-    userId: me.id,
-    name: me.name || `${me.firstName || ''} ${me.lastName || ''}`.trim(),
-    firstName: me.firstName || "",
-    lastName: me.lastName || "",
-    middleInitial: me.middleInitial || "",
-    email: me.email || "",
-    phone: me.phone || "",
-    birthday: me.birthday || "",
-    houseStreet: me.houseStreet || me.address?.houseStreet || "",
-    country: me.country || me.address?.country || "Philippines",
-    state: me.state || me.address?.state || "",
-    city: me.city || me.address?.city || "",
-    zipCode: me.zipCode || me.address?.zipCode || "",
-    address: typeof me.address === "string" && me.address ? me.address : (me.houseStreet ? `${me.houseStreet}, ${me.city}, ${me.state} ${me.zipCode}, ${me.country}` : "")
-  };
-
-  const savePhoto = photo => {
-    setDb(d => ({
-      ...d,
-      owners: (d.owners || []).map(x => (x.id === o.id || x.userId === me.id) ? { ...x, photo } : x),
-      log: addLog(d, me, photo ? "Owner updated profile picture" : "Owner removed profile picture")
-    }));
+  const o = accountProfile(db, me);
+  const savePhoto = async photo => {
+    const result = await auth.profilePhoto(photo);
+    setDb(d => saveAccountProfile(d, me.id, { photo: result.photo, role: me.role, ownerId: me.ownerId }));
     say(photo ? "Profile picture saved" : "Profile picture removed");
   };
+
+  if (!db.accountProfiles?.[me.id]) {
+    const error = db.accountProfileErrors?.[me.id];
+    const retry = async () => {
+      setDb(d => ({ ...d, accountProfileErrors: { ...d.accountProfileErrors, [me.id]: null } }));
+      try {
+        const { profile } = await auth.profile();
+        setDb(d => saveAccountProfile(d, me.id, profile));
+      } catch (x) {
+        setDb(d => ({ ...d, accountProfileErrors: { ...d.accountProfileErrors, [me.id]: x.message } }));
+      }
+    };
+    return <div className="ow-card"><p role={error ? "alert" : "status"}>{error || "Loading your profile…"}</p>{error && <button className="btn" onClick={retry}>Try again</button>}</div>;
+  }
 
   return (<div className="ow-profile-layout">
     <div className="ow-card ow-profile-photo">
@@ -59,9 +53,8 @@ function Contact({ o, me, setDb, say }) {
   const [houseStreet, setHouseStreet] = useState(o.houseStreet || "");
   const [city, setCity] = useState(o.city || "");
   const [state, setState] = useState(o.state || "");
-  const [country, setCountry] = useState(o.country || "Philippines");
+  const [country, setCountry] = useState(o.country ?? "Philippines");
   const [zipCode, setZipCode] = useState(o.zipCode || "");
-  const [address, setAddress] = useState(o.address || "");
 
   const [srv, setSrv] = useState({});
   const [busy, setBusy] = useState(false);
@@ -73,8 +66,8 @@ function Contact({ o, me, setDb, say }) {
     clean(houseStreet) !== (o.houseStreet || "") ||
     clean(city) !== (o.city || "") ||
     clean(state) !== (o.state || "") ||
-    clean(zipCode) !== (o.zipCode || "") ||
-    clean(address) !== (o.address || "");
+    clean(country) !== (o.country ?? "Philippines") ||
+    clean(zipCode) !== (o.zipCode || "");
 
   const save = async e => {
     e.preventDefault();
@@ -83,7 +76,7 @@ function Contact({ o, me, setDb, say }) {
     if (!phone) return setTop("Mobile number is required.");
     setBusy(true);
 
-    const fullAddr = houseStreet && city ? `${houseStreet}, ${city}, ${state} ${zipCode}, ${country}`.replace(/\s+,/g, ",") : (address || o.address);
+    const fullAddr = formatAccountAddress({ houseStreet, city, state, zipCode, country });
 
     try {
       const r = await auth.updateContact({
@@ -96,22 +89,7 @@ function Contact({ o, me, setDb, say }) {
         country,
         zipCode
       });
-      const updatedOwner = r?.owner || {
-        ...o,
-        email,
-        phone,
-        address: fullAddr,
-        houseStreet,
-        city,
-        state,
-        country,
-        zipCode
-      };
-      setDb(p => ({
-        ...p,
-        owners: (p.owners || []).map(x => (x.id === o.id || x.userId === me.id) ? { ...x, ...updatedOwner } : x)
-      }));
-      setAddress(fullAddr);
+      setDb(p => saveAccountProfile(p, me.id, r.profile));
       say("Contact & address details saved successfully!");
     } catch (x) {
       const m = explain(x);
@@ -141,10 +119,10 @@ function Contact({ o, me, setDb, say }) {
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
         <span style={{ background: "#dcfce7", color: "#166534", padding: "4px 10px", borderRadius: "12px", fontSize: "0.82rem", fontWeight: 600 }}>
-          ✓ Email Verified
+          {o.emailVerified ? "✓ Email verified" : "Email not verified"}
         </span>
         <span style={{ background: "#dbeafe", color: "#1e40af", padding: "4px 10px", borderRadius: "12px", fontSize: "0.82rem", fontWeight: 600 }}>
-          ✓ Mobile Number Verified
+          {o.mobileVerified ? "✓ Mobile verified" : "Mobile not verified"}
         </span>
       </div>
 
@@ -167,7 +145,7 @@ function Contact({ o, me, setDb, say }) {
 
       <div style={{ marginTop: 8, padding: "8px 12px", background: "#f8fafc", borderRadius: "6px", fontSize: "0.85rem", color: "#475569" }}>
         <b>Full Address: </b>
-        {houseStreet || city ? `${houseStreet}, ${city}, ${state} ${zipCode}, ${country}`.replace(/,\s*,/g, ",") : (address || "No address on file")}
+        {formatAccountAddress({ houseStreet, city, state, zipCode, country }) || "No address on file"}
       </div>
 
       {top && <p className="err" role="alert" style={{ marginTop: 12 }}>{top}</p>}
@@ -200,7 +178,7 @@ function Password({ me, say, onDone }) {
       <Field id="pcur" label="Current password" req type={t} value={v.cur} onChange={x => set("cur", x)} onBlur={() => f.blur("cur")} error={f.show("cur", false) || srv.cur || ""} valid={f.ok("cur") && !srv.cur} hint="The password you use to log in" autoComplete="current-password" />
       <Field id="pnext" label="New password" req type={t} value={v.next} filter={noSpaces} filterMsg="Spaces aren’t allowed in passwords" maxLen={72} onChange={x => set("next", x)} onBlur={() => f.blur("next")} error="" valid={f.ok("next")} autoComplete="new-password" />
       <ul className="ow-req" aria-label="Password requirements">{PW_RULES.map(([r, l]) => <li key={l} className={r(v.next) ? "y" : "n"}>{r(v.next) ? "✓" : "○"} {l}</li>)}</ul>
-      {v.next && <><div className="ow-meter"><i style={{ width: `${s * 25}%`, background: COLOR[s] }} /></div><span className="ow-hint">Strength: {LABEL[s]}</span></>}
+      {v.next && <><div className="ow-meter"><i style={{ width: `${s * 20}%`, background: COLOR[s] }} /></div><span className="ow-hint">Strength: {LABEL[s]}</span></>}
       {rulesOk && (f.show("next") || srv.next) && <span className="err">{f.show("next") || srv.next}</span>}
       <Field id="pconf" label="Retype new password" req type={t} value={v.conf} filter={noSpaces} filterMsg="Spaces aren’t allowed in passwords" maxLen={72} onChange={x => set("conf", x)} onBlur={() => f.blur("conf")} error={f.show("conf", !v.next.startsWith(v.conf) || v.conf.length > v.next.length) || srv.conf || ""} valid={f.ok("conf")} hint="Type the new password again" autoComplete="new-password" />
       <label className="chk"><input type="checkbox" checked={show} onChange={e => setShow(e.target.checked)} /> Show passwords</label>

@@ -45,3 +45,17 @@ resumes the same account's pending verification.
 Run `npm run test:auth` with Node.js 24+ for the HTTP authentication regression
 checks. Tests isolate database and message delivery dependencies with Node's
 experimental module mocking; they do not send real email/SMS or use a live database.
+
+## Persistent account settings
+
+Signed-in owners, assistants, veterinarians and administrators use
+`/api/auth/profile` for their own registration details and profile photo.
+Photo and contact saves require the active verified session; a server failure
+is shown instead of reporting a temporary browser-only save. Photos are resized
+in the browser and stored in PostgreSQL's `account_photos` table. The table is
+included in `server/database/schema.sql` and created on first profile use for
+existing databases (the application database role needs CREATE permission).
+`/api/auth/password` verifies the current password, saves a bcrypt hash and
+revokes other login sessions while keeping the current session signed in.
+
+Run `npm run test:account` for account settings and isolation regression checks.

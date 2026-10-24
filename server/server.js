@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { authRouter } from "./routes/auth.js";
+import { accountRouter } from "./routes/account.js";
 import { clinicRouter } from "./routes/clinic.js";
 import { geo as geoRouter, check as checkRouter, checkEmail } from "./geo.js";
 import { query } from "./db.js";
@@ -76,6 +77,7 @@ app.post("/api/check/email", async (req, res) => {
 app.use("/api/geo", geoRouter);
 app.use("/api/check", checkRouter);
 app.use("/api/auth", authRouter);
+app.use("/api/auth", accountRouter);
 app.use("/api", authRouter);
 app.use("/api", clinicRouter);
 
