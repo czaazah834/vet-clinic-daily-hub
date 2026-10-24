@@ -1,3 +1,5 @@
+import { sendClinicState } from "../stateResponse.js";
+import { visibleStateVaccinations } from "../stateVaccinations.js";
 import { logReminderCall, reminderCallHistory } from "../reminderCalls.js";
 import { sameIntakeVisit } from "../../src/intakeVisit.js";
 import { clinicalCharges, validateClinicalCharges } from "../clinicalCharges.js";
@@ -194,23 +196,7 @@ clinicRouter.get("/state", async (req, res) => {
       recordedBy: v.recorded_by || ""
     }));
 
-    const vaccs = rawVaccs.filter((v, idx, arr) => {
-      if (!v.done) {
-        const hasDoneMatch = arr.some(other =>
-          other.petId === v.petId &&
-          other.done &&
-          (
-            (other.vaccine?.toLowerCase().includes("rabies") && v.vaccine?.toLowerCase().includes("rabies")) ||
-            (other.vaccine?.toLowerCase().includes("dhpp") && v.vaccine?.toLowerCase().includes("dhpp")) ||
-            (other.vaccine?.toLowerCase().includes("5-in-1") && v.vaccine?.toLowerCase().includes("5-in-1")) ||
-            (other.vaccine?.toLowerCase().includes("deworm") && v.vaccine?.toLowerCase().includes("deworm")) ||
-            other.vaccine?.toLowerCase() === v.vaccine?.toLowerCase()
-          )
-        );
-        if (hasDoneMatch) return false;
-      }
-      return true;
-    });
+    const vaccs = visibleStateVaccinations(rawVaccs);
 
     const consults = consultsRes.rows.map(c => ({
       id: c.id,
@@ -269,21 +255,18 @@ clinicRouter.get("/state", async (req, res) => {
       };
     });
 
-    res.json({
-      success: true,
-      data: {
-        vets: vetsRes.rows.map(v => ({
-          id: v.vet_id || v.id,
-          name: `Dr. ${[v.first_name, v.last_name].filter(Boolean).join(" ")}`
-        })),
-        owners,
-        pets,
-        appts,
-        vaccs,
-        consults,
-        petRequests,
-        log
-      }
+    sendClinicState(req, res, {
+      vets: vetsRes.rows.map(v => ({
+        id: v.vet_id || v.id,
+        name: `Dr. ${[v.first_name, v.last_name].filter(Boolean).join(" ")}`
+      })),
+      owners,
+      pets,
+      appts,
+      vaccs,
+      consults,
+      petRequests,
+      log
     });
   } catch (err) {
     console.error("Clinic state fetch error:", err);

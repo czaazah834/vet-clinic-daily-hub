@@ -18,7 +18,7 @@ function Reports({ db, me }) {
     {bad ? <p className="err">The “From” date must be on or before the “To” date.</p> : <><p><b>{list.length}</b> record(s)</p><Table db={db} ent={r.type} list={list} me={me} /></>}
   </>);
 }
-export default function Portal({ cfg, me, db, setDb, onLogout }) {
+export default function Portal({ cfg, me, db, setDb, onLogout, dataLoading = false, dataError = "", refreshing = false, onRetry }) {
   const account = accountProfile(db, me);
   useEffect(() => {
     let active = true;
@@ -48,9 +48,13 @@ export default function Portal({ cfg, me, db, setDb, onLogout }) {
       </aside>
       {open && <div className="veil" onClick={() => setOpen(false)} />}
       <div className="main">
-        <header className="top"><button className="burger" onClick={() => setOpen(true)} aria-label="Open menu" aria-expanded={open}><Menu size={20} aria-hidden="true" /></button><div><h1>{cur.l}</h1><p>{cur.sub}</p></div>{cfg.Header ? <cfg.Header db={db} setDb={setDb} me={me} go={go} say={say} onLogout={onLogout} /> : <StaffHeader db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} />}</header>
-        <main className="content">
-          {cur.Page ? <cur.Page db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.dash ? <Dash db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.rep ? <Reports db={db} me={me} /> : <EntityPage key={cur.k} ent={cur.ent} db={db} setDb={setDb} me={me} say={say} />}
+        <header className="top"><button className="burger" onClick={() => setOpen(true)} aria-label="Open menu" aria-expanded={open}><Menu size={20} aria-hidden="true" /></button><div><h1>{cur.l}</h1><p>{cur.sub}</p></div>{dataLoading ? <span>{me.name}</span> : cfg.Header ? <cfg.Header db={db} setDb={setDb} me={me} go={go} say={say} onLogout={onLogout} /> : <StaffHeader db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} />}</header>
+        <main className="content" aria-busy={dataLoading && refreshing}>
+          {dataError && <section className="clinic-data-error" role="alert">
+            <p>{dataLoading ? "Clinic records could not load." : "Records may be out of date. Changes still require a successful server save."} {dataError}</p>
+            <button className="btn sm" disabled={refreshing} onClick={onRetry}>{refreshing ? "Retrying…" : "Retry loading records"}</button>
+          </section>}
+          {dataLoading ? (!dataError && <section className="clinic-loading" role="status"><span className="clinic-spinner" aria-hidden="true" />Loading clinic records…</section>) : cur.Page ? <cur.Page db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.dash ? <Dash db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.rep ? <Reports db={db} me={me} /> : <EntityPage key={cur.k} ent={cur.ent} db={db} setDb={setDb} me={me} say={say} />}
         </main>
       </div>
       {me.role === "owner" && (
