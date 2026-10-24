@@ -1,8 +1,8 @@
 import {test,after,mock} from 'node:test';
 import assert from 'node:assert/strict';
 import {appUrl,sessionCookie} from '../appOrigin.js';
-mock.module('../db.js',{exports:{query:async()=>({rows:[]}),withTransaction:async fn=>fn({query:async()=>({rows:[]})})}});
-mock.module('../services.js',{exports:{sendMail:async()=>({ok:true,via:'synthetic'}),sendSms:async()=>({ok:true,via:'synthetic'}),serverOutbox:[]}});
+mock.module('../db.js',{namedExports: {query:async()=>({rows:[]}),withTransaction:async fn=>fn({query:async()=>({rows:[]})})}});
+mock.module('../services.js',{namedExports: {sendMail:async()=>({ok:true,via:'synthetic'}),sendSms:async()=>({ok:true,via:'synthetic'}),serverOutbox:[]}});
 const {getAppUrl}=await import('../routes/auth.js');
 const {default:app}=await import('../../api/index.js');
 const original=Object.fromEntries(['APP_URL','SITE_URL','VERCEL_PROJECT_PRODUCTION_URL','VERCEL_URL','NODE_ENV'].map(k=>[k,process.env[k]]));

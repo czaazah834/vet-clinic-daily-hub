@@ -74,8 +74,8 @@ const fakeQuery = async (sql, params = []) => {
   if (sql.startsWith('UPDATE pets') || sql.startsWith('INSERT INTO pet_weights') || sql.startsWith('DELETE FROM vaccinations')) return rows([]);
   throw Error(`Unexpected query: ${sql}`);
 };
-mock.module('../db.js', { exports: { query: fakeQuery, withTransaction: async cb => { const snapshot = structuredClone(db); try { return await cb({ query: fakeQuery }); } catch (error) { db = snapshot; rollbacks++; throw error; } } } });
-mock.module('../services.js', { exports: { serverOutbox: [], sendMail: async () => { throw Error('Unexpected email'); }, sendSms: async () => { throw Error('Unexpected SMS'); } } });
+mock.module('../db.js', { namedExports: { query: fakeQuery, withTransaction: async cb => { const snapshot = structuredClone(db); try { return await cb({ query: fakeQuery }); } catch (error) { db = snapshot; rollbacks++; throw error; } } } });
+mock.module('../services.js', { namedExports: { serverOutbox: [], sendMail: async () => { throw Error('Unexpected email'); }, sendSms: async () => { throw Error('Unexpected SMS'); } } });
 const { clinicRouter } = await import('../routes/clinic.js');
 const { clinicClock, shiftDate } = await import('../scheduling.js');
 const { holidayName } = await import('../../src/booking.js');

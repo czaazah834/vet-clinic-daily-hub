@@ -11,7 +11,7 @@ const admin=new pg.Pool({connectionString:url.href}),schema=`test_admin_${crypto
 await admin.query(`CREATE SCHEMA ${schema}`);url.searchParams.set('options',`-c search_path=${schema},public`);process.env.DATABASE_URL=url.href;
 const {query,pool}=await import('../db.js');await query(readFileSync(new URL('../database/schema.sql',import.meta.url),'utf8'));
 let messages=[];
-mock.module('../services.js',{exports:{sendMail:async(...args)=>{messages.push(args);return{ok:true,via:'synthetic'};},sendSms:async(...args)=>{messages.push(args);return{ok:true,via:'synthetic'};},serverOutbox:[]}});
+mock.module('../services.js',{namedExports: {sendMail:async(...args)=>{messages.push(args);return{ok:true,via:'synthetic'};},sendSms:async(...args)=>{messages.push(args);return{ok:true,via:'synthetic'};},serverOutbox:[]}});
 const {sha256,hashPassword}=await import('../security.js');const {authRouter}=await import('../routes/auth.js');const{clinicRouter}=await import('../routes/clinic.js');
 const app=express();app.use(express.json());app.use(cookieParser());app.use('/api/auth',authRouter);app.use('/api',clinicRouter);
 const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));

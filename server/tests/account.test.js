@@ -14,8 +14,8 @@ async function query(sql, params = []) {
   if (step.error) throw step.error;
   return { rows: step.rows || [] };
 }
-mock.module('../db.js', { exports: { query, withTransaction: async fn => fn({ query }) } });
-mock.module('../services.js', { exports: { sendMail: async () => {}, sendSms: async () => {}, serverOutbox: [] } });
+mock.module('../db.js', { namedExports: { query, withTransaction: async fn => fn({ query }) } });
+mock.module('../services.js', { namedExports: { sendMail: async () => {}, sendSms: async () => {}, serverOutbox: [] } });
 const { accountRouter } = await import('../routes/account.js');
 const app = express();
 app.use(express.json({ limit: '10mb' }), cookieParser());

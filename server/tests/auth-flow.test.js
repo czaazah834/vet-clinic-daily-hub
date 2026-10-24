@@ -17,8 +17,8 @@ async function query(sql, params = []) {
   if (step.check) step.check(params);
   return { rows: step.rows || [] };
 }
-mock.module('../db.js', { exports: { query, withTransaction: async fn => fn({ query }) } });
-mock.module('../services.js', { exports: {
+mock.module('../db.js', { namedExports: { query, withTransaction: async fn => fn({ query }) } });
+mock.module('../services.js', { namedExports: {
   sendSms: async (...args) => {sentSms.push(args);return{ok:true,via:"synthetic"};},
   sendMail: async (...args) => {sentMail.push(args);return{ok:true,via:"synthetic"};},
   serverOutbox: [],
