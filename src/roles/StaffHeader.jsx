@@ -53,7 +53,7 @@ export default function StaffHeader({ db, setDb, me, say, onLogout }) {
       )}
 
       {dlg && (
-        <Modal title={dlg === "profile" ? "My profile" : "Change password"} onClose={() => setDlg(null)}>
+        <Modal title={dlg === "profile" ? "My profile" : "Change password"} onClose={() => setDlg(null)} className={`ow-account-dialog ow-account-${dlg}`} portalTo={ref.current?.closest(".shell")} closeButton>
           {dlg === "profile"
             ? <ProfileBody db={db} setDb={setDb} me={me} say={say} />
             : <PasswordBody db={db} setDb={setDb} me={me} say={say} />}

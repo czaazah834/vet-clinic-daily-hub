@@ -88,6 +88,16 @@
 .shell:is(.th-vet,.th-assistant) .ow-menu .sf-out,.shell:is(.th-vet,.th-assistant) .ow-menu .sf-out svg{color:#b42318}
 .shell:is(.th-vet,.th-assistant) .ow-menu .sf-out:hover{background:#fdeceb}
 
+/* Assistant account controls remain readable at normal browser zoom. */
+.shell.th-assistant .sf-ava{width:48px;height:48px;font-size:21px}
+.shell.th-assistant .ow-hdbtn{padding:6px 16px 6px 6px;gap:12px}
+.shell.th-assistant .ow-hdbtn .t{font-size:16px}
+.shell.th-assistant .ow-hdbtn small{font-size:13px;margin-top:3px}
+.shell.th-assistant .sidefoot .av{width:46px;height:46px;font-size:20px}
+.shell.th-assistant .side nav button{font-size:15px;padding:13px 16px}
+.shell.th-assistant .top p{font-size:15px}
+.shell.th-assistant .sf-name .meta,.shell.th-assistant .sf-reason{font-size:15px}
+
 /* ---------- buttons ---------- */
 .shell:is(.th-vet,.th-assistant) .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:7px;

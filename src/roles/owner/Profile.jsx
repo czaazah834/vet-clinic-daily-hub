@@ -1,4 +1,5 @@
 import { useState } from "react";
+import "./account.css";
 import { addLog } from "../../lib.jsx";
 import { PW_RULES, pwStrength, validateContact, validatePasswordChange, clean, normEmail, normPhone } from "../../validate.js";
 import { auth, OFFLINE_MSG } from "../../authApi.js";
@@ -38,14 +39,14 @@ export function ProfileBody({ db, setDb, me, say }) {
     say(photo ? "Profile picture saved" : "Profile picture removed");
   };
 
-  return (<>
-    <div className="ow-card">
+  return (<div className="ow-profile-layout">
+    <div className="ow-card ow-profile-photo">
       <h3>Profile picture</h3>
-      <p>Shown at the top of your pet portal.</p>
-      <PhotoUpload src={o.photo} fallback={(o.name || "U")[0]} size={84} label="Upload picture" onSave={savePhoto} onRemove={() => savePhoto("")} />
+      <p>Choose a clear photo for your account.</p>
+      <PhotoUpload src={o.photo} fallback={(o.name || "U")[0]} size={112} label="Upload picture" onSave={savePhoto} onRemove={() => savePhoto("")} />
     </div>
     <Contact o={o} me={me} setDb={setDb} say={say} />
-  </>);
+  </div>);
 }
 export function PasswordBody({ me, say }) {
   const [n, setN] = useState(0);   // bumps after a successful change so the form starts empty
@@ -128,12 +129,12 @@ function Contact({ o, me, setDb, say }) {
       <h3>Registration & Account Details</h3>
       <p>Verified profile information from your registration.</p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+      <div className="ow-account-fields">
         <Field id="pfn" label="First name" value={o.firstName || o.name?.split(" ")[0] || ""} readOnly hint="Official name on record" />
         <Field id="pln" label="Last name" value={o.lastName || o.name?.split(" ").slice(1).join(" ") || ""} readOnly hint="Official surname on record" />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+      <div className="ow-account-fields">
         <Field id="pmi" label="Middle initial" value={o.middleInitial || "—"} readOnly hint="Optional initial" />
         <Field id="pbday" label="Date of birth" value={formattedBirthday} readOnly hint="Birthdate from registration" />
       </div>
@@ -148,16 +149,18 @@ function Contact({ o, me, setDb, say }) {
       </div>
 
       <h4 style={{ marginTop: 20, marginBottom: 8, fontSize: "1rem", color: "#0b3a5b" }}>Contact Information</h4>
-      <Field id="pemail" label="Email address" req type="email" value={email} filter={noSpaces} filterMsg="Spaces aren’t allowed in an email" maxLen={100} onChange={setEmail} error={srv.email} hint="Used for appointment confirmations & notifications" autoComplete="email" />
-      <Field id="pphone" label="Mobile number" req type="tel" value={phone} onChange={setPhone} filter={onlyDigitsPlus} filterMsg="Numbers only" inputMode="tel" maxLen={13} error={srv.phone} hint="SMS notifications and verification number" autoComplete="tel" />
+      <div className="ow-account-fields">
+        <Field id="pemail" label="Email address" req type="email" value={email} filter={noSpaces} filterMsg="Spaces aren’t allowed in an email" maxLen={100} onChange={setEmail} error={srv.email} hint="Used for appointment confirmations & notifications" autoComplete="email" />
+        <Field id="pphone" label="Mobile number" req type="tel" value={phone} onChange={setPhone} filter={onlyDigitsPlus} filterMsg="Numbers only" inputMode="tel" maxLen={13} error={srv.phone} hint="SMS notifications and verification number" autoComplete="tel" />
+      </div>
 
       <h4 style={{ marginTop: 20, marginBottom: 8, fontSize: "1rem", color: "#0b3a5b" }}>Registered Address</h4>
       <Field id="phouse" label="House number & street" value={houseStreet} maxLen={120} onChange={setHouseStreet} hint="From registration form" />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+      <div className="ow-account-fields">
         <Field id="pcity" label="City / Municipality" value={city} maxLen={60} onChange={setCity} hint="City / Municipality" />
         <Field id="pstate" label="State / Province" value={state} maxLen={60} onChange={setState} hint="Province or region" />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+      <div className="ow-account-fields">
         <Field id="pcountry" label="Country" value={country} maxLen={60} onChange={setCountry} hint="Country" />
         <Field id="pzip" label="ZIP / Postal code" value={zipCode} maxLen={20} onChange={setZipCode} hint="ZIP code" />
       </div>

@@ -71,7 +71,7 @@ function Dash({ db, setDb, me, go, say }) {
       const nvAppt = nv ? A.find(a => a.petId === p.id && LIVE.includes(a.status) && (a.date === nv.nextDue || (a.date >= TODAY && (a.reason || "").toLowerCase().includes(nv.vaccine.toLowerCase())))) : null;
       return <article className="petcard" key={p.id} role="button" tabIndex={0} aria-label={`${p.name}, open pet details`} onClick={() => setModal({ profile: p })} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModal({ profile: p }); } }}>
         <div className="pc-top">
-          <div className="big"><Avatar src={p.photo} fallback={<I e={ICON[p.species]} size={30} />} size={64} round={false} /></div>
+          <div className="big"><Avatar src={p.photo} fallback={<I e={ICON[p.species]} size={40} />} size={84} round={false} /></div>
           <div className="pc-id"><h3>{p.name}</h3><p>{p.breed || p.species}</p></div>
         </div>
         <div className="pc-tags">{p.sex && <span>{p.sex}</span>}{p.weight ? <span>{p.weight} kg</span> : null}{p.birth ? <span>{petAge(p.birth)}</span> : null}</div>
