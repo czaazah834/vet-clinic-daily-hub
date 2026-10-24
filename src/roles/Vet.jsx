@@ -39,7 +39,7 @@ function Dash({ db, setDb, me, go, say }) {
     if (!pet) return say("Patient record not found.");
     // Front desk normally records intake vitals first; warn the doctor, but never block care.
     if (!a.intakeVitals) say("No intake vitals on file for this patient. Record them in the SOAP notes.");
-    if (!await moveAppt(setDb, a.id, "In consultation", me, say)) return;
+    if (!await moveAppt(setDb, a.id, "In consultation", me, say, a)) return;
     setActiveSoap({ appt: { ...a, status: "In consultation" }, pet });
   };
 

@@ -512,3 +512,21 @@ silently ignored that failure.
 Checks: `node --test tests/intake-visit.test.js`, `npm run test:clinic`,
 `npm run test:scheduling:postgres` with a disposable local database, and
 `npm run build`.
+
+### Appointment confirmations and status actions
+
+Dashboard, calendar, card and visit-list status actions send the displayed visit
+snapshot. The server checks it under the appointment lock before confirming or
+starting a consultation, including when only the slot, assigned veterinarian or
+intake has changed. Existing role and transition rules still apply.
+
+Repeated actions for one appointment share a pending lock across views using the
+same clinic store. Dashboard/calendar confirmation buttons show their pending
+state, errors remain visible and failed requests allow retry. Only a matching
+server acknowledgment updates local records; an older response cannot replace a
+newer local visit. Cards follow the current saved appointment and never replace
+a removed patient with another patient's details.
+
+Checks: `node --test tests/appointment-status.test.js`, `npm run test:clinic`,
+`npm run test:scheduling:postgres` with a disposable local database, and
+`npm run build`.

@@ -358,3 +358,23 @@ test('status audit failure rolls back intake, patient weight and weight history'
  const audit=(await query("SELECT * FROM audit_logs WHERE action LIKE 'Updated appointment intake_audit%'")).rows;
  assert.equal(audit.length,1);assert.equal(audit[0].user_name,'Test assistant');assert.equal(audit[0].user_role,'assistant');
 });
+
+test('confirmation and consultation start reject snapshots from before rescheduling or remeasurement',async()=>{
+ const {intakeVisitSnapshot}=await import('../../src/intakeVisit.js');
+ const id='confirm_snapshot';
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,'p8','v1',$2,'15:00','Confirmation examination','Scheduled')",[id,clinicClock().date]);
+ const before=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+ await query("UPDATE appointments SET date=$1,reason='Rescheduled examination' WHERE id=$2",[shiftDate(clinicClock().date,1),id]);
+ const stale=await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Confirmed',expectedVisit:intakeVisitSnapshot(before)});
+ assert.equal(stale.status,409);assert.equal((await query('SELECT status FROM appointments WHERE id=$1',[id])).rows[0].status,'Scheduled');
+ const fresh=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+ const results=await Promise.all([1,2].map(()=>req('assistant','PATCH',`/appointments/${id}/status`,{status:'Confirmed',expectedVisit:intakeVisitSnapshot(fresh)})));
+ assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+ await query("UPDATE appointments SET status='Checked-in',intake_vitals=$1 WHERE id=$2",[JSON.stringify({weight:5,temp:38.5}),id]);
+ const measured=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+ await query("UPDATE appointments SET intake_vitals=$1 WHERE id=$2",[JSON.stringify({weight:5.5,temp:38.8}),id]);
+ assert.equal((await req('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation',expectedVisit:intakeVisitSnapshot(measured)})).status,409);
+ const remeasured=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+ assert.equal((await req('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation',expectedVisit:intakeVisitSnapshot(remeasured)})).status,200);
+ assert.equal((await query('SELECT COUNT(*)::int n FROM audit_logs WHERE action LIKE $1',[`Updated appointment ${id}%`])).rows[0].n,2);
+});

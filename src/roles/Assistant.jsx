@@ -29,6 +29,9 @@ const tempTone = s => (s === "normal" ? "" : s === "high_fever" || s === "hypoth
 
 function Dash({ db, setDb, me, go, say }) {
   const TODAY = today();
+  const confirmingRef = useRef(new Set());
+  const [confirming, setConfirming] = useState({});
+  const [actionError, setActionError] = useState("");
   const [queueStage, setQueueStage] = useState("waiting");
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [showExistingWalkIn, setShowExistingWalkIn] = useState(false);
@@ -53,6 +56,7 @@ function Dash({ db, setDb, me, go, say }) {
 
   return (
     <>
+      {actionError && <p className="err" role="alert">{actionError}</p>}
       <CareFollowUps db={db} go={go}  />
       <Hero
         title="Front Desk and Clinic Operations"
@@ -185,7 +189,15 @@ function Dash({ db, setDb, me, go, say }) {
                       <Badge v={a.status} />
                       <button className="btn sm ghost" onClick={() => openCard(pet.id || a.petId, a)}>Digital card</button>
                       {a.status === "Scheduled" && (
-                        <button className="btn sm" onClick={async () => { if (await moveAppt(setDb, a.id, "Confirmed", me, say)) say("Appointment confirmed."); }}>Confirm</button>
+                        <button className="btn sm" disabled={!!confirming[a.id]} onClick={async () => {
+                          if (confirmingRef.current.has(a.id)) return;
+                          confirmingRef.current.add(a.id);
+                          setActionError(""); setConfirming(p => ({...p,[a.id]:true}));
+                          const saved = await moveAppt(setDb, a.id, "Confirmed", me, setActionError, a);
+                          confirmingRef.current.delete(a.id);
+                          setConfirming(p => ({...p,[a.id]:false}));
+                          if (saved) say("Appointment confirmed.");
+                        }}>{confirming[a.id] ? "Confirming…" : "Confirm"}</button>
                       )}
                       {["Scheduled", "Confirmed"].includes(a.status) && (
                         <button className="btn sm gold" title="Arrival check-in and vitals intake" onClick={() => setCheckInAppt(a)}>Check in</button>

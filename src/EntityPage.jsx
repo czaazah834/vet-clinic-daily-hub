@@ -146,7 +146,7 @@ export default function EntityPage({ ent, db, setDb, me, say }) {
 
   const move = async (a, s) => {
     if (s === "WRITE") return setModal({ consult: a });
-    if (!await moveAppt(setDb, a.id, s, me, say)) return;
+    if (!await moveAppt(setDb, a.id, s, me, say, a)) return;
     say(s === "In consultation" ? "Consultation started" : `${LABEL[s]} done`);
     if (s === "In consultation") setModal({ consult: a });
   };
