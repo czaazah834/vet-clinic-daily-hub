@@ -1,6 +1,6 @@
 ﻿import { useState } from "react";
 import { Logo, I } from "../lib.jsx";
-import { Check, Syringe, CalendarCheck, PawPrint, HeartPulse } from "lucide-react";
+import { Check, Syringe, CalendarCheck, PawPrint, HeartPulse, ChevronRight } from "lucide-react";
 import "./landing.css";
 import "./brand.css";
 const PORTALS = [["admin", "🏥", "Clinic Administrator", "Oversee every record, schedule and login, with a clinic-wide overview.", "w7", "sky"], ["vet", "🩺", "Veterinarian", "See today’s patient queue, write consultations and track vaccines.", "w5", "butter"], ["assistant", "🛎️", "Vet Assistant", "Check patients in, register owners and call owners with reminders.", "w5", "butter"], ["owner", "🐶", "Pet Owner", "Follow your pets’ health, book visits and view vaccine records.", "w7", "sky"]];
@@ -15,16 +15,22 @@ export default function Landing({ onLogin, onRegister }) {
       <header className="wnav"><div className="wlogo"><Logo size={38} /><b>PawCare</b></div>
         <nav aria-label="Page"><a href="#portals">Portals</a><a href="#why">Why Us</a><a href="#reviews">Reviews</a><a href="#faq">FAQs</a><a href="#contact">Contact</a></nav>
         <div className="wnavr"><button className="btn ghost" onClick={() => onLogin()}>Log in</button><button className="btn gold" onClick={onRegister}>Sign up</button></div></header>
-      <section className="whero"><div>
-        <span className="wbadge"><PawPrint size={14} /> Built for veterinary clinics</span>
-        <h1>Every pet’s health story, in <em>one friendly hub.</em></h1>
-        <p>Appointments, vaccinations and consultations in a single place, with a dedicated space for each member of your clinic team and for pet owners.</p>
-        <div className="row"><button className="btn gold" onClick={onRegister}>Create a pet owner account</button><a className="btn ghost" href="#portals">Explore portals</a></div></div>
-        <div className="wimg"><span className="dots" aria-hidden="true" /><div className="ph"><img src="/images/hero-pets.jpg" alt="A happy dog and cat together" loading="eager" /></div>
-          <div className="tag t1"><i><Syringe size={15} /></i> Next vaccine in 3 days</div>
-          <div className="tag t2"><i><CalendarCheck size={15} /></i> Check-up at 9:00</div>
-          <div className="tag t3"><i><HeartPulse size={15} /></i> Healthy and happy</div></div>
-      </section>
+      <section className="whero"><div className="hpanel">
+        <div className="hl">
+          <span className="wbadge"><PawPrint size={14} /> Built for veterinary clinics</span>
+          <h1>Every pet’s health story, in <em>one friendly hub.</em></h1>
+          <p>Appointments, vaccinations and consultations in a single place, with a dedicated space for each member of your clinic team and for pet owners.</p>
+          <div className="row"><button className="btn gold" onClick={onRegister}>Create a pet owner account</button><a className="btn ghost" href="#portals">Explore portals</a></div>
+          <div className="hchips" aria-hidden="true"><span><Syringe size={14} /> Vaccine reminders</span><span><CalendarCheck size={14} /> Online booking</span><span><HeartPulse size={14} /> Health records</span></div>
+        </div>
+        <img className="hpic" src="/images/hero-pets.jpg" alt="A happy dog and cat together" loading="eager" />
+        <aside className="hcard" aria-label="Open your portal">
+          <h2>Open your portal</h2>
+          <p>Choose how you use PawCare today.</p>
+          <div className="hroles">{[["owner", "Pet Owner", "Book visits, view vaccine cards"], ["assistant", "Vet Assistant", "Front desk, check-in, billing"], ["vet", "Veterinarian", "Queue, SOAP notes, Rx"], ["admin", "Administrator", "Staff, sales, audit trail"]].map(([r, n, d]) => <button key={r} type="button" onClick={() => onLogin(r)}><span><b>{n}</b><small>{d}</small></span><ChevronRight size={18} /></button>)}</div>
+          <button className="btn gold wide" type="button" onClick={onRegister}>New pet owner? Sign up</button>
+        </aside>
+      </div></section>
       <section className="wstats" aria-label="Highlights"><div><b>4</b><span>Role-based portals</span></div><div><b>24/7</b><span>Online booking</span></div><div><b>BAI</b><span>Digital vaccine cards</span></div><div><b>Live</b><span>Clinic-wide sync</span></div></section>
       <section className="wpart"><p>Caring for every kind of pet</p><div>{[["🐶", "Dogs"], ["🐱", "Cats"], ["🐰", "Rabbits"], ["🐦", "Birds"], ["🐾", "And more"]].map(([e, x]) => <span key={x}><I e={e} size={16} />{x}</span>)}</div></section>
       <section id="portals" className="wsec"><h2>One clinic, four portals</h2><div className="wfeat">{PORTALS.map(([r, i, t, d, w, c]) => <article key={r} className={`fc ${w} ${c}`}><span className="si"><I e={i} size={26} /></span><div><h3>{t}</h3><p>{d}</p><div className="row"><button className="btn sm" onClick={() => onLogin(r)}>Open portal</button>{r === "owner" && <button className="btn ghost sm" onClick={onRegister}>Create account</button>}</div></div></article>)}</div></section>
@@ -43,3 +49,4 @@ export default function Landing({ onLogin, onRegister }) {
     </div></div>
   );
 }
+

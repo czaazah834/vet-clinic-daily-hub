@@ -114,3 +114,69 @@
   .lg.auth.cardl form.lgr{margin:-48px 4px 10px;padding:20px 16px}
   .lg.auth.cardl .auth-grid{grid-template-columns:1fr}
 }
+
+/* ---------- landing hero v2: blue panel + pets photo + floating portal card (matches login) ---------- */
+.w .whero{display:block;background:transparent;overflow:visible;padding-top:clamp(14px,2.4vw,28px);padding-bottom:clamp(40px,5vw,64px)}
+.w .whero::before,.w .whero::after{display:none}
+.w .hpanel{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,420px);gap:clamp(16px,3vw,40px);align-items:center;min-height:clamp(520px,74vh,680px);
+  border-radius:clamp(22px,3vw,40px);padding:clamp(24px,4.5vw,64px);padding-bottom:clamp(24px,4.5vw,64px);
+  background:radial-gradient(circle at 10% 8%,rgba(255,226,138,.3),transparent 40%),linear-gradient(135deg,#2563eb 0%,#1e3a8a 100%);box-shadow:0 22px 56px rgba(30,58,138,.28)}
+.w .hl{position:relative;z-index:2;max-width:620px}
+.w .hl .wbadge{background:var(--butter);color:var(--navy)}
+.w .hl h1{color:#fff;font-size:clamp(32px,4.6vw,60px);line-height:1.06;margin:0 0 16px;letter-spacing:-.02em}
+.w .hl h1 em{font-style:normal;color:var(--butter);background:none;padding:0}
+.w .hl p{color:#dbe7ff;font-size:clamp(15px,1.4vw,18px);max-width:520px;margin:0 0 22px}
+.w .hl .btn.ghost{background:rgba(255,255,255,.14);color:#fff;border:1.5px solid rgba(255,255,255,.55)}
+.w .hl .btn.ghost:hover{background:#fff;color:var(--navy)}
+.w .hchips{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+.w .hchips span{display:inline-flex;align-items:center;gap:6px;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);padding:6px 12px;border-radius:99px;font-size:12.5px;font-weight:600}
+.w .hpic{position:absolute;left:0;bottom:0;z-index:1;width:min(58%,720px);height:clamp(190px,40%,330px);object-fit:cover;object-position:center 30%;
+  -webkit-mask-image:linear-gradient(to top,#000 55%,transparent);mask-image:linear-gradient(to top,#000 55%,transparent);pointer-events:none;opacity:.95}
+.w .hcard{position:relative;z-index:3;background:#fff;border-radius:clamp(20px,2.4vw,30px);padding:clamp(20px,2.6vw,30px);box-shadow:0 26px 60px rgba(15,23,42,.3)}
+.w .hcard h2{margin:0 0 4px;color:var(--navy);font-size:clamp(20px,2vw,26px);position:relative;padding-bottom:10px}
+.w .hcard h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:5px;border-radius:99px;background:var(--butter)}
+.w .hcard>p{margin:8px 0 14px;color:var(--mu);font-size:14px}
+.w .hroles{display:grid;gap:10px;margin-bottom:16px}
+.w .hroles button{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;background:#f6f9ff;border:2px solid #dbe4f7;border-radius:16px;padding:11px 14px;cursor:pointer;color:var(--navy);font:inherit;transition:transform .15s,border-color .15s,background .15s}
+.w .hroles button:hover{transform:translateX(3px);border-color:var(--blue);background:#fff}
+.w .hroles button b{display:block;font-size:14.5px}
+.w .hroles button small{display:block;color:var(--mu);font-size:12px;margin-top:1px}
+.w .hroles button svg{flex:none;color:var(--blue)}
+.w .hcard .btn.wide{width:100%;border-radius:99px}
+.wstats{margin-top:clamp(14px,2vw,22px)}
+
+@media(max-width:900px){
+  .w .hpanel{grid-template-columns:minmax(0,1fr);min-height:0;padding:22px 20px 0}
+  .w .hl{max-width:none}
+  .w .hpic{position:relative;order:2;width:calc(100% + 40px);margin:0 -20px;height:200px;left:auto}
+  .w .hcard{order:3;margin:-46px 0 20px}
+  .w .hchips{display:none}
+}
+@media(max-width:480px){
+  .w .hpanel{padding:18px 14px 0}
+  .w .hpic{width:calc(100% + 28px);margin:0 -14px;height:160px}
+  .w .hcard{padding:18px 14px}
+}
+
+/* ---------- auth v2: full-screen photo background, form card floats on top ---------- */
+.lg.auth.cardl{position:relative;padding:var(--pad);
+  background:linear-gradient(100deg,rgba(23,37,84,.88) 0%,rgba(30,58,138,.72) 38%,rgba(30,58,138,.18) 70%,rgba(255,226,138,.12) 100%),
+    url("/images/auth-bg.jpg") center/cover no-repeat,
+    url("/images/hero-pets.jpg") 30% center/cover no-repeat,
+    linear-gradient(135deg,#2563eb,#1e3a8a);
+  background-attachment:scroll,fixed,fixed,scroll}
+.lg.auth.cardl .lgl.photo{background:none;box-shadow:none;border-radius:0;overflow:visible;min-height:0;align-self:center;grid-column:1;padding:clamp(8px,3vw,48px);padding-right:clamp(16px,3vw,48px)}
+.lg.auth.cardl .pic{display:none}
+.lg.auth.cardl .cap{margin-top:clamp(28px,12vh,120px)}
+.lg.auth.cardl .lgl.photo h1{text-shadow:0 3px 18px rgba(0,0,0,.35)}
+.lg.auth.cardl .lgl.photo p{color:#eaf1ff;text-shadow:0 1px 10px rgba(0,0,0,.3)}
+.lg.auth.cardl form.lgr{grid-column:2;margin:0;backdrop-filter:blur(2px)}
+@media(max-width:1100px){.lg.auth.cardl form.lgr{margin:0}}
+@media(max-width:900px){
+  .lg.auth.cardl,.lg.auth.cardl.reg{background:linear-gradient(180deg,rgba(23,37,84,.86) 0%,rgba(30,58,138,.6) 45%,rgba(30,58,138,.35) 100%),url("/images/auth-bg.jpg") center/cover no-repeat,url("/images/hero-pets.jpg") 25% center/cover no-repeat,linear-gradient(135deg,#2563eb,#1e3a8a);background-attachment:scroll,fixed,fixed,scroll;align-items:start}
+  .lg.auth.cardl .lgl.photo{padding:14px 10px 4px}
+  .lg.auth.cardl .cap{margin-top:12px}
+  .lg.auth.cardl .lgl.photo p{display:none}
+  .lg.auth.cardl form.lgr{margin:14px 0 12px;grid-column:1;grid-row:2}
+}
+@media(max-width:480px){.lg.auth.cardl form.lgr{margin:10px 0}}

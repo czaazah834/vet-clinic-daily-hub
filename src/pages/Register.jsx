@@ -638,7 +638,6 @@ export default function Register({ onDone, onBack, go, limited }) {
           <p>Create your pet owner account with verified contact details to view medical records and book appointments.</p>
           <div className="pills" aria-hidden="true"><span>Appointments</span><span>Vaccine cards</span><span>Consultations</span></div>
         </div>
-        <img className="pic" src="/images/login-pets.jpg" alt="" />
       </aside>
       <form className="lgr" onSubmit={submit} noValidate>
         <button type="button" className="lnk" onClick={onBack}>
@@ -691,3 +690,4 @@ export default function Register({ onDone, onBack, go, limited }) {
     </div>
   );
 }
+

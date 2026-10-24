@@ -79,7 +79,6 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
           <p>Sign in to open your portal. Each role sees its own tools.</p>
           <div className="pills" aria-hidden="true"><span>Appointments</span><span>Vaccine cards</span><span>Consultations</span></div>
         </div>
-        <img className="pic" src="/images/login-pets.jpg" alt="" />
       </aside>
       <form className="lgr" onSubmit={submit} noValidate>
         <button type="button" className="lnk" onClick={onBack}>
@@ -183,4 +182,5 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
     </div>
   );
 }
+
 
