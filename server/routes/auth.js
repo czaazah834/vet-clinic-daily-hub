@@ -1,3 +1,5 @@
+import {appUrl,sessionCookie} from '../appOrigin.js';
+import {requestPasswordReset,resetPassword} from '../passwordRecovery.js';
 import { randomInt } from 'node:crypto';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import express from 'express';
@@ -14,26 +16,12 @@ import {
 import { sendMail, sendSms } from '../services.js';
 import { validateOwnerRegistration } from '../registrationValidation.js';
 
-export function getAppUrl(req) {
-  if (req) {
-    const origin = req.headers?.origin || (req.headers?.referer ? new URL(req.headers.referer).origin : null);
-    if (origin && !origin.includes('localhost:3000') && !origin.includes('127.0.0.1:3000')) {
-      return origin.replace(/\/+$/, '');
-    }
-    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-    const host = req.headers['x-forwarded-host'] || (req.get ? req.get('host') : req.headers?.host);
-    if (host && !host.includes('localhost:3000') && !host.includes('127.0.0.1:3000')) return `${proto}://${host}`.replace(/\/+$/, '');
-  }
-  if (process.env.APP_URL && !process.env.APP_URL.includes('localhost')) return process.env.APP_URL.replace(/\/+$/, '');
-  if (process.env.SITE_URL && !process.env.SITE_URL.includes('localhost')) return process.env.SITE_URL.replace(/\/+$/, '');
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/+$/, '');
-  return 'http://localhost:5173';
-}
+export const getAppUrl = () => appUrl();
 
 const router = express.Router();
 const G = 'Invalid email or password.';
+router.post('/forgot',requestPasswordReset);
+router.post('/reset',resetPassword);
 
 function renderVerifyEmailHtml(name, verifyLink) {
   return `
@@ -244,6 +232,15 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// A password reset must revoke sessions even when a password login was already in flight.
+async function checkLoginSnapshot(client,user) {
+  const current=(await client.query('SELECT * FROM users WHERE id=$1 FOR SHARE',[user.id])).rows[0];
+  if(!current || current.is_active===false || current.password_hash!==user.password_hash || current.email!==user.email
+    || current.mobile_verified!==user.mobile_verified || current.role!==user.role || (current.role==='owner' && !current.email_verified_at)) {
+    throw Object.assign(new Error('Account access changed. Please sign in again.'),{status:401});
+  }
+}
+
 // 2. LOGIN
 router.post('/login', async (req, res) => {
   try {
@@ -304,11 +301,14 @@ router.post('/login', async (req, res) => {
     // Check mobile verification
     if (!u.mobile_verified) {
       const sid = randomHex(32);
-      await query(
-        'INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'7 days\')',
-        [sha256(sid), u.id]
-      );
-      res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
+      await withTransaction(async client=>{
+        await checkLoginSnapshot(client,u);
+        await client.query(
+          'INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'7 days\')',
+          [sha256(sid), u.id]
+        );
+      });
+      res.cookie('sid', sid, sessionCookie(7 * 86400 * 1000));
       return res.json({
         status: 'ok',
         needsOtp: true,
@@ -320,6 +320,7 @@ router.post('/login', async (req, res) => {
     // Create session
     const sid = randomHex(32);
     await withTransaction(async client => {
+      await checkLoginSnapshot(client,u);
       await client.query(
         'INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'14 days\')',
         [sha256(sid), u.id]
@@ -328,12 +329,7 @@ router.post('/login', async (req, res) => {
         [`${u.first_name} ${u.last_name}`.trim(),u.role,`Signed in (${u.id}).`]);
     });
 
-    res.cookie('sid', sid, {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 14 * 86400 * 1000,
-    });
+    res.cookie('sid', sid, sessionCookie(14 * 86400 * 1000));
 
     const userObj = {
       id: u.id,
@@ -352,7 +348,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     console.error('Login failed:', err);
-    res.status(500).json({ error: 'Sign-in failed.' });
+    res.status(err.status || 500).json({ error: err.status ? err.message : 'Sign-in failed.' });
   }
 });
 
@@ -454,7 +450,7 @@ async function handleEmailVerification(req, res) {
        VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
       [sha256(sid), tok.user_id]
     );
-    res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
+    res.cookie('sid', sid, sessionCookie(7 * 86400 * 1000));
 
     // Generate and send mobile OTP via TextBee
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -748,7 +744,7 @@ router.post('/staff/accept-invite', async (req,res) => {
       await client.query('INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)',[`${firstName.trim()} ${lastName.trim()}`,inv.role,`Accepted staff invitation ${inv.id}; mobile verification pending (${userId}).`]);
     });
     await sendSms(phone.number,`PawCare Staff Security: Your verification OTP code is ${otpCode}. Valid for 10 minutes.`);
-    res.cookie('sid',sid,{httpOnly:true,sameSite:'lax',path:'/',maxAge:7*86400*1000});
+    res.cookie('sid',sid,sessionCookie(7 * 86400 * 1000));
     res.json({status:'ok',needsOtp:true,message:'Account created. Verify your mobile number to continue.',token:sid});
   }catch(error){res.status(error.status||(error.code==='23505'?409:500)).json({error:error.status?error.message:error.code==='23505'?'This account already exists. Log in or contact the administrator.':'Unable to complete staff setup. Try logging in if your account was already created.'});}
 });

@@ -119,3 +119,39 @@ test('audit history searches beyond the latest 100 and paginates timestamp ties 
  assert.equal((await call('admin','GET','/admin/audit?cursor=invalid')).status,400);
  assert.equal((await call('admin','GET','/admin/audit?search=Unique%25')).data.entries.length,0);
 });
+
+let careSeq=0;
+async function careDoctor(){
+ const id=`care-doctor-${++careSeq}`,vetId=`care-vet-${careSeq}`;
+ await query("INSERT INTO users(id,first_name,last_name,birthday,password_hash,email,role,vet_id,mobile_number,email_verified_at,mobile_verified) VALUES($1,'Synthetic','Doctor','1990-01-01',$2,$3,'vet',$4,'+639170000001',NOW(),true)",[id,hash,`${id}@example.invalid`,vetId]);
+ await query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '1 day')",[sha256(id),id]);return{id,vetId};
+}
+async function careVisit(doctor,status='Confirmed'){
+ const id=`care-visit-${careSeq}`;
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,status,reason) VALUES($1,'pet',$2,$3,'09:00',$4,'Synthetic measured exam')",[id,doctor.vetId,(await import('../scheduling.js')).clinicClock().date,status]);return id;
+}
+test('doctor deactivation requires all waiting and active care handed off, with rollback of sessions and audit',async()=>{
+ const source=await careDoctor(),target=await careDoctor(),id=await careVisit(source,'In consultation');
+ // Both stages, including overnight patients, must prevent removing their responsible vet.
+ for(const status of ['Checked-in','In consultation']){
+  await query('UPDATE appointments SET status=$1,date=CURRENT_DATE-1 WHERE id=$2',[status,id]);
+  const blocked=await change(source.id,'deactivate',0);assert.equal(blocked.status,409);assert.match(blocked.data.error,/Transfer/);
+  assert.equal((await query('SELECT is_active FROM users WHERE id=$1',[source.id])).rows[0].is_active,true);
+  assert.equal((await query('SELECT * FROM sessions WHERE user_id=$1',[source.id])).rows.length,1);
+ }
+ const handoff=await call(source.id,'POST',`/appointments/${id}/handoff`,{vetId:target.vetId,note:'Transfer clinical responsibility'});assert.equal(handoff.status,200);
+ assert.equal((await change(source.id,'deactivate',0)).status,200);assert.equal((await query('SELECT vet_id FROM appointments WHERE id=$1',[id])).rows[0].vet_id,target.vetId);
+ assert.equal((await change(target.id,'deactivate',0)).status,409);
+});
+test('deactivation racing check-in cannot leave an arrived visit assigned to an inactive vet',async()=>{
+ const doctor=await careDoctor(),id=await careVisit(doctor);
+ const result=await Promise.all([change(doctor.id,'deactivate',0),call('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',intakeVitals:{weight:5,temp:38.5}})]);
+ assert.ok(result.some(r=>r.status===409),JSON.stringify(result));assert.ok(result.some(r=>r.status===200),JSON.stringify(result));
+ const row=(await query('SELECT u.is_active,a.status FROM users u JOIN appointments a ON a.vet_id=u.vet_id WHERE a.id=$1',[id])).rows[0];assert.ok(row.is_active || row.status==='Confirmed');
+});
+test('deactivation racing a handoff cannot orphan the receiving veterinarian queue',async()=>{
+ const source=await careDoctor(),target=await careDoctor(),id=await careVisit(source,'In consultation');
+ const result=await Promise.all([change(target.id,'deactivate',0),call(source.id,'POST',`/appointments/${id}/handoff`,{vetId:target.vetId,note:'Concurrent transfer'})]);
+ assert.ok(result.some(r=>r.status===200),JSON.stringify(result));assert.ok(result.some(r=>[400,409].includes(r.status)),JSON.stringify(result));
+ const row=(await query('SELECT u.is_active,a.status FROM users u JOIN appointments a ON a.vet_id=u.vet_id WHERE a.id=$1',[id])).rows[0];assert.equal(row.is_active,true);
+});

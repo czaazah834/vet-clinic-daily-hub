@@ -762,3 +762,45 @@ Standalone `POST /vaccinations` is retired (410 for vets): certify doses through
 The weight endpoint accepts measured numeric weights of 0.05–120 kg with at most two decimals and real dates from the patient's birth through today's Manila date. Recorder identity comes from the session; measurement, current-weight update and audit commit together. Adding older history does not replace a newer current measurement.
 
 Apply `server/database/contact-changes.sql` before deployment when the runtime role cannot create tables. `db:init` includes it; account contact routes otherwise initialize it on first use. Address-only changes save immediately. Email/mobile changes now create a pending proposal and send separate six-digit codes to the changed destinations. The old contacts remain active until every required code is verified. Proposals expire after ten minutes, allow five attempts, and can be replaced after one minute. Codes are stored as scoped hashes; API responses never expose them. Unconfirmed/dev-outbox delivery cannot authorize a change. Successful verification atomically updates the account, owner contact and address, consumes the proposal, audits the change and revokes other sessions. The current session remains available. Pending codes do not survive a replacement or successful save. Provider delivery still depends on configured email/SMS services.
+
+### Password recovery and trusted deployment URL
+
+Forgot password uses the registered, verified email address for every role.
+Codes expire after ten minutes, allow five attempts and can be requested once
+per minute. Limits persist in PostgreSQL for both known and unknown emails;
+responses do not disclose account existence or codes. Only confirmed provider
+acceptance enables a code; development outbox messages cannot authorize resets.
+A successful reset preserves account role/verification, clears login lockout,
+revokes all sessions and requires a new login. Changed email/password or inactive
+accounts invalidate older recovery codes. Password, code consumption, session
+revocation and audit save atomically. In-flight sign-ins serialize with resets.
+
+Apply `server/database/password-recovery.sql` before deployment when the runtime
+role cannot create tables. `npm run db:init` includes it; otherwise recovery
+initializes it on first use. Provider delivery needs the existing email setup.
+
+Set **APP_URL** to the clinic's canonical HTTPS origin in production. SITE_URL or
+Vercel deployment configuration is used only when APP_URL is absent. Verification
+and staff-invitation links never use Origin, Referer, Host or forwarded headers.
+Browser API requests must match the configured origin; external origins receive
+403. Server clients without an Origin header remain supported. Local development
+defaults to `http://localhost:5173`; production requires HTTPS and sends Secure,
+HttpOnly, SameSite=Lax session cookies. Align preview environment APP_URL with its
+actual frontend origin; an arbitrary request cannot add an allowed origin.
+
+### Deactivating a veterinarian with active patients
+
+An administrator cannot deactivate a veterinarian who still has Checked-in or
+In consultation visits, including prior-day patients. The assigned veterinarian
+must hand those visits to another active veterinarian first. Upcoming bookings
+remain reception's responsibility to reassign. Access changes, arrival and
+handoff serialize so simultaneous requests cannot strand a newly arrived patient
+with an inactive vet. A blocked deactivation retains access, sessions and records.
+For patients already assigned to an inactive vet, reactivate that vet, complete
+the clinical handoff, then deactivate after transfer. No new administrative
+authority over clinical notes or transfers is granted.
+
+Checks: `npm run test:origin`, `npm run test:auth`, `npm run test:clinic`,
+`TEST_DATABASE_URL=<disposable-local-db> npm run test:recovery:postgres`,
+`npm run test:admin:postgres` and `npm run test:scheduling:postgres` with the same
+local database setting, plus `npm run build`.

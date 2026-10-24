@@ -173,7 +173,8 @@ test('a concurrently consumed or expired OTP cannot complete registration again'
 
 test('fully verified account can log in normally and receive a new session', async () => {
   const password = 'Synthetic123!';
-  steps = [{ sql: /SELECT \* FROM users/, rows: [{ ...user, mobile_verified: true, password_hash: await hashPassword(password) }] }, { sql: /UPDATE users SET failed_login_attempts = 0/ }, { sql: /INSERT INTO sessions/, check: p => assert.equal(p[1], user.id) }, { sql: /INSERT INTO audit_logs/, check: p => { assert.equal(p[1], 'owner'); assert.match(p[2], /Signed in/); } }];
+  steps = [{ sql: /SELECT \* FROM users/, rows: [{ ...user, mobile_verified: true, password_hash: await hashPassword(password) }] }, { sql: /UPDATE users SET failed_login_attempts = 0/ }, { sql: /SELECT \* FROM users WHERE id=\$1 FOR SHARE/, rows: [{ ...user, mobile_verified:true, password_hash: '' }] }, { sql: /INSERT INTO sessions/, check: p => assert.equal(p[1], user.id) }, { sql: /INSERT INTO audit_logs/, check: p => { assert.equal(p[1], 'owner'); assert.match(p[2], /Signed in/); } }];
+  steps[2].rows = steps[0].rows;
   const { res, data } = await request('/login', { body: { email: user.email, password } });
   assert.equal(res.status, 200);
   assert.equal(data.user.id, user.id);
@@ -200,4 +201,10 @@ test('invitation response preserves the admin login token and reports provider s
   steps=[session({...user,role:'admin',mobile_verified:true}),{sql:/SELECT id FROM users/,rows:[]},{sql:/INSERT INTO staff_invitations/},{sql:/INSERT INTO audit_logs/}];
   const result=await request('/staff/invite',{session:true,body:{name:'Synthetic Staff',email:'staff@example.test',role:'vet'}});
   assert.equal(result.res.status,200);assert.equal(result.data.token,undefined);assert.match(result.data.inviteLink,/\?invite=/);assert.equal(result.data.delivery,'unknown');
+});
+
+test('a login using a credential snapshot from before reset cannot create a new session',async()=>{
+ const password='Synthetic123!',snapshot={...user,mobile_verified:true,password_hash:await hashPassword(password)};
+ steps=[{sql:/SELECT \* FROM users/,rows:[snapshot]},{sql:/UPDATE users SET failed_login_attempts = 0/},{sql:/SELECT \* FROM users WHERE id=\$1 FOR SHARE/,rows:[{...snapshot,password_hash:'changed-after-recovery'}]}];
+ const result=await request('/login',{body:{email:user.email,password}});assert.equal(result.res.status,401);assert.equal(result.data.token,undefined);assert.equal(result.res.headers.get('set-cookie'),null);
 });

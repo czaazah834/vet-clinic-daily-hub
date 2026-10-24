@@ -349,7 +349,7 @@ test('intake snapshots reject stale parallel measurements and changed assignment
  const saved=results.find(r=>r.status===200).data.appointment;
  assert.equal((await query('SELECT COUNT(*)::int n FROM pet_weights WHERE pet_id=\'p6\'')).rows[0].n,1);
  const edit={status:'Checked-in',expectedVisit:intakeVisitSnapshot(saved),intakeVitals:{weight:5.5,temp:38.5,notes:'Remeasured'}};
- await query("UPDATE appointments SET vet_id='different_vet', reason='Veterinarian updated reason' WHERE id=$1",[id]);
+ await query("UPDATE appointments SET vet_id='v2', reason='Veterinarian updated reason' WHERE id=$1",[id]);
  assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,edit)).status,409);
  const latest=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
  assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,{...edit,expectedVisit:intakeVisitSnapshot(latest)})).status,200);

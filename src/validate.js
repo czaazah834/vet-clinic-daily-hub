@@ -111,10 +111,10 @@ export function validateCode(d) {
 
 export function validateReset(d) {
   const e = validateCode(d);
-  const em = String(d.email ?? d.identifier ?? '').trim();
-  if (!em) e.email = 'Email is required.';
+  const email = typeof d.identifier === 'string' ? d.identifier.trim() : '';
+  if (!emOk(email)) e.identifier = 'Enter your registered email address.';
   if (!pwOk(String(d.password ?? ''))) e.password = '12+ characters with upper, lower, number and special character.';
-  if (d.confirm_password !== undefined && d.confirm_password !== d.password) e.confirm_password = 'Passwords do not match.';
+  if (d.confirm !== d.password) e.confirm = 'Passwords do not match.';
   return e;
 }
 
