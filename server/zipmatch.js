@@ -2,7 +2,12 @@
 // ph-zip.json rows: { z: ZIP, a: postal area (municipality, or a district for Metro Manila), p: province, r: region }
 import { readFileSync } from 'node:fs';
 
-const DATA = JSON.parse(readFileSync(new URL('./ph-zip.json', import.meta.url), 'utf8'));
+let DATA = [];
+try {
+  DATA = JSON.parse(readFileSync(new URL('./ph-zip.json', import.meta.url), 'utf8'));
+} catch (err) {
+  console.warn('Warning: Could not load ph-zip.json:', err?.message);
+}
 const BY_ZIP = new Map();
 for (const r of DATA) (BY_ZIP.get(r.z) ?? BY_ZIP.set(r.z, []).get(r.z)).push(r);
 

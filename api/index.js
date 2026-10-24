@@ -26,11 +26,15 @@ app.use(cookieParser());
 // Health Check
 app.get("/api/health", async (req, res) => {
   let dbStatus = "disconnected";
-  try {
-    const result = await query("SELECT NOW() as now");
-    if (result.rows?.[0]?.now) dbStatus = "connected";
-  } catch (err) {
-    dbStatus = "error: " + err.message;
+  if (!process.env.DATABASE_URL) {
+    dbStatus = "error: DATABASE_URL is not set in Vercel Environment Variables";
+  } else {
+    try {
+      const result = await query("SELECT NOW() as now");
+      if (result.rows?.[0]?.now) dbStatus = "connected";
+    } catch (err) {
+      dbStatus = "error: " + err.message;
+    }
   }
   res.json({
     status: "ok",
@@ -87,4 +91,3 @@ app.use((req, res, next) => {
 });
 
 export default app;
-

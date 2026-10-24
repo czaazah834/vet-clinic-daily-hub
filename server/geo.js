@@ -64,7 +64,12 @@ export const countryInfo = (code) => {
 // come straight from the PSGC API: GET /provinces.json and GET /provinces/{code}/cities-municipalities.json (Metro Manila via its region).
 // If the API is unreachable the bundled ph-locations.json (same PSGC data, built by `npm run build:locations`) is used instead.
 const PSGC = (process.env.PSGC_API_URL ?? 'https://psgc.gitlab.io/api').replace(/\/$/, ''), NCR = '130000000';
-const PHD = JSON.parse(readFileSync(new URL('./ph-locations.json', import.meta.url), 'utf8'));
+let PHD = { provinces: [], places: [] };
+try {
+  PHD = JSON.parse(readFileSync(new URL('./ph-locations.json', import.meta.url), 'utf8'));
+} catch (err) {
+  console.warn('Warning: Could not load ph-locations.json:', err?.message);
+}
 const phn = (x = '') => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   .replace(/\bsta\b/g, 'santa').replace(/\bsto\b/g, 'santo').replace(/\b(city of|city)\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim();   // "City of Makati" == "Makati City" == "Makati"
 const phLabel = (n) => String(n).replace(/\s+/g, ' ').trim().replace(/^City of (.+)$/i, '$1 City');   // one format: "Makati City"
