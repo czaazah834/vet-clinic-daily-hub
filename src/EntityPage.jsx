@@ -11,7 +11,8 @@ import {
   ShieldAlert,
   X,
   CalendarPlus,
-  Sparkles
+  Sparkles,
+  CreditCard
 } from "lucide-react";
 import { E, can, scope, cellText, Table, FormModal, uid, TODAY, petName, moveAppt, addLog, LABEL } from "./lib.jsx";
 import SoapConsultationModal from "./roles/SoapConsultationModal.jsx";
@@ -86,7 +87,7 @@ function ViewOwnerModal({ owner, db, onClose }) {
                   </div>
                   {p.vaccinationCardId && (
                     <span style={{ fontSize: "11px", background: "rgba(16, 185, 129, 0.1)", color: "#065f46", padding: "3px 8px", borderRadius: "99px", fontWeight: 600 }}>
-                      💳 {p.vaccinationCardId}
+                      <CreditCard size={11} aria-hidden="true" style={{ verticalAlign: "-1px", marginRight: 4 }} />{p.vaccinationCardId}
                     </span>
                   )}
                 </div>

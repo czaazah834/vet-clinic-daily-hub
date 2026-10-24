@@ -342,7 +342,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                         <td style={{ padding: "12px 14px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                             <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "#e0f2fe", color: "#0369a1", display: "grid", placeItems: "center", fontSize: "18px" }}>
-                              <I e={ICON[p.species] || "🐾"} size={18} />
+                              <I e={ICON[p.species] || "paw"} size={18} />
                             </div>
                             <div>
                               <b style={{ color: "var(--navy)", fontSize: "14px", textDecoration: "underline" }}>

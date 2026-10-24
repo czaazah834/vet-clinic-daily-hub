@@ -132,9 +132,9 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               type="button"
               className="btn sm ghost"
               onClick={onClose}
-              style={{ fontSize: "16px", padding: "4px 10px" }}
+              aria-label="Close" style={{ padding: "6px 10px" }}
             >
-              ✕
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -418,9 +418,9 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                         type="button"
                         onClick={(e) => { e.stopPropagation(); savePhoto(""); }}
                         style={{ position: "absolute", top: 4, right: 4, background: "rgba(220, 38, 38, 0.9)", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, display: "grid", placeItems: "center", cursor: "pointer", fontSize: "11px", fontWeight: "bold" }}
-                        title="Remove photo"
+                        title="Remove photo" aria-label="Remove photo"
                       >
-                        ✕
+                        <X size={12} aria-hidden="true" />
                       </button>
                     )}
                   </div>

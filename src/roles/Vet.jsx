@@ -1,29 +1,20 @@
 import { useState } from "react";
-import {
-  Stethoscope,
-  Clock,
-  Activity,
-  CheckCircle2,
-  Syringe,
-  Thermometer,
-  Scale,
-  AlertTriangle,
-  User,
-  Calendar,
-  FileText,
-  ChartColumn,
-} from "lucide-react";
-import { I, M, Stats, Hero, TODAY, plus, moveAppt, petName, ownerName, ICON, Badge, dueState } from "../lib.jsx";
+import { AlertTriangle, Thermometer, Scale, CalendarDays, Search, Play, FileText } from "lucide-react";
+import { I, M, Stats, Hero, TODAY, plus, moveAppt, petName, ICON, Badge } from "../lib.jsx";
 import SoapConsultationModal from "./SoapConsultationModal.jsx";
 import ClinicCalendar from "./ClinicCalendar.jsx";
 import ClientsAndPatientsPage from "./ClientsAndPatientsPage.jsx";
 import ConsultationsPage from "./ConsultationsPage.jsx";
 
+const doctorName = n => { const s = String(n || "").trim(); return /^dr\.?\s/i.test(s) ? s : `Dr. ${s}`; };
+const tempTone = s => (s === "normal" ? "" : s === "high_fever" || s === "hypothermia" ? "er" : "wa");
+const weightTone = s => (s === "ideal" ? "" : "wa");
+
 function Dash({ db, setDb, me, go, say }) {
   const [activeSoap, setActiveSoap] = useState(null); // { appt, pet }
-  const [scope, setScope] = useState("all"); // 'all' (all clinic checked-in) | 'my' (assigned to this doctor)
+  const [scope, setScope] = useState("all");          // "all" = whole clinic, "my" = assigned to this doctor
 
-  const isMyVet = (a) => {
+  const isMyVet = a => {
     if (!a.vetId || a.vetId === "all") return true;
     if (a.vetId === me.id || a.vetId === me.vetId) return true;
     if ((me.name?.toLowerCase().includes("ana") || me.id === "u_vet_1") && (a.vetId === "v1" || a.vetId === "u_vet_1")) return true;
@@ -32,283 +23,124 @@ function Dash({ db, setDb, me, go, say }) {
   };
 
   const todayAppts = (db.appts || []).filter(a => a.date === TODAY && a.status !== "Cancelled");
-  const queue = (scope === "all" ? todayAppts : todayAppts.filter(isMyVet)).sort((a, b) => a.time.localeCompare(b.time));
+  const scoped = scope === "all" ? todayAppts : todayAppts.filter(isMyVet);
+  // Workflow: the doctor only sees patients the front desk has already checked in (Scheduled / Confirmed stay at the front desk).
+  const queue = scoped.filter(a => ["Checked-in", "In consultation", "Completed"].includes(a.status)).sort((a, b) => a.time.localeCompare(b.time));
+  const notArrived = scoped.filter(a => ["Scheduled", "Confirmed"].includes(a.status)).length;
   const waiting = queue.filter(a => a.status === "Checked-in");
   const inConsult = queue.filter(a => a.status === "In consultation");
   const completed = queue.filter(a => a.status === "Completed");
   const due = (db.vacc || []).filter(v => v.nextDue && !v.done && v.nextDue <= plus(14));
-
   const allWaiting = todayAppts.filter(a => a.status === "Checked-in");
   const myWaiting = todayAppts.filter(a => isMyVet(a) && a.status === "Checked-in");
 
-  const startConsult = (a) => {
+  const startConsult = a => {
     const pet = db.pets.find(p => p.id === a.petId);
     if (!pet) return say("Patient record not found.");
+    // Front desk normally records intake vitals first; warn the doctor, but never block care.
+    if (!a.intakeVitals) say("No intake vitals on file for this patient. Record them in the SOAP notes.");
     moveAppt(setDb, a.id, "In consultation", me);
-    setActiveSoap({ appt: a, pet });
+    setActiveSoap({ appt: { ...a, status: "In consultation" }, pet });
   };
 
-  const openEmr = (petId) => {
+  const openEmr = petId => {
     const pet = db.pets.find(p => p.id === petId);
     if (!pet) return;
-    const a = queue.find(x => x.petId === petId) || null;
-    setActiveSoap({ appt: a, pet });
+    setActiveSoap({ appt: queue.find(x => x.petId === petId) || null, pet });
   };
 
   return (
     <>
       <Hero
-        title={`Clinical Desk · ${me.name}`}
-        text={`You have ${waiting.length} checked-in patient(s) waiting in your queue today.`}
+        title={`Clinical Desk: ${doctorName(me.name)}`}
+        text={`${waiting.length} checked-in patient${waiting.length === 1 ? "" : "s"} waiting in your queue today.`}
         icons={["stethoscope", "dog"]}
       >
-        <div className="row" style={{ flexWrap: "wrap", gap: "10px" }}>
+        <div className="sf-actions">
           {waiting.length > 0 && (
             <button className="btn gold" onClick={() => startConsult(waiting[0])}>
-              Start Next Consultation ({petName(db, waiting[0].petId)})
+              <Play size={16} aria-hidden="true" />Start next consultation ({petName(db, waiting[0].petId)})
             </button>
           )}
-          <button
-            className="btn"
-            onClick={() => go("cal")}
-            style={{
-              background: "#ffffff",
-              color: "#1e3a8a",
-              border: "1.5px solid #ffffff",
-              fontWeight: 700,
-              boxShadow: "0 2px 4px rgba(0,0,0,0.08)"
-            }}
-          >
-            View Schedule Calendar
-          </button>
-          <button
-            className="btn"
-            onClick={() => go("pets")}
-            style={{
-              background: "#ffffff",
-              color: "#1e3a8a",
-              border: "1.5px solid #ffffff",
-              fontWeight: 700,
-              boxShadow: "0 2px 4px rgba(0,0,0,0.08)"
-            }}
-          >
-            Search Patient EMR
-          </button>
+          <button className="btn" onClick={() => go("cal")}><CalendarDays size={16} aria-hidden="true" />Schedule calendar</button>
+          <button className="btn" onClick={() => go("pets")}><Search size={16} aria-hidden="true" />Search patient EMR</button>
         </div>
       </Hero>
 
       <Stats
         items={[
-          ["stethoscope", queue.length, "Total Patients Today"],
-          ["clock", waiting.length, "Waiting in Queue"],
-          ["file", inConsult.length, "In Consultation"],
-          ["check", completed.length, "Completed Today"],
-          ["syringe", due.length, "Vaccines Due Soon"],
+          ["stethoscope", queue.length, "Checked in today"],
+          ["clock", waiting.length, "Waiting in queue"],
+          ["file", inConsult.length, "In consultation"],
+          ["check", completed.length, "Completed today"],
+          ["syringe", due.length, "Vaccines due soon"],
         ]}
       />
 
-      {/* Real-time Clinical Queue */}
-      <section className="card" style={{ marginTop: "16px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+      <section className="card" style={{ marginTop: 16 }}>
+        <div className="sf-section-hd">
           <div>
-            <h3 style={{ margin: "0 0 4px" }}>Today&apos;s Clinical Patient Queue</h3>
-            <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-              Patients checked in by Front Desk appear here live for clinical examination and SOAP consultation notes.
-            </p>
+            <h3>Today&rsquo;s clinical queue</h3>
+            <p>Patients checked in by the front desk appear here for examination and SOAP notes.{notArrived > 0 ? ` ${notArrived} more expected today, not yet checked in.` : ""}</p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <div style={{ display: "inline-flex", background: "#f1f5f9", padding: "3px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-              <button
-                type="button"
-                onClick={() => setScope("all")}
-                style={{
-                  padding: "5px 12px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  borderRadius: "6px",
-                  border: "none",
-                  cursor: "pointer",
-                  background: scope === "all" ? "var(--navy)" : "transparent",
-                  color: scope === "all" ? "#fff" : "#475569",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                All Clinic Waiting ({allWaiting.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setScope("my")}
-                style={{
-                  padding: "5px 12px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  borderRadius: "6px",
-                  border: "none",
-                  cursor: "pointer",
-                  background: scope === "my" ? "var(--navy)" : "transparent",
-                  color: scope === "my" ? "#fff" : "#475569",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                My Assigned ({myWaiting.length})
-              </button>
+          <div className="sf-toolbar">
+            <div className="sf-seg" role="group" aria-label="Queue scope">
+              <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>All clinic ({allWaiting.length})</button>
+              <button type="button" aria-pressed={scope === "my"} onClick={() => setScope("my")}>My patients ({myWaiting.length})</button>
             </div>
-            <span style={{ fontSize: "12px", background: "#e0f2fe", color: "#0369a1", padding: "6px 10px", borderRadius: "8px", fontWeight: "600" }}>
-              Dr. {me.name}
-            </span>
           </div>
         </div>
 
         {queue.length ? (
-          <div style={{ display: "grid", gap: "10px" }}>
+          <div className="sf-grid">
             {queue.map(a => {
               const p = db.pets.find(x => x.id === a.petId) || {};
               const o = db.owners.find(x => x.id === p.ownerId) || {};
-              const hasAllergy = p.allergies && p.allergies.length > 0;
               const iv = a.intakeVitals;
-
+              const emergency = iv?.triageLevel === "Emergency";
+              const rowCls = emergency ? "is-emergency" : a.status === "Checked-in" ? "is-wait" : a.status === "In consultation" ? "is-live" : "";
               return (
-                <div
-                  key={a.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "12px 16px",
-                    borderRadius: "12px",
-                    border: iv?.triageLevel === "Emergency"
-                      ? "2px solid #ef4444"
-                      : a.status === "Checked-in"
-                      ? "2px solid #93c5fd"
-                      : "1px solid #e2e8f0",
-                    background: iv?.triageLevel === "Emergency"
-                      ? "#fff5f5"
-                      : a.status === "Checked-in"
-                      ? "#eff6ff"
-                      : a.status === "In consultation"
-                      ? "#fffbeb"
-                      : "#fff",
-                  }}
-                >
-                  <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
-                    <b style={{ color: "var(--navy)", fontSize: "16px", minWidth: "50px", marginTop: "4px" }}>{a.time}</b>
-                    <span style={{ fontSize: "24px", marginTop: "2px" }}><I e={ICON[p.species] || "paw"} size={24} /></span>
-                    <div>
-                      <div style={{ fontWeight: "700", fontSize: "15px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                        <span>{p.name}</span>
-                        <span style={{ fontWeight: "400", color: "#64748b", fontSize: "13px" }}>({p.breed || p.species} &bull; Owner: {o.name})</span>
-                        {hasAllergy && (
-                          <span style={{ fontSize: "11px", background: "#fef2f2", color: "#dc2626", padding: "2px 6px", borderRadius: "4px", fontWeight: "700" }}>
-                            ALLERGIC: {p.allergies.join(", ")}
-                          </span>
-                        )}
+                <div key={a.id} className={`sf-row ${rowCls}`}>
+                  <div className="sf-row-main">
+                    <span className="sf-time">{a.time}</span>
+                    <span className="sf-species"><I e={ICON[p.species] || "paw"} size={22} /></span>
+                    <div className="sf-body">
+                      <div className="sf-name">
+                        <span>{p.name || "Patient"}</span>
+                        <span className="meta">{p.breed || p.species}{o.name ? `, owner ${o.name}` : ""}</span>
+                        {p.allergies?.length > 0 && <span className="sf-pill er">Allergic: {p.allergies.join(", ")}</span>}
                         {iv?.triageLevel && iv.triageLevel !== "Routine" && (
-                          <span style={{
-                            fontSize: "11px",
-                            background: iv.triageLevel === "Emergency" ? "#fee2e2" : "#fef3c7",
-                            color: iv.triageLevel === "Emergency" ? "#991b1b" : "#92400e",
-                            padding: "2px 7px",
-                            borderRadius: "4px",
-                            fontWeight: "700",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "3px"
-                          }}>
-                            <AlertTriangle size={12} /> TRIAGE: {iv.triageLevel.toUpperCase()}
-                          </span>
+                          <span className={`sf-pill ${emergency ? "er" : "wa"}`}><AlertTriangle size={12} aria-hidden="true" />Triage: {iv.triageLevel}</span>
                         )}
                       </div>
-                      <div style={{ fontSize: "12.5px", color: "#475569", marginTop: "2px" }}>
-                        <b>Chief Complaint:</b> {a.reason}
-                      </div>
-
-                      {/* Automated Intake Vitals from Front Desk */}
+                      <div className="sf-reason"><b>Chief complaint:</b> {a.reason}</div>
                       {iv ? (
-                        <div style={{ marginTop: "6px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", fontSize: "12px" }}>
-                          {/* Temperature badge */}
-                          <span style={{
-                            padding: "3px 8px",
-                            borderRadius: "6px",
-                            fontWeight: 600,
-                            background: iv.tempAnalysis?.status === "normal"
-                              ? "#ecfdf5"
-                              : iv.tempAnalysis?.status === "high-fever" || iv.tempAnalysis?.status === "hypothermia"
-                              ? "#fee2e2"
-                              : "#fffbeb",
-                            color: iv.tempAnalysis?.status === "normal"
-                              ? "#047857"
-                              : iv.tempAnalysis?.status === "high-fever" || iv.tempAnalysis?.status === "hypothermia"
-                              ? "#991b1b"
-                              : "#b45309",
-                            border: "1px solid rgba(0,0,0,0.06)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "4px"
-                          }}>
-                            <Thermometer size={12} /> {iv.temp}°C &bull; {iv.tempAnalysis?.label || "Normal"}
-                          </span>
-
-                          {/* Weight badge */}
-                          <span style={{
-                            padding: "3px 8px",
-                            borderRadius: "6px",
-                            fontWeight: 600,
-                            background: iv.weightAnalysis?.status === "ideal" ? "#ecfdf5" : "#fffbeb",
-                            color: iv.weightAnalysis?.status === "ideal" ? "#047857" : "#b45309",
-                            border: "1px solid rgba(0,0,0,0.06)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "4px"
-                          }}>
-                            <Scale size={12} /> {iv.weight} kg &bull; {iv.weightAnalysis?.label || "Normal"}
-                            {iv.weightAnalysis?.trend && ` (${iv.weightAnalysis.trend})`}
-                          </span>
-
-                          {iv.triageNotes && (
-                            <span style={{ color: "#64748b", fontStyle: "italic" }}>
-                              &ldquo;{iv.triageNotes}&rdquo;
-                            </span>
-                          )}
+                        <div className="sf-chips">
+                          <span className={`sf-chip ${tempTone(iv.tempAnalysis?.status)}`}><Thermometer size={12} aria-hidden="true" />{iv.temp}&deg;C, {iv.tempAnalysis?.label || "Normal"}</span>
+                          <span className={`sf-chip ${weightTone(iv.weightAnalysis?.status)}`}><Scale size={12} aria-hidden="true" />{iv.weight} kg, {iv.weightAnalysis?.label || "Normal"}{iv.weightAnalysis?.trend ? ` (${iv.weightAnalysis.trend})` : ""}</span>
+                          {iv.triageNotes && <span className="sf-chip mu">&ldquo;{iv.triageNotes}&rdquo;</span>}
                         </div>
                       ) : (
-                        <div style={{ fontSize: "11.5px", color: "#94a3b8", marginTop: "3px" }}>
-                          <i>Awaiting front desk intake vitals</i>
-                        </div>
+                        <div className="sf-sub" style={{ marginTop: 4 }}>Awaiting front desk intake vitals</div>
                       )}
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <div className="sf-row-act">
                     <Badge v={a.status} />
-
-                    {a.status === "Checked-in" && (
-                      <button className="btn sm gold" onClick={() => startConsult(a)}>
-                        Start Consultation
-                      </button>
-                    )}
-
-                    {a.status === "In consultation" && (
-                      <button className="btn sm gold" onClick={() => setActiveSoap({ appt: a, pet: p })}>
-                        Resume SOAP Notes
-                      </button>
-                    )}
-
-                    {a.status === "Completed" && (
-                      <button className="btn sm ghost" onClick={() => openEmr(p.id)}>
-                        View EMR
-                      </button>
-                    )}
+                    {a.status === "Checked-in" && <button className="btn sm gold" onClick={() => startConsult(a)}>Start consultation</button>}
+                    {a.status === "In consultation" && <button className="btn sm gold" onClick={() => setActiveSoap({ appt: a, pet: p })}>Resume SOAP notes</button>}
+                    {a.status === "Completed" && <button className="btn sm ghost" onClick={() => openEmr(p.id)}><FileText size={14} aria-hidden="true" />View EMR</button>}
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="empty sm">No patients scheduled in your queue today.</div>
+          <div className="empty sm">No checked-in patients yet. They appear here as soon as the front desk records their vitals.</div>
         )}
       </section>
 
-      {/* Modal: Full EMR & SOAP Consultation Console */}
       {activeSoap && (
         <SoapConsultationModal
           appt={activeSoap.appt}
@@ -317,9 +149,9 @@ function Dash({ db, setDb, me, go, say }) {
           setDb={setDb}
           me={me}
           onClose={() => setActiveSoap(null)}
-          onSaved={(record) => {
+          onSaved={() => {
+            say(`SOAP consultation saved for ${activeSoap.pet.name}. Visit completed and sent to billing.`);
             setActiveSoap(null);
-            say(`SOAP Consultation saved for ${activeSoap.pet.name}! Visit completed.`);
           }}
         />
       )}

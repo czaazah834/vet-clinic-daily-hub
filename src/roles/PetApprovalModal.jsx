@@ -386,8 +386,8 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                 disabled={submitting}
                 style={{ display: "flex", alignItems: "center", gap: "6px" }}
               >
-                <span>✓</span>
-                <b>Approve Pet &amp; Issue Vaccination Card</b>
+                <CheckCircle2 size={16} aria-hidden="true" />
+                <b>Approve pet and issue vaccination card</b>
               </button>
             </div>
           </div>

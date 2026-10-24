@@ -87,9 +87,9 @@ export function assessWeight(kg, species = "Dog", breed = "", prevKg = null) {
   if (prevKg && !isNaN(+prevKg) && +prevKg > 0) {
     const diff = +(w - +prevKg).toFixed(1);
     if (diff > 0.1) {
-      trend = `+${diff} kg since last visit (${prevKg} kg → ${w} kg)`;
+      trend = `+${diff} kg since last visit (${prevKg} kg to ${w} kg)`;
     } else if (diff < -0.1) {
-      trend = `${diff} kg loss since last visit (${prevKg} kg → ${w} kg)`;
+      trend = `${diff} kg loss since last visit (${prevKg} kg to ${w} kg)`;
     } else {
       trend = `Weight unchanged from last visit (${prevKg} kg)`;
     }

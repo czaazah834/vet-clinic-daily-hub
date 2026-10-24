@@ -34,8 +34,8 @@ export default function Forgot({ onBack, go }) {
   const rulesOk = PW_RULES.every(([t]) => t(v.password)), s = pwStrength(v.password);
   return (
     <div className="lg auth">
-      <aside className="lgl"><Logo size={72} /><h1>Forgot your password?</h1><p>No problem. We’ll send a 6-digit code so you can choose a new one.</p><div className="lart sm" aria-hidden="true"><span><I e="🔒" size={40} /></span><span><I e="🐾" size={40} /></span></div></aside>
-      {step === "done" ? <div className="lgr auth-ok"><I e="✅" size={48} /><h2>Password changed</h2><p>You can now log in with your new password.</p><button className="btn gold wide" onClick={() => go("login")}>Go to log in</button></div>
+      <aside className="lgl"><Logo size={72} /><h1>Forgot your password?</h1><p>No problem. We’ll send a 6-digit code so you can choose a new one.</p><div className="lart sm" aria-hidden="true"><span><I e="shield" size={40} /></span><span><I e="paw" size={40} /></span></div></aside>
+      {step === "done" ? <div className="lgr auth-ok"><I e="check" size={48} /><h2>Password changed</h2><p>You can now log in with your new password.</p><button className="btn gold wide" onClick={() => go("login")}>Go to log in</button></div>
       : step === "ask" ? <form className="lgr" onSubmit={send} noValidate>
         <button type="button" className="lnk" onClick={onBack}>← Back to log in</button>
         <h2>Find your account</h2>

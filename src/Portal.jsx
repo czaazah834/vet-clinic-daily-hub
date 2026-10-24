@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { Menu, LogOut } from "lucide-react";
 import { Logo, I, ROLES, E, scope, Table } from "./lib.jsx";
 import EntityPage from "./EntityPage.jsx";
 import StaffHeader from "./roles/StaffHeader.jsx";
+import "./staff-modern.css";   // vet + vet assistant refresh, scoped to .th-vet / .th-assistant
 function Reports({ db, me }) {
   const [r, setR] = useState({ type: "appts", from: "", to: "" }), c = E[r.type], bad = r.from && r.to && r.from > r.to;
   let list = [...scope(db, me, r.type)]; if (c.sort) list.sort(c.sort);
@@ -10,7 +12,7 @@ function Reports({ db, me }) {
     <div className="bar"><select value={r.type} onChange={e => setR({ type: e.target.value, from: "", to: "" })} aria-label="Report type">{["appts", "vacc", "records", "pets"].map(k => <option key={k} value={k}>{E[k].title}</option>)}</select>
       {r.type !== "pets" && <><input type="date" value={r.from} onChange={e => setR({ ...r, from: e.target.value })} aria-label="From" /><input type="date" value={r.to} onChange={e => setR({ ...r, to: e.target.value })} aria-label="To" /></>}
       <button className="btn ghost" onClick={() => window.print()}>Print</button></div>
-    {bad ? <p className="err">“From” date must be on or before “To” date.</p> : <><p><b>{list.length}</b> record(s)</p><Table db={db} ent={r.type} list={list} me={me} /></>}
+    {bad ? <p className="err">The “From” date must be on or before the “To” date.</p> : <><p><b>{list.length}</b> record(s)</p><Table db={db} ent={r.type} list={list} me={me} /></>}
   </>);
 }
 export default function Portal({ cfg, me, db, setDb, onLogout }) {
@@ -29,11 +31,11 @@ export default function Portal({ cfg, me, db, setDb, onLogout }) {
       <aside className={open ? "side open" : "side"}>
         <div className="brand"><Logo /><div><b>PawCare</b><small>{cfg.portal}</small></div></div>
         <nav aria-label="Main">{cfg.menu.filter(m => !m.hide).map(m => <button key={m.k} className={m.k === page ? "on" : ""} onClick={() => go(m.k)}><I e={m.i} size={19} />{m.l}</button>)}</nav>
-        <div className="sidefoot"><div className="me"><span className="av">{me.name[0]}</span><div><b>{me.name}</b><small>{ROLES[me.role][0]}</small></div></div><button className="btn gold sm wide" onClick={onLogout}>Log out</button></div>
+        <div className="sidefoot"><div className="me"><span className="av">{String(me.name || "U").replace(/^Dr\.?\s+/i, "")[0]}</span><div><b>{me.name}</b><small>{ROLES[me.role][0]}</small></div></div><button className="btn gold sm wide" onClick={onLogout}><LogOut size={15} aria-hidden="true" />Log out</button></div>
       </aside>
       {open && <div className="veil" onClick={() => setOpen(false)} />}
       <div className="main">
-        <header className="top"><button className="burger" onClick={() => setOpen(true)} aria-label="Open menu">☰</button><div><h1>{cur.l}</h1><p>{cur.sub}</p></div>{cfg.Header ? <cfg.Header db={db} setDb={setDb} me={me} go={go} say={say} onLogout={onLogout} /> : <StaffHeader db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} />}</header>
+        <header className="top"><button className="burger" onClick={() => setOpen(true)} aria-label="Open menu" aria-expanded={open}><Menu size={20} aria-hidden="true" /></button><div><h1>{cur.l}</h1><p>{cur.sub}</p></div>{cfg.Header ? <cfg.Header db={db} setDb={setDb} me={me} go={go} say={say} onLogout={onLogout} /> : <StaffHeader db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} />}</header>
         <main className="content">
           {cur.Page ? <cur.Page db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.dash ? <Dash db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.rep ? <Reports db={db} me={me} /> : <EntityPage key={cur.k} ent={cur.ent} db={db} setDb={setDb} me={me} say={say} />}
         </main>

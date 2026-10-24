@@ -27,6 +27,7 @@ import {
   Receipt,
   DollarSign,
   CreditCard,
+  Search,
 } from "lucide-react";
 
 const MAP = {
@@ -66,11 +67,12 @@ const MAP = {
   scale: Scale,
   sparkles: Sparkles,
   flame: Flame,
-  // Emoji string keys backward compatibility (maps to real Lucide SVG)
-  "🏠": House, "👤": User, "🐾": PawPrint, "📅": CalendarDays, "💉": Syringe,
-  "📋": ClipboardList, "📊": ChartColumn, "🔐": ShieldCheck, "🏥": Hospital,
-  "🩺": Stethoscope, "🛎": ConciergeBell, "🐶": Dog, "🐱": Cat, "🐰": Rabbit,
-  "🐦": Bird, "⚠": TriangleAlert, "✅": CircleCheck, "🗓": CalendarClock, "📞": Phone,
+  search: Search,
+  // Legacy emoji keys: kept only so owner-portal call sites that still pass them resolve to an SVG icon. Not rendered as text.
+  "\u{1F3E0}": House, "\u{1F464}": User, "\u{1F43E}": PawPrint, "\u{1F4C5}": CalendarDays, "\u{1F489}": Syringe,
+  "\u{1F4CB}": ClipboardList, "\u{1F4CA}": ChartColumn, "\u{1F510}": ShieldCheck, "\u{1F3E5}": Hospital,
+  "\u{1FA7A}": Stethoscope, "\u{1F6CE}": ConciergeBell, "\u{1F436}": Dog, "\u{1F431}": Cat, "\u{1F430}": Rabbit,
+  "\u{1F426}": Bird, "\u26A0": TriangleAlert, "\u2705": CircleCheck, "\u{1F5D3}": CalendarClock, "\u{1F4DE}": Phone,
 };
 
 export function I({ e, size = 20, color }) {
@@ -89,12 +91,12 @@ export const TODAY = plus(0);
 export const uid = () => Math.random().toString(36).slice(2, 9);
 export const VETS = [["v1", "Dr. Ana Cruz"], ["v2", "Dr. Ben Lim"]];
 export const ICON = {
-  Dog: "🐶", Canine: "🐶", "Canine (Dog)": "🐶",
-  Cat: "🐱", Feline: "🐱", "Feline (Cat)": "🐱",
-  Rabbit: "🐰", Lagomorph: "🐰", "Lagomorph (Rabbit)": "🐰",
-  Rodent: "🐹", "Rodent (Hamster / Guinea Pig / etc.)": "🐹",
-  Bird: "🐦", Avian: "🐦", "Avian (Bird)": "🐦",
-  Other: "🐾", "Other / Exotic": "🐾"
+  Dog: "dog", Canine: "dog", "Canine (Dog)": "dog",
+  Cat: "cat", Feline: "cat", "Feline (Cat)": "cat",
+  Rabbit: "rabbit", Lagomorph: "rabbit", "Lagomorph (Rabbit)": "rabbit",
+  Rodent: "paw", "Rodent (Hamster / Guinea Pig / etc.)": "paw",
+  Bird: "bird", Avian: "bird", "Avian (Bird)": "bird",
+  Other: "paw", "Other / Exotic": "paw"
 };
 export const ROLES = { admin: ["Clinic Administrator", "Full access to every record"], vet: ["Veterinarian", "Consultations, vaccines, appointments"], assistant: ["Vet Assistant", "Front desk: owners, pets, bookings"], owner: ["Pet Owner", "Your pets, visits and vaccines"] };
 export const SEED = {
@@ -167,7 +169,7 @@ export const E = {
     chk: d => d.date > TODAY ? { date: "Date can’t be in the future" } : {} },
 };
 export const LAB = { ownerId: "Owner", petId: "Pet", vetId: "Veterinarian", nextDue: "Next dose", _due: "Status", brand: "Brand", batch: "Batch #", symptoms: "Subjective", objective: "Objective", diagnosis: "Assessment", treatment: "Plan", prescription: "Prescription", billingStatus: "Billing", amount: "Amount (₱)" };
-export const NAV = [["dashboard", "Dashboard", "🏠"], ["owners", "Owners", "👤"], ["pets", "Pets", "🐾"], ["appts", "Appointments", "📅"], ["vacc", "Vaccinations", "💉"], ["records", "Consultations", "📋"], ["reports", "Reports", "📊"]];
+export const NAV = [["dashboard", "Dashboard", "home"], ["owners", "Owners", "user"], ["pets", "Pets", "paw"], ["appts", "Appointments", "calendar"], ["vacc", "Vaccinations", "syringe"], ["records", "Consultations", "file"], ["reports", "Reports", "chart"]];
 export const HIDE = { owner: ["owners"] };
 export const can = (ent, me, a) => (E[ent].perm[me.role] || "").includes(a);
 export const dueState = n => !n ? "" : n < TODAY ? "Overdue" : n <= plus(14) ? "Due soon" : "On track";
@@ -207,7 +209,7 @@ export function Cell({ db, x, k }) {
 }
 export function Table({ db, ent, list, acts, me, onEdit, onDel, onMove, onView }) {
   const c = E[ent], showActs = acts && (can(ent, me, "u") || can(ent, me, "d") || (ent === "owners" && onView));
-  if (!list.length) return <div className="empty"><div><I e="🐾" size={34} /></div>No {c.title.toLowerCase()} found yet.</div>;
+  if (!list.length) return <div className="empty"><div><I e="paw" size={34} /></div>No {c.title.toLowerCase()} found yet.</div>;
   return (
     <div className="tw"><table><thead><tr>{c.cols.map(k => <th key={k}>{LAB[k] || (c.f.find(f => f.k === k) || {}).l || k}</th>)}{showActs && <th />}</tr></thead>
       <tbody>{list.map(x => (
@@ -320,7 +322,7 @@ export const moveAppt = (setDb, id, status, me) => {
     return {
       ...p,
       appts: p.appts.map(x => x.id === id ? { ...x, status } : x),
-      log: addLog(p, me, `${petName(p, a.petId)}: ${a.status} → ${status}`)
+      log: addLog(p, me, `${petName(p, a.petId)}: ${a.status} to ${status}`)
     };
   });
 };

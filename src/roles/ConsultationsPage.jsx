@@ -83,9 +83,9 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
               type="button"
               className="btn sm ghost"
               onClick={onClose}
-              style={{ padding: "4px 8px", fontSize: "16px" }}
+              aria-label="Close" style={{ padding: "6px 10px" }}
             >
-              ✕
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -130,7 +130,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
                 onClick={() => setCardPetId(pet.id)}
                 style={{ padding: "3px 8px", fontSize: "11.5px", background: "#eff6ff", borderColor: "#bfdbfe", color: "#1d4ed8", fontWeight: 700 }}
               >
-                Card #{pet.vaccinationCardId || "VACC-UNISSUED"} ➜
+                Card #{pet.vaccinationCardId || "VACC-UNISSUED"} <ChevronRight size={14} aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -536,7 +536,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
                             borderRadius: "6px"
                           }}
                         >
-                          View EMR ➜
+                          View EMR <ChevronRight size={14} aria-hidden="true" />
                         </button>
                       </td>
                     </tr>

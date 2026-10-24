@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { petName, ownerName, addLog } from "../lib.jsx";
 import { api } from "../api.js";
-import { Search, Plus, Trash2, Receipt, CheckCircle2, Printer, Pill } from "lucide-react";
+import { Search, Plus, Trash2, Receipt, CheckCircle2, Printer, Pill, X } from "lucide-react";
 
 export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   const pet = db.pets.find(p => p.id === appt.petId) || {};
@@ -156,7 +156,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
               Search clinical services, procedures &amp; medication prices from official database
             </span>
           </div>
-          <button type="button" className="btn sm ghost" onClick={onClose} style={{ fontSize: "16px", padding: "2px 8px" }}>✕</button>
+          <button type="button" className="btn sm ghost" onClick={onClose} aria-label="Close" style={{ padding: "6px 10px" }}><X size={16} aria-hidden="true" /></button>
         </div>
 
         {paid ? (

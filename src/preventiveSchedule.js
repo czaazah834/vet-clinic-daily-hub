@@ -990,17 +990,17 @@ export function computeWeightBracket(weightKg, rawSpecies = "Canine", birthDate 
 
   // 1. Toxicity Interceptor Matrix
   if (species === "Lagomorph") {
-    toxicityAlert = "🚫 Fatal Rabbit Neurotoxin Check Failure: Strict ban on Fipronil (Frontline) due to fatal rabbit neurotoxicity. Use only selamectin / advantage under exotic vet prescription.";
+    toxicityAlert = "Fatal Rabbit Neurotoxin Check Failure: Strict ban on Fipronil (Frontline) due to fatal rabbit neurotoxicity. Use only selamectin / advantage under exotic vet prescription.";
   } else if (species === "Feline") {
-    toxicityAlert = "🚫 Fatal Feline Permethrin Toxicity Failure: Completely restrict all spot-ons containing Permethrin. Permethrin is fatal to cats.";
+    toxicityAlert = "Fatal Feline Permethrin Toxicity Failure: Completely restrict all spot-ons containing Permethrin. Permethrin is fatal to cats.";
   } else if (species === "Avian") {
-    toxicityAlert = "⚠️ Avian Home Hazard Alert: Non-stick PTFE (Teflon) fumes and aerosol sprays cause acute fatal hemorrhagic pulmonary edema in birds.";
+    toxicityAlert = "Avian Home Hazard Alert: Non-stick PTFE (Teflon) fumes and aerosol sprays cause acute fatal hemorrhagic pulmonary edema in birds.";
   }
 
   // 2. Heartworm Preventative Safety Gap Trigger (Canine, Age >= 210 Days, Gap > 45 Days)
   if (species === "Canine" && daysOld >= 210 && lastDoseDaysGap > 45) {
     heartwormAntigenTestRequired = true;
-    heartwormAlert = `🛡️ Heartworm Safety Gap Trigger: Patient Age >= 210 Days (${age?.formatted || "7+ months"}) and gap > 45 days. Dispense restricted until Heartworm Antigen Test is confirmed negative.`;
+    heartwormAlert = `Heartworm Safety Gap Trigger: Patient Age >= 210 Days (${age?.formatted || "7+ months"}) and gap > 45 days. Dispense restricted until Heartworm Antigen Test is confirmed negative.`;
   }
 
   // 3. Dynamic Weight & Bracket Checks
@@ -1090,9 +1090,9 @@ export function computeWeightBracket(weightKg, rawSpecies = "Canine", birthDate 
 
     // Strict puppy age floor rule
     if (underAgeFloor) {
-      alert = `⚠️ Age Floor Rule: At ${age?.formatted || "under 8 weeks"}, this puppy is too young for oral flea/tick/heartworm combo chews (requires min. 8 weeks of age and 1.25–2.0 kg). Please ask the clinic for a pediatric topical spot-on.`;
+      alert = `Age Floor Rule: At ${age?.formatted || "under 8 weeks"}, this puppy is too young for oral flea/tick/heartworm combo chews (requires min. 8 weeks of age and 1.25–2.0 kg). Please ask the clinic for a pediatric topical spot-on.`;
     } else if (kg < 2.0) {
-      alert = `⚠️ Minimum Weight Notice: At ${kg} kg, this dog is below 2.0 kg. Never split a larger pill in half—the active ingredients are not mixed evenly inside tablets. Use an exact pediatric dose.`;
+      alert = `Minimum Weight Notice: At ${kg} kg, this dog is below 2.0 kg. Never split a larger pill in half—the active ingredients are not mixed evenly inside tablets. Use an exact pediatric dose.`;
     }
   }
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { TriangleAlert } from "lucide-react";
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -36,7 +37,7 @@ export default class ErrorBoundary extends React.Component {
             border: "1px solid #e2e8f0",
             textAlign: "center"
           }}>
-            <div style={{ fontSize: "42px", marginBottom: "12px" }}>🐾⚠️</div>
+            <div style={{ marginBottom: "12px", color: "#b42318" }}><TriangleAlert size={42} aria-hidden="true" /></div>
             <h2 style={{ margin: "0 0 8px", color: "var(--navy, #0f172a)", fontSize: "20px" }}>Something went wrong</h2>
             <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: "14px" }}>
               An error occurred while rendering the interface.

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CheckCircle2 } from "lucide-react";
 import { TODAY, ICON, I, petName, ownerName } from "../lib.jsx";
 import PetApprovalModal from "./PetApprovalModal.jsx";
 
@@ -147,12 +148,12 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
                         onClick={() => setActiveReq(r)}
                         style={{ display: "flex", alignItems: "center", gap: "6px" }}
                       >
-                        <span>✓</span>
-                        <b>Review &amp; Issue Card</b>
+                        <CheckCircle2 size={16} aria-hidden="true" />
+                        <b>Review and issue card</b>
                       </button>
                     ) : isApproved ? (
                       <span style={{ fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>
-                        ✓ Approved ({r.approvedAt || TODAY})
+                        Approved ({r.approvedAt || TODAY})
                       </span>
                     ) : (
                       <button

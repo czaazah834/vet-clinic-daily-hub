@@ -11,7 +11,7 @@ import {
   petText
 } from "./owner/Pets.jsx";
 import { useLive, Field, onlyDigitsPlus, onlyDecimal, petAge } from "./owner/ui.jsx";
-import { User, PawPrint, QrCode, CheckCircle2, ArrowRight, ClipboardList, Printer, Phone, Calendar } from "lucide-react";
+import { User, PawPrint, QrCode, CheckCircle2, ArrowRight, ClipboardList, Printer, Phone, Calendar, X } from "lucide-react";
 
 const getYesterday = () => {
   const d = new Date();
@@ -324,7 +324,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               </span>
             </div>
           </div>
-          <button type="button" className="btn sm ghost" onClick={onClose} style={{ fontSize: "16px", padding: "2px 8px" }}>✕</button>
+          <button type="button" className="btn sm ghost" onClick={onClose} aria-label="Close" style={{ padding: "6px 10px" }}><X size={16} aria-hidden="true" /></button>
         </div>
 
         {successData ? (

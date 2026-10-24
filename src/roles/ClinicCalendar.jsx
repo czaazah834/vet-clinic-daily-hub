@@ -640,7 +640,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
               </p>
             </div>
             <button className="btn sm ghost" onClick={() => setViewMode("timeline")}>
-              Switch to Doctor Timeline View →
+              Switch to doctor timeline view
             </button>
           </div>
 
@@ -855,7 +855,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                   background: "#dcfce7",
                                   color: "#166534"
                                 }}>
-                                  ✓ Paid (₱{a.amount})
+                                  Paid (₱{a.amount})
                                 </span>
                               ) : a.status === "Completed" ? (
                                 <span style={{
