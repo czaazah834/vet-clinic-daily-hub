@@ -377,3 +377,21 @@ date is adjusted to the current booking window; the clinical target is unchanged
 The target date does not reserve an appointment or trigger a new reminder.
 
 Checks: `node --test tests/owner-care.test.js` and `npm run build`.
+
+### Owner bills and payment records
+
+Owners can open Bills & Payments from their menu/dashboard or read the same saved
+charges in appointment details and linked visit history. The view is read-only;
+reception retains checkout and payment recording. Scheduled visits do not produce
+a bill from the booking amount default. Saved unpaid invoice lines are labelled
+as drafts awaiting reception confirmation; a completed visit without lines shows
+Awaiting checkout without inventing a total.
+
+Paid amounts, item prices, discounts, method, reference and payment date come
+from the saved appointment. Historical custom lines remain readable and are not
+repriced with the current catalog. Older payments without itemization show their
+recorded amount and identify the missing breakdown. Inconsistent saved totals
+retain the recorded paid amount and ask reception for clarification. The page
+shows visit references, not newly issued receipt numbers or online payment links.
+
+Checks: `node --test tests/owner-billing.test.js` and `npm run build`.

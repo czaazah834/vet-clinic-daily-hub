@@ -1,3 +1,4 @@
+import { OwnerBillDetails } from "./Bills.jsx";
 import { today } from "../../booking.js";
 import { Badge } from "../../lib.jsx";
 import { Modal, fmt12 } from "./ui.jsx";
@@ -22,6 +23,7 @@ export default function ApptDetails({ a, db, note, onClose, onEdit, onCancel }) 
         <dl style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, margin: 0 }}>
           {rows.map(([k, x]) => <div key={k}><dt style={{ fontSize: 12.5, fontWeight: 700, color: "var(--mu)" }}>{k}</dt><dd style={{ margin: "2px 0 0", overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{x}</dd></div>)}
         </dl>
+        <OwnerBillDetails appointment={db.appts.find(x => x.id === a.id) || a} />
       </div>
       <div className="row end" style={{ marginTop: 14 }}>
         {open && <><button className="btn ghost" onClick={onEdit}>Edit</button><button className="btn danger" onClick={onCancel}>Cancel visit</button></>}
