@@ -93,7 +93,7 @@ export function Avatar({ src, fallback, size = 40, round = true }) {
 }
 
 /* Crop to a centred square and shrink to 256 px so it stays small in storage. */
-const toSquare = (file, px = 256) => new Promise((ok, no) => {
+export const toSquare = (file, px = 256) => new Promise((ok, no) => {
   const url = URL.createObjectURL(file), img = new Image();
   img.onload = () => {
     URL.revokeObjectURL(url);

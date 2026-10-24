@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Logo, I, ROLES, E, scope, Table } from "./lib.jsx";
 import EntityPage from "./EntityPage.jsx";
+import StaffHeader from "./roles/StaffHeader.jsx";
 function Reports({ db, me }) {
   const [r, setR] = useState({ type: "appts", from: "", to: "" }), c = E[r.type], bad = r.from && r.to && r.from > r.to;
   let list = [...scope(db, me, r.type)]; if (c.sort) list.sort(c.sort);
@@ -32,7 +33,7 @@ export default function Portal({ cfg, me, db, setDb, onLogout }) {
       </aside>
       {open && <div className="veil" onClick={() => setOpen(false)} />}
       <div className="main">
-        <header className="top"><button className="burger" onClick={() => setOpen(true)} aria-label="Open menu">☰</button><div><h1>{cur.l}</h1><p>{cur.sub}</p></div>{cfg.Header ? <cfg.Header db={db} setDb={setDb} me={me} go={go} say={say} onLogout={onLogout} /> : <span className="date">{ROLES[me.role][0]}</span>}</header>
+        <header className="top"><button className="burger" onClick={() => setOpen(true)} aria-label="Open menu">☰</button><div><h1>{cur.l}</h1><p>{cur.sub}</p></div>{cfg.Header ? <cfg.Header db={db} setDb={setDb} me={me} go={go} say={say} onLogout={onLogout} /> : <StaffHeader db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} />}</header>
         <main className="content">
           {cur.Page ? <cur.Page db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.dash ? <Dash db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.rep ? <Reports db={db} me={me} /> : <EntityPage key={cur.k} ent={cur.ent} db={db} setDb={setDb} me={me} say={say} />}
         </main>

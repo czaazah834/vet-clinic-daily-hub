@@ -44,28 +44,52 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   const nextDay = ready && !times.length ? nextOpenDay(db, v, editing) : null;
   const timeHint = !S ? "Choose a service first" : !ready ? "Choose a veterinarian and date to see open times" : times.length ? `${times.length} open time${times.length > 1 ? "s" : ""} for ${S.label.toLowerCase()} (${durText(S.dur)}) with ${vetName}` : holidayName(v.date) ? `Closed for ${holidayName(v.date)}.` : `No open times for ${S.label.toLowerCase()} (${durText(S.dur)}) that day.`;
   const moved = editing && editing.status === "Confirmed" && (editing.date !== v.date || editing.time !== v.time || editing.vetId !== v.vetId || prev !== v.service);
-  const submit = e => {
+  const submit = async e => {
     e.preventDefault(); f.submit(); if (!f.valid) return;
     if (!scope(db, me, "pets").some(p => p.id === v.petId)) { say("You can only book for your own pets"); return onClose(); }
     if (editing) { const cur = db.appts.find(a => a.id === editing.id); if (!cur || !OPEN.includes(cur.status)) { say("This visit can no longer be changed"); return onClose(); } }
     const reason = makeReason(v.service, v.reasonSel, v.reasonOther.trim()), notes = (v.notes || "").trim();
-    const apptId = uid();
-    setDb(p => {
-      const data = { petId: v.petId, vetId: v.vetId, date: v.date, time: v.time, service: v.service, reason, notes };
-      return { ...p, appts: editing ? p.appts.map(a => a.id === editing.id ? { ...a, ...data, status: moved ? "Scheduled" : a.status } : a) : [...p.appts, { id: apptId, ...data, status: "Scheduled" }], log: addLog(p, me, `${editing ? "Rescheduled/updated" : "Booked"} ${S.label.toLowerCase()} visit for ${petName(p, v.petId)} on ${v.date} ${v.time}`) };
-    });
-    // Sync to PostgreSQL backend
-    api.post("/api/appointments", {
+    const apptId = editing ? editing.id : ("a_" + uid());
+
+    const payload = {
       id: apptId,
       petId: v.petId,
       vetId: v.vetId,
       date: v.date,
       time: v.time,
       reason,
+      status: moved ? "Scheduled" : (editing ? editing.status : "Scheduled"),
+      notes,
       actorName: me.name,
       actorRole: "owner"
-    }).catch(() => {});
-    say(editing ? (moved ? "Updated. The clinic will re-confirm your new time" : "Appointment updated") : "Booked! The clinic will confirm your visit"); onClose();
+    };
+
+    let finalApptId = apptId;
+    try {
+      if (editing) {
+        const res = await api.put(`/api/appointments/${editing.id}`, payload);
+        if (res?.appointment?.id) finalApptId = res.appointment.id;
+      } else {
+        const res = await api.post("/api/appointments", payload);
+        if (res?.appointment?.id) finalApptId = res.appointment.id;
+      }
+    } catch (err) {
+      console.warn("Backend appointment save fallback:", err.message);
+    }
+
+    setDb(p => {
+      const data = { id: finalApptId, petId: v.petId, vetId: v.vetId, date: v.date, time: v.time, service: v.service, reason, notes };
+      return {
+        ...p,
+        appts: editing
+          ? p.appts.map(a => a.id === editing.id ? { ...a, ...data, status: moved ? "Scheduled" : a.status } : a)
+          : [...(p.appts || []).filter(a => a.id !== finalApptId), { ...data, status: "Scheduled" }],
+        log: addLog(p, me, `${editing ? "Rescheduled/updated" : "Booked"} ${S.label.toLowerCase()} visit for ${petName(p, v.petId)} on ${v.date} ${v.time}`)
+      };
+    });
+
+    say(editing ? (moved ? "Updated. The clinic will re-confirm your new time" : "Appointment updated") : "Booked! The clinic will confirm your visit");
+    onClose();
   };
   return (
     <Modal title={editing ? "Edit appointment" : "Book a visit"} onClose={onClose}>
@@ -92,13 +116,17 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
 
 function CancelDialog({ a, db, setDb, me, say, onClose }) {
   const f = useLive({ why: "", other: "" }, v => { const e = {}; if (!v.why) e.why = "Please tell us why"; else if (v.why === "Other") { const o = v.other.trim(); if (o.length < 3) e.other = "Add a short reason (3+ characters)"; else if (o.length > 120) e.other = "Keep it under 120 characters"; else if (!/[A-Za-zÀ-ÿ]/.test(o)) e.other = "Use words, not only numbers or symbols"; } return e; });
-  const go = e => {
+  const go = async e => {
     e.preventDefault(); f.submit(); if (!f.valid) return;
     const cur = db.appts.find(x => x.id === a.id), mine = scope(db, me, "pets").some(p => p.id === a.petId);
     if (!cur || !mine || !OPEN.includes(cur.status)) { say("This visit can no longer be cancelled"); return onClose(); }
     const why = f.v.why === "Other" ? f.v.other.trim() : f.v.why;
+    try {
+      await api.patch(`/api/appointments/${a.id}/status`, { status: "Cancelled", cancelReason: why, actorName: me.name, actorRole: "owner" });
+    } catch (err) {
+      console.warn("Backend cancel appointment error:", err.message);
+    }
     setDb(p => ({ ...p, appts: p.appts.map(x => x.id === a.id ? { ...x, status: "Cancelled", cancelReason: why } : x), log: addLog(p, me, `${petName(p, a.petId)}: ${a.status} → Cancelled (${why})`) }));
-    api.patch(`/api/appointments/${a.id}/status`, { status: "Cancelled", cancelReason: why, actorName: me.name, actorRole: "owner" }).catch(() => {});
     say("Appointment cancelled"); onClose();
   };
   return (

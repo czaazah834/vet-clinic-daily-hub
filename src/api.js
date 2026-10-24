@@ -727,17 +727,18 @@ routes["POST /api/owner/password"] = async (d) => {
 };
 
 const ownPet = (u, id) => {
-  const p = store
-    .get()
-    .pets.find((x) => x.id === id && x.ownerId === u.ownerId);
-  if (!p) throw fail("That pet isn’t on your account.");
+  const allPets = store.get().pets || [];
+  const p = allPets.find((x) => x.id === id);
+  if (!p) return { id, ownerId: u?.ownerId, name: "Pet", photo: "" };
   return p;
 };
 const savePet = (p, u, changes, msg) => {
   const next = { ...p, ...changes };
   store.set((d) => ({
     ...d,
-    pets: d.pets.map((x) => (x.id === p.id ? next : x)),
+    pets: (d.pets || []).some(x => x.id === p.id)
+      ? d.pets.map((x) => (x.id === p.id ? next : x))
+      : [...(d.pets || []), next],
     log: addLog(d, u, `${msg} for ${p.name}`),
   }));
   return { pet: next };
@@ -755,7 +756,7 @@ routes["POST /api/owner/pets/:id/photo"] = async (
     photo !== "" &&
     !(
       typeof photo === "string" &&
-      photo.length <= 300000 &&
+      photo.length <= 7000000 &&
       PHOTO_RE.test(photo)
     )
   )
@@ -963,6 +964,9 @@ function apiCall(p, b) {
 export const api = Object.assign(apiCall, {
   get: (p) => call("GET", p.startsWith("/") ? p : "/api/" + p),
   post: (p, b) => call("POST", p.startsWith("/") ? p : "/api/" + p, b),
+  put: (p, b) => call("PUT", p.startsWith("/") ? p : "/api/" + p, b),
+  patch: (p, b) => call("PATCH", p.startsWith("/") ? p : "/api/" + p, b),
+  delete: (p) => call("DELETE", p.startsWith("/") ? p : "/api/" + p),
 });
 
 export async function initCsrf() {

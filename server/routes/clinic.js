@@ -126,6 +126,10 @@ clinicRouter.get("/state", async (req, res) => {
       status: a.status,
       billingStatus: a.billing_status,
       amount: parseFloat(a.amount),
+      billingStatus: a.billing_status,
+      paymentMethod: a.payment_method || "",
+      paidAt: a.paid_at || null,
+      invoiceItems: a.invoice_items || [],
       intakeVitals: a.intake_vitals || null,
       cancelReason: a.cancel_reason || ""
     }));
@@ -170,7 +174,7 @@ clinicRouter.get("/state", async (req, res) => {
       speciesOther: r.species_other || "",
       breed: r.breed || "",
       sex: r.sex,
-      birth: r.birth ? String(r.birth).slice(0, 10) : "",
+      birth: toDateStr(r.birth),
       weight: parseFloat(r.weight),
       color: r.color || "",
       neutered: r.neutered || "",
@@ -179,8 +183,8 @@ clinicRouter.get("/state", async (req, res) => {
       declineReason: r.decline_reason || "",
       petId: r.pet_id || "",
       cardId: r.card_id || "",
-      requestedAt: r.requested_at ? String(r.requested_at).slice(0, 10) : "",
-      approvedAt: r.approved_at ? String(r.approved_at).slice(0, 10) : null,
+      requestedAt: toDateStr(r.requested_at),
+      approvedAt: r.approved_at ? toDateStr(r.approved_at) : null,
       approvedBy: r.approved_by || ""
     }));
 
@@ -279,7 +283,7 @@ clinicRouter.post("/owner/contact", async (req, res) => {
         firstName: row.first_name || "",
         lastName: row.last_name || "",
         middleInitial: row.middle_initial || "",
-        birthday: row.birthday ? String(row.birthday).slice(0, 10) : "",
+        birthday: toDateStr(row.birthday),
         email: row.email,
         phone: row.phone,
         houseStreet: row.house_street || "",
@@ -822,7 +826,7 @@ clinicRouter.post("/owner/pets", async (req, res) => {
         notes: pet.notes || "",
         photo: pet.photo || "",
         dentalOcclusion: dentalOcclusion || "",
-        weights: [{ date: pet.birth ? String(pet.birth).slice(0, 10) : today, kg: parseFloat(pet.weight) }]
+        weights: [{ date: toDateStr(pet.birth) || today, kg: parseFloat(pet.weight) }]
       },
       cardId,
       vaccs: vaccs.map(v => ({
@@ -896,6 +900,56 @@ clinicRouter.post("/pets/:id/weights", async (req, res) => {
     });
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+clinicRouter.post(["/owner/pets/:id/photo", "/pets/:id/photo"], async (req, res) => {
+  const petId = req.params.id;
+  const { photo, actorName, actorRole } = req.body;
+
+  try {
+    const result = await query(
+      `UPDATE pets SET photo = $1 WHERE id = $2 RETURNING *`,
+      [photo || "", petId]
+    );
+
+    if (!result.rows.length) {
+      const reqRes = await query(
+        `UPDATE pet_requests SET photo = $1 WHERE id = $2 OR pet_id = $2 RETURNING *`,
+        [photo || "", petId]
+      );
+      if (!reqRes.rows.length) {
+        return res.status(404).json({ error: "Pet not found" });
+      }
+      return res.json({ success: true, pet: reqRes.rows[0] });
+    }
+
+    const row = result.rows[0];
+    await recordAudit(actorName || "Owner", actorRole || "owner", `Updated photo for pet ${row.name}`);
+
+    res.json({
+      success: true,
+      pet: {
+        id: row.id,
+        ownerId: row.owner_id,
+        name: row.name,
+        species: row.species,
+        speciesOther: row.species_other || "",
+        breed: row.breed,
+        sex: row.sex,
+        birth: toDateStr(row.birth),
+        weight: parseFloat(row.weight),
+        color: row.color || "",
+        neutered: row.neutered || "Not sure",
+        allergies: row.allergies || [],
+        vaccinationCardId: row.vaccination_card_id || "",
+        notes: row.notes || "",
+        photo: row.photo || ""
+      }
+    });
+  } catch (err) {
+    console.error("Pet photo update error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1379,9 +1433,20 @@ clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
         const insAppt = await client.query(
           `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount)
            VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', 'Pending', 0) RETURNING *`,
-          [apptId, newPetId, "vet_cruz", earliestDue.next_due, "10:00", `${earliestDue.vaccine} (Pre-scheduled)`]
+          [apptId, newPetId, "v1", earliestDue.next_due, "10:00", `${earliestDue.vaccine} (Pre-scheduled)`]
         );
-        preAppt = insAppt.rows[0];
+        const aRow = insAppt.rows[0];
+        preAppt = {
+          id: aRow.id,
+          petId: aRow.pet_id,
+          vetId: aRow.vet_id,
+          date: toDateStr(aRow.date),
+          time: aRow.time,
+          reason: aRow.reason,
+          status: aRow.status,
+          billingStatus: aRow.billing_status,
+          amount: parseFloat(aRow.amount || 0)
+        };
       }
 
       const qPet = await client.query("SELECT * FROM pets WHERE id = $1", [newPetId]);
@@ -1412,20 +1477,86 @@ clinicRouter.post("/pet-requests/:id/decline", async (req, res) => {
 
 /* 5. APPOINTMENTS & CHECK-IN INTAKE FLOW */
 clinicRouter.post("/appointments", async (req, res) => {
-  const { petId, vetId, date, time, reason, amount, actorName, actorRole } = req.body;
-  const apptId = "a_" + Math.random().toString(36).slice(2, 8);
+  const { id, petId, vetId, date, time, reason, amount, actorName, actorRole } = req.body;
+  const apptId = id || ("a_" + Math.random().toString(36).slice(2, 8));
 
   try {
     const result = await query(
       `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, amount)
        VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', $7)
+       ON CONFLICT (id) DO UPDATE
+       SET pet_id = EXCLUDED.pet_id,
+           vet_id = EXCLUDED.vet_id,
+           date = EXCLUDED.date,
+           time = EXCLUDED.time,
+           reason = EXCLUDED.reason,
+           status = EXCLUDED.status
        RETURNING *`,
-      [apptId, petId, vetId || "u_vet_1", date, time, reason, amount || 600.00]
+      [apptId, petId, vetId || "v1", date, time, reason, amount || 600.00]
     );
 
-    await recordAudit(actorName, actorRole, `Booked appointment for pet ${petId} on ${date} ${time}`);
-    res.json({ success: true, appointment: result.rows[0] });
+    await recordAudit(actorName || "User", actorRole || "user", `Booked appointment for pet ${petId} on ${date} ${time}`);
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      appointment: {
+        id: row.id,
+        petId: row.pet_id,
+        vetId: row.vet_id,
+        date: toDateStr(row.date),
+        time: row.time,
+        reason: row.reason,
+        status: row.status,
+        billingStatus: row.billing_status,
+        amount: parseFloat(row.amount)
+      }
+    });
   } catch (err) {
+    console.error("Booking error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+clinicRouter.put("/appointments/:id", async (req, res) => {
+  const apptId = req.params.id;
+  const { petId, vetId, date, time, reason, status, actorName, actorRole } = req.body;
+
+  try {
+    const result = await query(
+      `UPDATE appointments
+       SET pet_id = COALESCE($1, pet_id),
+           vet_id = COALESCE($2, vet_id),
+           date = COALESCE($3, date),
+           time = COALESCE($4, time),
+           reason = COALESCE($5, reason),
+           status = COALESCE($6, status)
+       WHERE id = $7
+       RETURNING *`,
+      [petId, vetId, date, time, reason, status, apptId]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+
+    await recordAudit(actorName || "User", actorRole || "user", `Updated appointment ${apptId} on ${date} ${time}`);
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      appointment: {
+        id: row.id,
+        petId: row.pet_id,
+        vetId: row.vet_id,
+        date: toDateStr(row.date),
+        time: row.time,
+        reason: row.reason,
+        status: row.status,
+        billingStatus: row.billing_status,
+        amount: parseFloat(row.amount)
+      }
+    });
+  } catch (err) {
+    console.error("Update appointment error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1478,6 +1609,275 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
     await recordAudit(actorName, actorRole, `Updated appointment ${apptId} status to "${status}"`);
     res.json({ success: true, appointment: result });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+clinicRouter.delete("/appointments/:id", async (req, res) => {
+  try {
+    await query("DELETE FROM appointments WHERE id = $1", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* 5.1 CLINIC BILLING & PRICE CATALOG */
+const CLINIC_PRICE_CATALOG = [
+  { id: "srv_consult", category: "Consultation & Exam", name: "Routine General Consultation & Exam", price: 500, desc: "Standard physical evaluation of vitals & condition" },
+  { id: "srv_senior", category: "Consultation & Exam", name: "Senior Comprehensive Wellness Exam", price: 750, desc: "In-depth geriatric health review (7+ yrs)" },
+  { id: "srv_rabies", category: "Vaccination & Preventive", name: "Anti-Rabies Vaccine (Annual Booster)", price: 350, desc: "RA 9482 certified anti-rabies shot & official certificate" },
+  { id: "srv_dhpp", category: "Vaccination & Preventive", name: "DHPP 5-in-1 Core Canine Vaccine", price: 650, desc: "Core Distemper, Adenovirus, Parvovirus, Parainfluenza" },
+  { id: "srv_fvrcp", category: "Vaccination & Preventive", name: "FVRCP 4-in-1 Core Feline Vaccine", price: 700, desc: "Core Rhinotracheitis, Calicivirus, Panleukopenia" },
+  { id: "srv_deworm", category: "Vaccination & Preventive", name: "Broad-Spectrum Deworming Dose", price: 250, desc: "Canex/Drontal oral tablet/suspension for round/hook/tapeworms" },
+  { id: "srv_heartworm", category: "Diagnostic & Lab", name: "Heartworm Rapid Antigen Test (Snap)", price: 850, desc: "Dirofilaria immitis blood test before preventive dispense" },
+  { id: "srv_nexgard", category: "Pharmacy & Parasiticide", name: "NexGard Spectra Chewable Tablet", price: 550, desc: "Monthly flea, tick, heartworm and intestinal worm chewable" },
+  { id: "srv_simparica", category: "Pharmacy & Parasiticide", name: "Simparica Trio Chewable Tablet", price: 600, desc: "Monthly flea, tick, heartworm broad-spectrum chewable" },
+  { id: "srv_cbc", category: "Diagnostic & Lab", name: "Complete Blood Count (CBC)", price: 750, desc: "WBC, RBC, Hemoglobin, Platelet count analysis" },
+  { id: "srv_chem", category: "Diagnostic & Lab", name: "Comprehensive Blood Chemistry Panel", price: 1400, desc: "Kidney, liver enzymes, glucose screening" },
+  { id: "srv_dental", category: "Dental & Surgery", name: "Ultrasonic Dental Scaling & Polish", price: 1800, desc: "Periodontal calculus removal & enamel polish" },
+  { id: "srv_ear", category: "Procedures & Care", name: "Deep Ear Cleaning & Cytology", price: 400, desc: "Canal flush and microscopic ear swab exam" },
+  { id: "srv_wound", category: "Procedures & Care", name: "Wound Treatment & Antiseptic Bandaging", price: 450, desc: "Antiseptic lavage and protective dressing" },
+  { id: "srv_groom", category: "Procedures & Care", name: "Sanitary Grooming & Nail Trim", price: 250, desc: "Nail clip, paw pad trim, anal gland expression" }
+];
+
+clinicRouter.get("/services/prices", (req, res) => {
+  res.json({ success: true, catalog: CLINIC_PRICE_CATALOG });
+});
+
+clinicRouter.post("/appointments/:id/billing", async (req, res) => {
+  const apptId = req.params.id;
+  const { amount, billingStatus, paymentMethod, invoiceItems, actorName, actorRole } = req.body;
+
+  try {
+    const result = await query(
+      `UPDATE appointments
+       SET amount = COALESCE($1, amount),
+           billing_status = COALESCE($2, 'Paid'),
+           payment_method = COALESCE($3, 'Cash'),
+           invoice_items = COALESCE($4, invoice_items),
+           paid_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [parseFloat(amount) || 0, billingStatus || 'Paid', paymentMethod || 'Cash', JSON.stringify(invoiceItems || []), apptId]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+
+    const row = result.rows[0];
+    await recordAudit(actorName || "Front Desk", actorRole || "assistant", `Processed payment ₱${row.amount} (${row.payment_method}) for visit ${apptId}`);
+
+    res.json({
+      success: true,
+      appointment: {
+        id: row.id,
+        petId: row.pet_id,
+        vetId: row.vet_id,
+        date: toDateStr(row.date),
+        time: row.time,
+        reason: row.reason,
+        status: row.status,
+        billingStatus: row.billing_status,
+        amount: parseFloat(row.amount),
+        paymentMethod: row.payment_method,
+        paidAt: row.paid_at,
+        invoiceItems: row.invoice_items
+      }
+    });
+  } catch (err) {
+    console.error("Billing update error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* 5.2 WALK-IN REGISTRATION (OWNER + PET + DIGITAL CARD + QUEUE) */
+clinicRouter.post("/walk-in", async (req, res) => {
+  const {
+    ownerName, phone, email, address,
+    petName, species, speciesOther, breed, sex, birth, weight, color, neutered, dentalOcclusion, notes,
+    addToQueue, reason, actorName, actorRole
+  } = req.body;
+
+  const ownerId = "o_" + Math.random().toString(36).slice(2, 8);
+  const petId = "p_" + Math.random().toString(36).slice(2, 8);
+  const cardId = "VACC-" + new Date().getFullYear() + "-" + Math.floor(1000 + Math.random() * 9000);
+  const today = new Date().toISOString().slice(0, 10);
+
+  try {
+    const result = await withTransaction(async (client) => {
+      // 1. Insert Owner (or match existing by phone or email)
+      let effectiveOwner = null;
+      if (email || phone) {
+        const existQ = await client.query(
+          `SELECT * FROM owners WHERE (email = $1 AND $1 <> '') OR (phone = $2 AND $2 <> '') LIMIT 1`,
+          [email || "", phone || ""]
+        );
+        if (existQ.rows.length) {
+          effectiveOwner = existQ.rows[0];
+        }
+      }
+
+      if (!effectiveOwner) {
+        const insOwner = await client.query(
+          `INSERT INTO owners (id, name, email, phone, address)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING *`,
+          [ownerId, ownerName, email || `walkin_${Date.now()}@pawcare.ph`, phone || "09170000000", address || "Metro Manila, PH"]
+        );
+        effectiveOwner = insOwner.rows[0];
+      }
+
+      // 2. Insert Pet
+      const insPet = await client.query(
+        `INSERT INTO pets (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, vaccination_card_id, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING *`,
+        [
+          petId,
+          effectiveOwner.id,
+          petName,
+          species || "Canine",
+          speciesOther || "",
+          breed || "Mixed Breed",
+          sex || "Male",
+          birth || today,
+          parseFloat(weight) || 5.0,
+          color || "",
+          neutered || "Not sure",
+          cardId,
+          notes || ""
+        ]
+      );
+      const pet = insPet.rows[0];
+
+      // 3. Weight log
+      await client.query(
+        `INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1, $2, $3, $4)`,
+        [petId, today, parseFloat(weight) || 5.0, actorName || "Front Desk Walk-in"]
+      );
+
+      // 4. Seed core vaccines
+      const sp = (species || "").toLowerCase();
+      const isDog = sp.includes("dog") || sp.includes("canine");
+      const addDays = (dStr, days) => {
+        const d = new Date(dStr);
+        d.setDate(d.getDate() + days);
+        return d.toISOString().slice(0, 10);
+      };
+
+      const seeded = [];
+      if (isDog) {
+        const v1 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "DHPP (5-in-1 Core Vaccine)",
+          brand: "Nobivac DHPP",
+          batch: "WALK-DHPP",
+          date: today,
+          next_due: addDays(today, 365),
+          dose_no: 1,
+          dose_of: 1,
+          done: false,
+          automated: true,
+          protocol_type: "Core Immunization",
+          recorded_by: actorName || "Front Desk"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(v1)
+        );
+        seeded.push(v1);
+
+        const v2 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "Anti-Rabies (RA 9482 Compliance)",
+          brand: "Defensor 3",
+          batch: "WALK-RAB",
+          date: today,
+          next_due: addDays(today, 365),
+          dose_no: 1,
+          dose_of: 1,
+          done: false,
+          automated: true,
+          protocol_type: "Legal Rabies Mandate",
+          recorded_by: actorName || "Front Desk"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(v2)
+        );
+        seeded.push(v2);
+      }
+
+      // 5. If addToQueue: create Checked-in appointment
+      let appt = null;
+      if (addToQueue) {
+        const apptId = "a_walk_" + Math.random().toString(36).slice(2, 8);
+        const timeNow = new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" });
+        const insAppt = await client.query(
+          `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount, intake_vitals)
+           VALUES ($1, $2, $3, $4, $5, $6, 'Checked-in', 'Unbilled', 600, $7)
+           RETURNING *`,
+          [
+            apptId,
+            petId,
+            "v1",
+            today,
+            timeNow,
+            reason || "Walk-in Consultation / Exam",
+            JSON.stringify({ weight: parseFloat(weight) || 5.0, triageLevel: "Routine" })
+          ]
+        );
+        const aRow = insAppt.rows[0];
+        appt = {
+          id: aRow.id,
+          petId: aRow.pet_id,
+          vetId: aRow.vet_id,
+          date: toDateStr(aRow.date),
+          time: aRow.time,
+          reason: aRow.reason,
+          status: aRow.status,
+          billingStatus: aRow.billing_status,
+          amount: parseFloat(aRow.amount),
+          intakeVitals: aRow.intake_vitals
+        };
+      }
+
+      return {
+        owner: effectiveOwner,
+        pet: {
+          id: pet.id,
+          ownerId: pet.owner_id,
+          name: pet.name,
+          species: pet.species,
+          speciesOther: pet.species_other || "",
+          breed: pet.breed,
+          sex: pet.sex,
+          birth: toDateStr(pet.birth),
+          weight: parseFloat(pet.weight),
+          color: pet.color || "",
+          neutered: pet.neutered || "Not sure",
+          allergies: pet.allergies || [],
+          vaccinationCardId: cardId,
+          notes: pet.notes || "",
+          photo: ""
+        },
+        vaccs: seeded,
+        appointment: appt
+      };
+    });
+
+    await recordAudit(actorName || "Front Desk", actorRole || "assistant", `Registered walk-in owner ${result.owner.name} & pet ${result.pet.name} (Issued Card #${cardId})`);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error("Walk-in registration error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });

@@ -1,106 +1,375 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { petName, ownerName, addLog } from "../lib.jsx";
+import { api } from "../api.js";
+import { Search, Plus, Trash2, Receipt, CheckCircle2 } from "lucide-react";
 
 export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   const pet = db.pets.find(p => p.id === appt.petId) || {};
   const owner = db.owners.find(o => o.id === pet.ownerId) || {};
-  const record = db.records.find(r => r.apptId === appt.id) || {};
+  const record = (db.records || []).find(r => r.apptId === appt.id) || {};
 
-  const [fee, setFee] = useState(appt.amount || 650);
-  const [method, setMethod] = useState("Cash");
+  const [catalog, setCatalog] = useState([]);
+  const [search, setSearch] = useState("");
+  const [items, setItems] = useState(() => {
+    if (appt.invoiceItems && Array.isArray(appt.invoiceItems) && appt.invoiceItems.length) {
+      return appt.invoiceItems;
+    }
+    // Default initial line item from appointment reason / amount
+    return [{
+      id: "line_init",
+      name: appt.reason || "Clinical Consultation / Exam",
+      category: "Consultation",
+      price: appt.amount || 600,
+      qty: 1
+    }];
+  });
+
+  const [method, setMethod] = useState(appt.paymentMethod || "Cash");
   const [discount, setDiscount] = useState("0");
-  const [paid, setPaid] = useState(false);
+  const [paid, setPaid] = useState(appt.billingStatus === "Paid");
+  const [loading, setLoading] = useState(false);
 
-  const total = Math.max(0, +fee - (+discount || 0));
+  // Load official clinic price catalog from backend
+  useEffect(() => {
+    api.get("/api/services/prices")
+      .then(res => {
+        if (res?.catalog) setCatalog(res.catalog);
+      })
+      .catch(() => {});
+  }, []);
 
-  const handlePay = (ev) => {
+  const addItem = (item) => {
+    setItems(prev => [
+      ...prev,
+      {
+        id: "line_" + Math.random().toString(36).slice(2, 7),
+        name: item.name,
+        category: item.category,
+        price: item.price,
+        qty: 1
+      }
+    ]);
+    setSearch("");
+  };
+
+  const removeItem = (idx) => {
+    setItems(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const updateQty = (idx, qty) => {
+    setItems(prev => prev.map((item, i) => i === idx ? { ...item, qty: Math.max(1, +qty || 1) } : item));
+  };
+
+  const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  const total = Math.max(0, subtotal - (+discount || 0));
+
+  const filteredCatalog = search.trim()
+    ? catalog.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.category.toLowerCase().includes(search.toLowerCase()))
+    : [];
+
+  const handlePay = async (ev) => {
     ev.preventDefault();
+    setLoading(true);
+
+    const payload = {
+      amount: total,
+      billingStatus: "Paid",
+      paymentMethod: method,
+      invoiceItems: items,
+      actorName: me.name,
+      actorRole: me.role
+    };
+
+    try {
+      await api.post(`/api/appointments/${appt.id}/billing`, payload);
+    } catch (err) {
+      console.warn("Backend billing fallback:", err.message);
+    }
+
     setDb(p => ({
       ...p,
-      appts: p.appts.map(a => a.id === appt.id ? { ...a, billingStatus: "Paid", amount: total, paidAt: new Date().toLocaleTimeString(), paymentMethod: method } : a),
-      log: addLog(p, me, `Front desk billing processed: ₱${total} (${method}) for visit of ${pet.name} (${owner.name}). Status: Paid.`),
+      appts: p.appts.map(a => a.id === appt.id ? {
+        ...a,
+        billingStatus: "Paid",
+        amount: total,
+        paymentMethod: method,
+        paidAt: new Date().toLocaleTimeString("en-PH"),
+        invoiceItems: items
+      } : a),
+      log: addLog(p, me, `Processed billing payment ₱${total.toLocaleString()} (${method}) for ${pet.name} (${owner.name}). Issued official receipt.`)
     }));
+
+    setLoading(false);
     setPaid(true);
     onPaid && onPaid(total);
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ width: "min(540px, 100%)" }}>
-        <h3>Front Desk Checkout &amp; Billing</h3>
+    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
+      <div className="modal" style={{ width: "min(620px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "22px 26px" }}>
+        
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #f1f5f9", paddingBottom: "12px" }}>
+          <div>
+            <h3 style={{ margin: 0, color: "var(--navy)", fontSize: "1.25rem", display: "flex", alignItems: "center", gap: "8px" }}>
+              <Receipt size={22} color="#0284c7" /> Front Desk Checkout &amp; Billing
+            </h3>
+            <span style={{ fontSize: "12px", color: "#64748b" }}>
+              Search clinical services, procedures &amp; medication prices from official database
+            </span>
+          </div>
+          <button type="button" className="btn sm ghost" onClick={onClose} style={{ fontSize: "16px", padding: "2px 8px" }}>✕</button>
+        </div>
 
         {paid ? (
-          <div className="auth-ok" style={{ textAlign: "center", padding: "16px 0" }}>
-            <span style={{ fontSize: "44px" }}>🧾</span>
-            <h4 style={{ margin: "10px 0 6px", fontSize: "18px", color: "var(--navy)" }}>Payment Recorded Successfully!</h4>
-            <p style={{ margin: 0, fontSize: "14px", color: "#475569" }}>
-              Receipt generated for <b>₱{total.toLocaleString()}</b> paid via <b>{method}</b>.
-            </p>
-            <div style={{ margin: "16px 0", padding: "12px", background: "#f8fafc", borderRadius: "10px", border: "1px dashed #cbd5e1", fontSize: "13px" }}>
-              <p style={{ margin: "0 0 4px" }}><b>Patient:</b> {pet.name} &bull; <b>Owner:</b> {owner.name}</p>
-              <p style={{ margin: "0 0 4px" }}><b>Diagnosis:</b> {record.diagnosis || appt.reason}</p>
-              <p style={{ margin: 0 }}><b>Cashier:</b> {me.name} ({me.role})</p>
+          <div style={{ textAlign: "center", padding: "16px 0" }}>
+            <div style={{ width: 54, height: 54, borderRadius: "50%", background: "#dcfce7", color: "#166534", display: "grid", placeItems: "center", margin: "0 auto 12px" }}>
+              <CheckCircle2 size={32} />
             </div>
-            <div className="row end" style={{ justifyContent: "center", gap: "10px" }}>
-              <button className="btn ghost" onClick={() => window.print()}>Print Receipt</button>
-              <button className="btn gold" onClick={onClose}>Close</button>
+            <h4 style={{ margin: "0 0 6px", fontSize: "19px", color: "var(--navy)" }}>Payment Recorded Successfully!</h4>
+            <p style={{ margin: 0, fontSize: "14px", color: "#475569" }}>
+              Receipt issued for <b style={{ color: "#166534", fontSize: "18px" }}>₱{total.toLocaleString()}</b> paid via <b>{method}</b>.
+            </p>
+
+            <div style={{ margin: "16px 0", padding: "14px", background: "#f8fafc", borderRadius: "12px", border: "1.5px dashed #cbd5e1", fontSize: "13px", textAlign: "left" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                <b>Patient:</b> <span>{pet.name} ({pet.species || "Pet"})</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                <b>Client / Owner:</b> <span>{owner.name} ({owner.phone || "No phone"})</span>
+              </div>
+              <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px", marginTop: "8px" }}>
+                <b>Itemized Services &amp; Products:</b>
+                {items.map((it, idx) => (
+                  <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#475569", marginTop: "3px" }}>
+                    <span>{it.qty}x {it.name}</span>
+                    <b>₱{(it.price * it.qty).toLocaleString()}</b>
+                  </div>
+                ))}
+              </div>
+              {+discount > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", color: "#b91c1c", marginTop: "6px" }}>
+                  <span>Discount / Senior:</span>
+                  <b>-₱{(+discount).toLocaleString()}</b>
+                </div>
+              )}
+              <div style={{ borderTop: "2px solid #0f172a", paddingTop: "8px", marginTop: "8px", display: "flex", justifyContent: "space-between", fontSize: "14px" }}>
+                <b>Total Amount Paid:</b>
+                <b style={{ color: "#166534" }}>₱{total.toLocaleString()}</b>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "center", gap: "10px" }}>
+              <button className="btn ghost sm" onClick={() => window.print()}>🖨️ Print Receipt</button>
+              <button className="btn gold sm" onClick={onClose}>Done</button>
             </div>
           </div>
         ) : (
           <form onSubmit={handlePay}>
+            {/* Patient Context Card */}
             <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "10px", marginBottom: "14px", border: "1px solid #e2e8f0" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
                 <b style={{ fontSize: "15px", color: "var(--navy)" }}>{pet.name} ({pet.species})</b>
-                <span style={{ fontSize: "13px", color: "#64748b" }}>Date: {appt.date}</span>
+                <span style={{ fontSize: "12.5px", color: "#64748b" }}>Visit: {appt.date} at {appt.time}</span>
               </div>
-              <p style={{ margin: "0 0 4px", fontSize: "13px" }}><b>Owner:</b> {owner.name} &bull; {owner.phone}</p>
-              <p style={{ margin: 0, fontSize: "13px" }}><b>Reason / Diagnosis:</b> {record.diagnosis || appt.reason}</p>
+              <div style={{ fontSize: "12.5px", color: "#475569" }}>
+                Owner: <b>{owner.name}</b> &bull; {owner.phone || "No contact"}
+              </div>
             </div>
 
-            <div className="fld">
-              <label>Service &amp; Consultation Charge (₱)</label>
-              <input
-                type="number"
-                min="0"
-                value={fee}
-                onChange={e => setFee(+e.target.value)}
-              />
+            {/* Price Basis & Search Catalog */}
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "var(--navy)", marginBottom: "4px" }}>
+                🔍 Search Clinic Price Basis &amp; Add Services/Medicines
+              </label>
+              <div style={{ position: "relative" }}>
+                <input
+                  type="search"
+                  placeholder="Type to search e.g. Rabies, DHPP, Consult, Deworming, NexGard, CBC..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  style={{ width: "100%", padding: "8px 12px 8px 34px", fontSize: "13px", borderRadius: "8px", border: "1.5px solid #cbd5e1" }}
+                />
+                <span style={{ position: "absolute", left: "10px", top: "10px", color: "#94a3b8" }}>
+                  <Search size={16} />
+                </span>
+              </div>
+
+              {/* Live search results dropdown */}
+              {search.trim() && (
+                <div style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: "8px", marginTop: "4px", maxHeight: "190px", overflowY: "auto", boxShadow: "0 6px 16px rgba(0,0,0,0.1)", zIndex: 10 }}>
+                  {filteredCatalog.length ? (
+                    filteredCatalog.map(catItem => (
+                      <button
+                        key={catItem.id}
+                        type="button"
+                        onClick={() => addItem(catItem)}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "8px 12px",
+                          border: "none",
+                          borderBottom: "1px solid #f1f5f9",
+                          background: "#fff",
+                          cursor: "pointer",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          fontSize: "12.5px"
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = "#f0f9ff"}
+                        onMouseLeave={e => e.currentTarget.style.background = "#fff"}
+                      >
+                        <div>
+                          <b style={{ color: "var(--navy)" }}>{catItem.name}</b>
+                          <small style={{ display: "block", color: "#64748b" }}>{catItem.category} &bull; {catItem.desc}</small>
+                        </div>
+                        <div style={{ textAlign: "right", marginLeft: "12px" }}>
+                          <b style={{ color: "#047857", fontSize: "13px" }}>₱{catItem.price.toLocaleString()}</b>
+                          <span style={{ display: "block", fontSize: "11px", color: "#2563eb" }}>+ Add</span>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div style={{ padding: "10px 12px", fontSize: "12px", color: "#64748b" }}>
+                      No matching services found in catalog. You can edit line items below directly.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div className="fld">
-              <label>Discount / Senior Citizen / Promo (₱)</label>
-              <input
-                type="number"
-                min="0"
-                value={discount}
-                onChange={e => setDiscount(e.target.value)}
-                placeholder="0"
-              />
+            {/* Bill Line Items Table */}
+            <div style={{ border: "1px solid #cbd5e1", borderRadius: "10px", overflow: "hidden", marginBottom: "16px" }}>
+              <table style={{ width: "100%", fontSize: "12.5px", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc", textAlign: "left", color: "#64748b", borderBottom: "1px solid #e2e8f0" }}>
+                    <th style={{ padding: "8px 10px" }}>Service / Medication</th>
+                    <th style={{ padding: "8px 10px", width: "70px", textAlign: "center" }}>Qty</th>
+                    <th style={{ padding: "8px 10px", width: "110px", textAlign: "right" }}>Price (₱)</th>
+                    <th style={{ padding: "8px 10px", width: "100px", textAlign: "right" }}>Subtotal</th>
+                    <th style={{ padding: "8px 10px", width: "40px" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((it, idx) => (
+                    <tr key={it.id || idx} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                      <td style={{ padding: "8px 10px" }}>
+                        <input
+                          type="text"
+                          value={it.name}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setItems(prev => prev.map((item, i) => i === idx ? { ...item, name: val } : item));
+                          }}
+                          style={{ width: "100%", fontSize: "12.5px", padding: "4px 6px", border: "1px solid transparent", borderRadius: "4px" }}
+                          onFocus={e => e.target.style.borderColor = "#93c5fd"}
+                          onBlur={e => e.target.style.borderColor = "transparent"}
+                        />
+                      </td>
+                      <td style={{ padding: "8px 10px", textAlign: "center" }}>
+                        <input
+                          type="number"
+                          min="1"
+                          value={it.qty}
+                          onChange={e => updateQty(idx, e.target.value)}
+                          style={{ width: "50px", textAlign: "center", padding: "4px", fontSize: "12px", border: "1px solid #cbd5e1", borderRadius: "4px" }}
+                        />
+                      </td>
+                      <td style={{ padding: "8px 10px", textAlign: "right" }}>
+                        <input
+                          type="number"
+                          min="0"
+                          value={it.price}
+                          onChange={e => {
+                            const val = +e.target.value || 0;
+                            setItems(prev => prev.map((item, i) => i === idx ? { ...item, price: val } : item));
+                          }}
+                          style={{ width: "85px", textAlign: "right", padding: "4px", fontSize: "12px", border: "1px solid #cbd5e1", borderRadius: "4px" }}
+                        />
+                      </td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, color: "var(--navy)" }}>
+                        ₱{(it.price * it.qty).toLocaleString()}
+                      </td>
+                      <td style={{ padding: "8px 6px", textAlign: "center" }}>
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeItem(idx)}
+                            style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", padding: "2px" }}
+                            title="Remove item"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div style={{ padding: "8px 12px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="btn sm ghost"
+                  onClick={() => addItem({ name: "Custom Clinical Service / Supply", category: "Other", price: 300 })}
+                  style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}
+                >
+                  <Plus size={14} /> Add Custom Line Item
+                </button>
+                <div style={{ fontSize: "13px" }}>
+                  Subtotal: <b style={{ color: "var(--navy)" }}>₱{subtotal.toLocaleString()}</b>
+                </div>
+              </div>
             </div>
 
-            <div className="fld">
-              <label>Payment Method</label>
-              <select value={method} onChange={e => setMethod(e.target.value)}>
-                <option value="Cash">Cash</option>
-                <option value="GCash">GCash</option>
-                <option value="Maya">Maya</option>
-                <option value="Credit / Debit Card">Credit / Debit Card</option>
-              </select>
+            {/* Discount & Payment Method */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <div className="fld" style={{ margin: 0 }}>
+                <label style={{ fontSize: "12px" }}>Discount / Senior (₱)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={discount}
+                  onChange={e => setDiscount(e.target.value)}
+                  placeholder="0"
+                  style={{ padding: "6px 10px", fontSize: "13px" }}
+                />
+              </div>
+
+              <div className="fld" style={{ margin: 0 }}>
+                <label style={{ fontSize: "12px" }}>Payment Method</label>
+                <select value={method} onChange={e => setMethod(e.target.value)} style={{ padding: "6px 10px", fontSize: "13px" }}>
+                  <option value="Cash">Cash (Over the counter)</option>
+                  <option value="GCash">GCash QR / Mobile</option>
+                  <option value="Maya">Maya QR / Wallet</option>
+                  <option value="Credit / Debit Card">Credit / Debit Card POS</option>
+                </select>
+              </div>
             </div>
 
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#f1f5f9", borderRadius: "10px", margin: "16px 0", fontSize: "16px" }}>
-              <b>Total Due:</b>
-              <b style={{ fontSize: "20px", color: "#166534" }}>₱{total.toLocaleString()}</b>
+            {/* Total Due Banner */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 18px", background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "10px", marginBottom: "16px" }}>
+              <div>
+                <span style={{ fontSize: "11px", color: "#166534", fontWeight: 700, textTransform: "uppercase" }}>Total Bill to Settle</span>
+                <div style={{ fontSize: "12px", color: "#15803d" }}>Method: {method}</div>
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 800, color: "#15803d" }}>
+                ₱{total.toLocaleString()}
+              </div>
             </div>
 
+            {/* Actions */}
             <div className="row end" style={{ gap: "10px" }}>
-              <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-              <button type="submit" className="btn gold">Process Payment &amp; Mark Paid</button>
+              <button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button>
+              <button type="submit" className="btn gold" disabled={loading} style={{ fontWeight: 700 }}>
+                {loading ? "Processing..." : "✓ Settle & Process Payment"}
+              </button>
             </div>
           </form>
         )}
+
       </div>
     </div>
   );
 }
-

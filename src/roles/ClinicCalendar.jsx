@@ -26,8 +26,12 @@ import {
   X,
 } from "lucide-react";
 import { VETS, TODAY, scope, petName, ownerName, dueState, moveAppt, LABEL, Badge, uid, addLog } from "../lib.jsx";
+import { api } from "../api.js";
 import CheckInModal from "./CheckInModal.jsx";
 import SoapConsultationModal from "./SoapConsultationModal.jsx";
+import BillingModal from "./BillingModal.jsx";
+import PetCardModal from "./PetCardModal.jsx";
+import { formatSpeciesLabel } from "../preventiveSchedule.js";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const TIME_SLOTS = [
@@ -65,14 +69,18 @@ export function getServiceCategory(reason = "") {
 export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const t = new Date();
   const [cur, setCur] = useState({ y: t.getFullYear(), m: t.getMonth() });
-  const [viewMode, setViewMode] = useState("timeline"); // 'timeline' (Day Timeline) | 'month' (Month Grid)
+  const [viewMode, setViewMode] = useState("timeline"); // 'timeline' | 'month' | 'list'
   const [vetFilter, setVetFilter] = useState(me.role === "vet" ? me.vetId || "v1" : "");
   const [sel, setSel] = useState(TODAY);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
   // Modals
   const [bookingSlot, setBookingSlot] = useState(null); // { date, time, vetId }
   const [checkInAppt, setCheckInAppt] = useState(null);
   const [activeSoap, setActiveSoap] = useState(null);
+  const [billingAppt, setBillingAppt] = useState(null);
+  const [cardPetId, setCardPetId] = useState(null);
 
   const appts = db.appts.filter(a => (!vetFilter || a.vetId === vetFilter) && a.status !== "Cancelled");
 
@@ -81,7 +89,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 
   appts.forEach(a => {
     const pet = db.pets.find(p => p.id === a.petId) || {};
-    const owner = db.owners.find(o => o.id === pet.ownerId) || {};
+    const owner = db.owners.find(o => o.id === pet.ownerId || o.userId === pet.ownerId) || {};
     add(a.date, {
       id: a.id,
       time: a.time,
@@ -119,24 +127,41 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
     say && say(`${LABEL[action] || action} updated`);
   };
 
-  // Quick booking submit
-  const handleQuickBook = (petId, serviceName, reasonText, targetVetId, targetDate, targetTime) => {
-    const newApptId = "a" + uid();
+  // Quick booking submit saved to PostgreSQL backend
+  const handleQuickBook = async (petId, serviceName, reasonText, targetVetId, targetDate, targetTime) => {
+    const newApptId = "a_" + uid();
+    const reason = serviceName ? `${serviceName}: ${reasonText}` : reasonText;
     const newAppt = {
       id: newApptId,
       petId,
       vetId: targetVetId,
       date: targetDate,
       time: targetTime,
-      reason: serviceName ? `${serviceName}: ${reasonText}` : reasonText,
+      reason,
       status: "Scheduled",
       billingStatus: "Unbilled",
       amount: 600,
     };
 
+    try {
+      await api.post("/api/appointments", {
+        id: newApptId,
+        petId,
+        vetId: targetVetId,
+        date: targetDate,
+        time: targetTime,
+        reason,
+        amount: 600,
+        actorName: me.name,
+        actorRole: me.role
+      });
+    } catch (err) {
+      console.warn("Backend appointment booking fallback:", err);
+    }
+
     setDb(p => ({
       ...p,
-      appts: [...p.appts, newAppt],
+      appts: [...p.appts.filter(a => a.id !== newApptId), newAppt],
       log: addLog(p, me, `${me.name} scheduled appointment for ${petName(p, petId)} with ${(VETS.find(v => v[0] === targetVetId) || [])[1]} on ${targetDate} at ${targetTime}.`),
     }));
 
@@ -214,6 +239,15 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
               >
                 <LayoutGrid size={15} />
                 <span>Month Overview</span>
+              </button>
+              <button
+                type="button"
+                className={`btn sm ${viewMode === "list" ? "gold" : "ghost"}`}
+                style={{ padding: "4px 10px", fontSize: "12.5px", display: "flex", alignItems: "center", gap: "6px" }}
+                onClick={() => setViewMode("list")}
+              >
+                <Calendar size={15} />
+                <span>All Appointments ({appts.length})</span>
               </button>
             </div>
 
@@ -611,6 +645,192 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
         </div>
       )}
 
+      {/* ALL APPOINTMENTS MASTER QUEUE & LIST */}
+      {viewMode === "list" && (
+        <div className="card" style={{ padding: "18px 22px" }}>
+          {/* Search & Filter Bar */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flex: 1, minWidth: "260px" }}>
+              <input
+                type="search"
+                placeholder="Search patient, owner, reason, or date..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ width: "100%", maxWidth: "340px", padding: "7px 12px", fontSize: "13px", borderRadius: "8px", border: "1.5px solid #cbd5e1" }}
+              />
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                style={{ padding: "7px 10px", fontSize: "13px", borderRadius: "8px", border: "1.5px solid #cbd5e1" }}
+              >
+                <option value="">All Statuses</option>
+                {["Scheduled", "Confirmed", "Checked-in", "In consultation", "Completed", "Cancelled", "No-show"].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                className="btn sm gold"
+                onClick={() => setBookingSlot({ date: TODAY, time: "10:00", vetId: vetFilter || "v1" })}
+                style={{ fontWeight: 700 }}
+              >
+                + Book New Appointment
+              </button>
+            </div>
+          </div>
+
+          {/* Master Appointments Table */}
+          {(() => {
+            let filtered = db.appts.filter(a => !vetFilter || a.vetId === vetFilter);
+            if (statusFilter) filtered = filtered.filter(a => a.status === statusFilter);
+            if (search.trim()) {
+              const q = search.trim().toLowerCase();
+              filtered = filtered.filter(a => {
+                const pet = db.pets.find(p => p.id === a.petId) || {};
+                const owner = db.owners.find(o => o.id === pet.ownerId || o.userId === pet.ownerId) || {};
+                return (
+                  (pet.name && pet.name.toLowerCase().includes(q)) ||
+                  (owner.name && owner.name.toLowerCase().includes(q)) ||
+                  (a.reason && a.reason.toLowerCase().includes(q)) ||
+                  (a.date && a.date.includes(q))
+                );
+              });
+            }
+            filtered.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+
+            if (!filtered.length) {
+              return <div className="empty sm">No appointments match the selected filter.</div>;
+            }
+
+            return (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc" }}>
+                      <th style={{ padding: "10px 8px" }}>Date &amp; Time</th>
+                      <th style={{ padding: "10px 8px" }}>Patient</th>
+                      <th style={{ padding: "10px 8px" }}>Owner &amp; Contact</th>
+                      <th style={{ padding: "10px 8px" }}>Veterinarian</th>
+                      <th style={{ padding: "10px 8px" }}>Service / Reason</th>
+                      <th style={{ padding: "10px 8px" }}>Status</th>
+                      <th style={{ padding: "10px 8px" }}>Billing</th>
+                      <th style={{ padding: "10px 8px", textAlign: "right" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map(a => {
+                      const pet = db.pets.find(p => p.id === a.petId) || {};
+                      const owner = db.owners.find(o => o.id === pet.ownerId || o.userId === pet.ownerId) || {};
+                      const isPaid = a.billingStatus === "Paid";
+                      const vetName = (VETS.find(v => v[0] === a.vetId) || [])[1] || "Dr. Cruz";
+
+                      return (
+                        <tr key={a.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>
+                            <b>{a.date}</b>
+                            <small style={{ display: "block", color: "#64748b" }}>{a.time}</small>
+                          </td>
+
+                          <td style={{ padding: "10px 8px" }}>
+                            <span
+                              onClick={() => setCardPetId(pet.id || a.petId)}
+                              style={{ fontWeight: 700, color: "var(--navy)", cursor: "pointer", textDecoration: "underline" }}
+                              title="Click to open official Digital Vaccination Card"
+                            >
+                              {pet.name || "Patient"}
+                            </span>
+                            <small style={{ display: "block", color: "#64748b" }}>
+                              {pet.species ? formatSpeciesLabel(pet.species) : "Pet"} {pet.breed ? `(${pet.breed})` : ""}
+                            </small>
+                          </td>
+
+                          <td style={{ padding: "10px 8px" }}>
+                            <b>{owner.name || "Walk-in Owner"}</b>
+                            <small style={{ display: "block", color: "#64748b" }}>{owner.phone || "No phone"}</small>
+                          </td>
+
+                          <td style={{ padding: "10px 8px", color: "#334155" }}>
+                            {vetName}
+                          </td>
+
+                          <td style={{ padding: "10px 8px", maxWidth: "220px" }}>
+                            <div style={{ color: "#1e293b", fontWeight: 500 }}>{a.reason}</div>
+                          </td>
+
+                          <td style={{ padding: "10px 8px" }}>
+                            <Badge v={a.status} />
+                          </td>
+
+                          <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>
+                            <span style={{
+                              fontSize: "11.5px",
+                              fontWeight: 700,
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              background: isPaid ? "#dcfce7" : "#fef3c7",
+                              color: isPaid ? "#166534" : "#92400e"
+                            }}>
+                              {isPaid ? `✓ Paid (₱${a.amount})` : `Unbilled (₱${a.amount || 600})`}
+                            </span>
+                          </td>
+
+                          <td style={{ padding: "10px 8px", textAlign: "right" }}>
+                            <div style={{ display: "inline-flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                              <button
+                                type="button"
+                                className="btn sm ghost"
+                                onClick={() => setCardPetId(pet.id || a.petId)}
+                                title="Open Digital Vaccination Card"
+                                style={{ padding: "3px 8px", fontSize: "11.5px" }}
+                              >
+                                💳 Card
+                              </button>
+
+                              {a.status === "Scheduled" && me.role === "assistant" && (
+                                <button
+                                  type="button"
+                                  className="btn sm"
+                                  onClick={() => handleAction(a, "Confirmed")}
+                                  style={{ padding: "3px 8px", fontSize: "11.5px" }}
+                                >
+                                  Confirm
+                                </button>
+                              )}
+
+                              {["Scheduled", "Confirmed"].includes(a.status) && me.role === "assistant" && (
+                                <button
+                                  type="button"
+                                  className="btn sm gold"
+                                  onClick={() => setCheckInAppt(a)}
+                                  style={{ padding: "3px 8px", fontSize: "11.5px", fontWeight: 700 }}
+                                >
+                                  Check in
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                className={`btn sm ${isPaid ? "ghost" : "gold"}`}
+                                onClick={() => setBillingAppt(a)}
+                                style={{ padding: "3px 8px", fontSize: "11.5px", fontWeight: isPaid ? 500 : 700 }}
+                              >
+                                {isPaid ? "Receipt" : "🧾 Bill / Pay"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Quick Booking Modal from Open Slot */}
       {bookingSlot && (
         <QuickBookModal
@@ -648,6 +868,35 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
           onSaved={() => {
             setActiveSoap(null);
             say && say("SOAP consultation saved! Visit completed.");
+          }}
+        />
+      )}
+
+      {/* Front Desk Billing Modal */}
+      {billingAppt && (
+        <BillingModal
+          appt={billingAppt}
+          db={db}
+          setDb={setDb}
+          me={me}
+          onClose={() => setBillingAppt(null)}
+          onPaid={(amt) => {
+            say && say(`Payment of ₱${amt.toLocaleString()} processed successfully!`);
+          }}
+        />
+      )}
+
+      {/* Official Digital Vaccination Card Modal */}
+      {cardPetId && (
+        <PetCardModal
+          petId={cardPetId}
+          db={db}
+          setDb={setDb}
+          me={me}
+          onClose={() => setCardPetId(null)}
+          onBook={() => {
+            setCardPetId(null);
+            setBookingSlot({ date: TODAY, time: "10:00", vetId: vetFilter || "v1" });
           }}
         />
       )}

@@ -20,12 +20,15 @@ import CheckInModal from "./CheckInModal.jsx";
 import PetApprovalModal from "./PetApprovalModal.jsx";
 import PetRequestsPage from "./PetRequestsPage.jsx";
 import AssistantVaccinationManager from "./AssistantVaccinationManager.jsx";
+import PetCardModal from "./PetCardModal.jsx";
+import { formatSpeciesLabel } from "../preventiveSchedule.js";
 
 function Dash({ db, setDb, me, go, say }) {
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [billingAppt, setBillingAppt] = useState(null);
   const [checkInAppt, setCheckInAppt] = useState(null);
   const [reviewReq, setReviewReq] = useState(null);
+  const [cardPetId, setCardPetId] = useState(null);
 
   const pendingReqs = (db.petRequests || []).filter(r => r.status === "Pending");
   const q = db.appts.filter(a => a.date === TODAY && a.status !== "Cancelled").sort((a, b) => a.time.localeCompare(b.time));
@@ -41,27 +44,30 @@ function Dash({ db, setDb, me, go, say }) {
         text="Register walk-in owners and patients, manage arrival check-ins, oversee appointments and handle billing."
         icons={["bell", "cat"]}
       >
-        <div className="row" style={{ flexWrap: "wrap", gap: "10px" }}>
-          <button className="btn gold" onClick={() => setShowWalkIn(true)}>
-            + Register Walk-in (Owner &amp; Pet)
+        <div className="row" style={{ flexWrap: "wrap", gap: "12px", marginTop: "14px" }}>
+          <button
+            className="btn gold"
+            onClick={() => setShowWalkIn(true)}
+            style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}
+          >
+            <ConciergeBell size={16} /> + Register Walk-in (Owner &amp; Pet)
           </button>
           <button
-            className={`btn ${pendingReqs.length ? "gold" : "ghost"}`}
-            onClick={() => go("pet-requests")}
-            style={{ display: "flex", alignItems: "center", gap: "6px" }}
+            className="btn"
+            onClick={() => go("cal")}
+            style={{ display: "flex", alignItems: "center", gap: "6px", background: "#fff", color: "#1e3a8a", border: "1px solid #bfdbfe", fontWeight: 700 }}
           >
-            <PawPrint size={16} />
-            <b>Online Pet Requests ({pendingReqs.length})</b>
+            <Calendar size={16} /> Appointments &amp; Calendar
           </button>
-          <button className="btn" onClick={() => go("appts")}>
-            + Book Appointment
-          </button>
-          <button className="btn ghost" onClick={() => go("cal")}>
-            Interactive Calendar
-          </button>
-          <button className="btn ghost" onClick={() => go("vacc")}>
-            Vaccination Cards
-          </button>
+          {pendingReqs.length > 0 && (
+            <button
+              className="btn gold"
+              onClick={() => go("pet-requests")}
+              style={{ display: "flex", alignItems: "center", gap: "6px" }}
+            >
+              <PawPrint size={16} /> Review Pet Requests ({pendingReqs.length})
+            </button>
+          )}
         </div>
       </Hero>
 
@@ -168,17 +174,30 @@ function Dash({ db, setDb, me, go, say }) {
             <div style={{ display: "grid", gap: "8px" }}>
               {q.map(a => {
                 const pet = db.pets.find(p => p.id === a.petId) || {};
-                const owner = db.owners.find(o => o.id === pet.ownerId) || {};
+                const owner = db.owners.find(o => o.id === pet.ownerId || o.id === a.ownerId || o.id === (pet.ownerId && pet.ownerId.replace(/^o(\d+)/, 'o_$1')) || o.id?.replace(/^o_(\d+)/, 'o$1') === pet.ownerId) || {};
                 const isPaid = a.billingStatus === "Paid";
                 const iv = a.intakeVitals;
+                const petDisplayName = pet.name || a.petName || "Patient";
 
                 return (
-                  <div className="li" key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", border: "1px solid #e2e8f0", borderRadius: "10px", background: a.status === "Checked-in" ? "#f0fdf4" : a.status === "In consultation" ? "#eff6ff" : "#fff" }}>
+                  <div className="li" key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", border: "1px solid #e2e8f0", borderRadius: "10px", background: a.status === "Checked-in" ? "#f0fdf4" : a.status === "In consultation" ? "#eff6ff" : "#fff", gap: "10px", flexWrap: "wrap" }}>
                     <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
                       <b style={{ color: "var(--navy)", minWidth: "48px" }}>{a.time}</b>
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                          <b>{pet.name}</b> <span style={{ color: "#64748b", fontSize: "12.5px" }}>({owner.name})</span>
+                          <button
+                            type="button"
+                            className="btn-link"
+                            onClick={() => setCardPetId(pet.id || a.petId)}
+                            style={{ fontWeight: 700, fontSize: "14px", color: "var(--navy)", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}
+                            title="Click to view Digital Vaccination Card"
+                          >
+                            {petDisplayName}
+                          </button>
+                          <span style={{ color: "#64748b", fontSize: "12px" }}>
+                            {pet.species ? `· ${pet.species}${pet.breed ? ` (${pet.breed})` : ""}` : ""}
+                            {owner.name ? ` · Owner: ${owner.name}` : a.ownerName ? ` · Owner: ${a.ownerName}` : ""}
+                          </span>
                           {iv?.triageLevel && iv.triageLevel !== "Routine" && (
                             <span style={{
                               background: iv.triageLevel === "Emergency" ? "#fee2e2" : "#fef3c7",
@@ -235,8 +254,17 @@ function Dash({ db, setDb, me, go, say }) {
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                       <Badge v={a.status} />
+
+                      <button
+                        className="btn sm ghost"
+                        onClick={() => setCardPetId(pet.id || a.petId)}
+                        title="View Official Digital Vaccination Card"
+                        style={{ display: "flex", alignItems: "center", gap: "4px" }}
+                      >
+                        💳 Card
+                      </button>
 
                       {a.status === "Scheduled" && (
                         <button
@@ -270,12 +298,13 @@ function Dash({ db, setDb, me, go, say }) {
                         </button>
                       )}
 
-                      {a.status === "Completed" && (
+                      {(a.status === "Completed" || a.status === "Checked-in") && (
                         <button
                           className={`btn sm ${isPaid ? "ghost" : "gold"}`}
                           onClick={() => setBillingAppt(a)}
+                          title="Search clinic price catalog, create invoice, and settle bill"
                         >
-                          {isPaid ? "Receipt (Paid)" : "Bill / Checkout"}
+                          {isPaid ? "Receipt (Paid)" : "🧾 Bill / Checkout"}
                         </button>
                       )}
                     </div>
@@ -299,11 +328,24 @@ function Dash({ db, setDb, me, go, say }) {
             <div style={{ display: "grid", gap: "8px" }}>
               {calls.map(v => {
                 const p = db.pets.find(x => x.id === v.petId) || {};
-                const o = db.owners.find(x => x.id === p.ownerId) || {};
+                const o = db.owners.find(x => x.id === p.ownerId || x.id === (p.ownerId && p.ownerId.replace(/^o(\d+)/, 'o_$1')) || x.id?.replace(/^o_(\d+)/, 'o$1') === p.ownerId) || {};
                 return (
-                  <div className="li" key={v.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: "10px" }}>
+                  <div className="li" key={v.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: "10px", gap: "8px", flexWrap: "wrap" }}>
                     <div>
-                      <b>{p.name}</b> <small style={{ color: "#64748b" }}>({o.name})</small>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <button
+                          type="button"
+                          className="btn-link"
+                          onClick={() => setCardPetId(p.id || v.petId)}
+                          style={{ fontWeight: 700, fontSize: "13.5px", color: "var(--navy)", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}
+                          title="Click to view Digital Vaccination Card"
+                        >
+                          {p.name || "Patient"}
+                        </button>
+                        <small style={{ color: "#64748b" }}>
+                          {p.species ? `· ${p.species}` : ""}{o.name ? ` (${o.name})` : ""}
+                        </small>
+                      </div>
                       <small style={{ display: "block", color: "#475569" }}>
                         {v.vaccine} &bull; Due: <b>{v.nextDue}</b> &bull; Call: <b>{o.phone || "No phone"}</b>
                       </small>
@@ -311,8 +353,15 @@ function Dash({ db, setDb, me, go, say }) {
                     <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                       <Badge v={dueState(v.nextDue)} />
                       <button
+                        className="btn sm ghost"
+                        onClick={() => setCardPetId(p.id || v.petId)}
+                        title="View Official Digital Vaccination Card"
+                      >
+                        💳 Card
+                      </button>
+                      <button
                         className="btn ghost sm"
-                        onClick={() => say(`Logged reminder for ${o.name} (${p.name})`)}
+                        onClick={() => say(`Logged reminder for ${o.name || "owner"} (${p.name || "pet"})`)}
                       >
                         Log Call
                       </button>
@@ -381,6 +430,20 @@ function Dash({ db, setDb, me, go, say }) {
           }}
         />
       )}
+
+      {cardPetId && (
+        <PetCardModal
+          petId={cardPetId}
+          db={db}
+          setDb={setDb}
+          me={me}
+          onClose={() => setCardPetId(null)}
+          onBook={() => {
+            setCardPetId(null);
+            go("cal");
+          }}
+        />
+      )}
     </>
   );
 }
@@ -391,10 +454,9 @@ export const assistant = {
   menu: [
     { k: "home", l: "Front Desk", i: "bell", dash: 1, sub: "Today’s arrival queue, walk-in registration, and reminders." },
     { k: "pet-requests", l: "Online Pet Requests", i: "paw", Page: PetRequestsPage, sub: "Review and approve online pet registrations with automated vaccination cards." },
-    { k: "cal", l: "Clinic Calendar", i: "calendar", Page: ClinicCalendar, sub: "Interactive appointment scheduling and slot management." },
+    { k: "cal", l: "Appointments & Calendar", i: "calendar", Page: ClinicCalendar, sub: "Unified calendar schedules, slot booking, and appointments management." },
     M("owners", "Client Masterlist", "user", "owners", "Registered pet owners and primary contact details."),
     M("pets", "Patient Masterlist", "paw", "pets", "All animal patients and profiles."),
-    M("appts", "Appointments", "calendar", "appts", "Review, schedule, confirm, and update clinic appointments."),
     { k: "vacc", l: "Vaccination Cards", i: "syringe", Page: AssistantVaccinationManager, sub: "Manage official pet vaccination cards, log doctor-administered shots, and track boosters." },
     M("records", "Consultations", "file", "records", "Read-only view of veterinary consultation notes."),
   ],

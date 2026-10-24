@@ -28,6 +28,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
     let assignedCardId = cardId;
     let newPet = null;
     let newVaccRecords = [];
+    let preScheduledAppt = null;
 
     try {
       const res = await fetch(`/api/pet-requests/${request.id}/approve`, {
@@ -41,6 +42,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
       const data = await res.json();
       if (data.success) {
         assignedCardId = data.cardId || assignedCardId;
+        if (data.appointment) preScheduledAppt = data.appointment;
         const rawPet = data.pet;
         if (rawPet) {
           newPet = {
@@ -133,11 +135,16 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
         `Front Desk Assistant ${me.name} approved online pet registration for "${newPet.name}" (${owner.name}). Issued Digital Vaccination Card #${assignedCardId} with ${newVaccRecords.length} automated scheduled vaccine protocols.`
       );
 
+      const nextAppts = preScheduledAppt
+        ? [...(p.appts || []).filter(a => a.id !== preScheduledAppt.id), preScheduledAppt]
+        : (p.appts || []);
+
       return {
         ...p,
         pets: nextPets,
         vacc: nextVacc,
         vaccs: nextVacc,
+        appts: nextAppts,
         petRequests: nextReqs,
         log: nextLog,
       };

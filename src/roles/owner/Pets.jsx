@@ -410,16 +410,6 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
   const petCalculatedAge = v.birth && !f.errs.birth ? petAge(v.birth) : "";
   const petAgeDetails = v.birth && !f.errs.birth ? computeAgeDetails(v.birth) : null;
   const isOlderThanSixMonths = v.birth && !f.errs.birth && petCalculatedAge && !petCalculatedAge.includes("mo") && !petCalculatedAge.includes("under");
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [activeWorkflowTab, setActiveWorkflowTab] = useState("all");
-  
-  const nextFormMilestone = v.birth && !f.errs.birth ? getNextMilestone(v.birth, v.species) : null;
-  const fullFormSchedule = v.birth && !f.errs.birth ? getPreventiveSchedule(v.birth, v.species) : [];
-  const filteredSchedule = activeWorkflowTab === "all"
-    ? fullFormSchedule
-    : fullFormSchedule.filter(s => s.workflow === activeWorkflowTab);
-
-  const weightBracket = computeWeightBracket(v.weight, v.species, v.birth);
   const normSpecies = normalizeSpecies(v.species);
 
   return (
@@ -430,40 +420,6 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
         {v.species && GUIDANCE_BY_SPECIES[v.species] && (
           <div className="ow-note" style={{ background: "#eff6ff", borderColor: "#93c5fd", color: "#1e3a8a", fontSize: "0.83rem", lineHeight: 1.45, marginBottom: 14 }}>
             {GUIDANCE_BY_SPECIES[v.species]}
-          </div>
-        )}
-
-        {/* Clinical Interceptors & Toxicity Blocks based on VCMS v2.0 Protocols */}
-        {normSpecies === "Lagomorph" && (
-          <div style={{ background: "#fef2f2", border: "1.5px solid #f87171", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", color: "#991b1b", fontSize: "0.82rem" }}>
-            <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
-              <span>🚫</span> <span>TOXICOLOGY BLOCK: Strict Fipronil (Frontline) Ban</span>
-            </div>
-            <div style={{ marginTop: "3px", lineHeight: 1.4 }}>
-              Fipronil is lethal to rabbits and causes severe neurotoxic seizures and death. Frontline or fipronil-based products must never be dispensed or applied.
-            </div>
-          </div>
-        )}
-
-        {normSpecies === "Feline" && (
-          <div style={{ background: "#fef2f2", border: "1.5px solid #f87171", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", color: "#991b1b", fontSize: "0.82rem" }}>
-            <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
-              <span>🚫</span> <span>TOXICOLOGY BLOCK: Permethrin Toxicity Restriction</span>
-            </div>
-            <div style={{ marginTop: "3px", lineHeight: 1.4 }}>
-              Completely restrict formulas containing Permethrin. Canine spot-ons with permethrin are fatal to cats, causing severe tremors and neurological failure.
-            </div>
-          </div>
-        )}
-
-        {normSpecies === "Avian" && (
-          <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", color: "#92400e", fontSize: "0.82rem" }}>
-            <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
-              <span>⚠️</span> <span>HOME HAZARD ALERT: PTFE / Teflon Cookware Toxic Fumes</span>
-            </div>
-            <div style={{ marginTop: "3px", lineHeight: 1.4 }}>
-              Overheated non-stick PTFE pans, self-cleaning ovens, and aerosol sprays release colorless, odorless fumes that cause acute fatal pulmonary hemorrhage in birds. Keep cages far away from the kitchen.
-            </div>
           </div>
         )}
 
@@ -496,16 +452,9 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
 
           <div>
             <Field id="pd" label="Birth date (yesterday or earlier)" req type="date" min={OLDEST} maxDate={YESTERDAY} value={v.birth} onChange={x => f.set("birth", x)} onBlur={() => f.blur("birth")} error={f.show("birth")} valid={f.ok("birth")} hint="Birth date cannot be today or in the future" />
-            {petCalculatedAge && petAgeDetails && (
-              <div style={{ marginTop: -8, marginBottom: 10, fontSize: "0.83rem" }}>
-                <div style={{ color: "#0b3a5b", fontWeight: 700 }}>
-                  🐾 Age: {petCalculatedAge} · <span style={{ color: petAgeDetails.isAdult ? "#059669" : "#2563eb" }}>{petAgeDetails.lifeStageLabel}</span>
-                </div>
-                {petAgeDetails.isAdult && (
-                  <div style={{ marginTop: 4, background: "#ecfdf5", border: "1px solid #a7f3d0", padding: "6px 10px", borderRadius: "6px", color: "#065f46", fontSize: "0.78rem", lineHeight: 1.4 }}>
-                    ✨ <b>Automated Adult Maintenance:</b> Because this pet is 1+ years old, juvenile puppy shots are archived as completed foundation. The system auto-calculates Annual Core Boosters (DHPP/Rabies), Quarterly Deworming (every 90 days), and Monthly Flea/Tick prevention!
-                  </div>
-                )}
+            {petCalculatedAge && (
+              <div style={{ marginTop: -8, marginBottom: 10, fontSize: "0.83rem", color: "#0b3a5b", fontWeight: 700 }}>
+                🐾 Age: {petCalculatedAge}
               </div>
             )}
           </div>
@@ -529,134 +478,6 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
 
           <div className="full"><Field id="pm" label="Anything the clinic should know (optional)" type="textarea" rows={2} max={200} value={v.notes} onChange={x => f.set("notes", x)} onBlur={() => f.blur("notes")} error={f.show("notes")} valid={f.ok("notes")} hint="Health problems, behavior or past treatments" /></div>
         </div>
-
-        {/* Automated Preventive Care Schedule (VCMS v2.0 Separation) */}
-        {nextFormMilestone && (
-          <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "12px", padding: "14px", marginTop: "14px", marginBottom: "10px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "#166534" }}>
-                  🤖 VCMS Automated Schedule (Calculated from Birthdate)
-                </div>
-                <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#065f46", marginTop: "3px" }}>
-                  Upcoming Priority: {nextFormMilestone.care} ({nextFormMilestone.ageLabel})
-                </div>
-                <div style={{ fontSize: "0.84rem", color: "#047857", marginTop: "2px" }}>
-                  Target: <b>{nextFormMilestone.target}</b> · Spacing: {nextFormMilestone.protocol}
-                </div>
-                <div style={{ fontSize: "0.82rem", color: "#166534", marginTop: "4px" }}>
-                  📅 Calculated Target Date: <b>{nextFormMilestone.targetDate}</b>
-                </div>
-              </div>
-              <button type="button" className="lnk" style={{ fontSize: "0.8rem", whiteSpace: "nowrap" }} onClick={() => setShowSchedule(!showSchedule)}>
-                {showSchedule ? "Hide Roadmap ▲" : `View Full Roadmap (${fullFormSchedule.length}) ▼`}
-              </button>
-            </div>
-
-            {showSchedule && (
-              <div style={{ marginTop: "12px", borderTop: "1px solid #bbf7d0", paddingTop: "10px" }}>
-                {/* Workflow Loop Filter Tabs */}
-                <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
-                  <button
-                    type="button"
-                    onClick={() => setActiveWorkflowTab("all")}
-                    style={{
-                      padding: "3px 8px",
-                      borderRadius: "6px",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      border: "1px solid #86efac",
-                      background: activeWorkflowTab === "all" ? "#166534" : "#fff",
-                      color: activeWorkflowTab === "all" ? "#fff" : "#166534",
-                      cursor: "pointer"
-                    }}
-                  >
-                    All Milestones ({fullFormSchedule.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveWorkflowTab("Immunization")}
-                    style={{
-                      padding: "3px 8px",
-                      borderRadius: "6px",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      border: "1px solid #86efac",
-                      background: activeWorkflowTab === "Immunization" ? "#166534" : "#fff",
-                      color: activeWorkflowTab === "Immunization" ? "#fff" : "#166534",
-                      cursor: "pointer"
-                    }}
-                  >
-                    💉 Immunization Loop
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveWorkflowTab("Parasiticide")}
-                    style={{
-                      padding: "3px 8px",
-                      borderRadius: "6px",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      border: "1px solid #86efac",
-                      background: activeWorkflowTab === "Parasiticide" ? "#166534" : "#fff",
-                      color: activeWorkflowTab === "Parasiticide" ? "#fff" : "#166534",
-                      cursor: "pointer"
-                    }}
-                  >
-                    🛡️ Parasiticide Loop
-                  </button>
-                </div>
-
-                <div style={{ maxHeight: "240px", overflowY: "auto" }}>
-                  <table style={{ width: "100%", fontSize: "0.8rem", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ textAlign: "left", color: "#14532d", borderBottom: "1px solid #bbf7d0" }}>
-                        <th style={{ padding: "4px" }}>Loop / Age</th>
-                        <th style={{ padding: "4px" }}>Care Required</th>
-                        <th style={{ padding: "4px" }}>Target Date</th>
-                        <th style={{ padding: "4px" }}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredSchedule.map(s => (
-                        <tr key={s.id} style={{ borderBottom: "1px solid #dcfce7" }}>
-                          <td style={{ padding: "6px 4px", fontWeight: 600 }}>
-                            <span style={{ fontSize: "0.7rem", color: s.workflow === "Immunization" ? "#2563eb" : "#059669", display: "block" }}>
-                              {s.workflow || "Care"}
-                            </span>
-                            {s.ageLabel}
-                          </td>
-                          <td style={{ padding: "6px 4px" }}>
-                            <div>{s.care}</div>
-                            <small style={{ color: "#047857", fontSize: "0.75rem" }}>{s.target}</small>
-                            {s.constraints && (
-                              <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "2px" }}>
-                                <i>{s.constraints}</i>
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{s.targetDate}</td>
-                          <td style={{ padding: "6px 4px" }}>
-                            <span style={{
-                              padding: "2px 6px",
-                              borderRadius: "8px",
-                              fontSize: "0.72rem",
-                              fontWeight: 600,
-                              background: s.status === "Overdue" ? "#fee2e2" : s.status === "Due Soon" ? "#fef3c7" : "#e0e7ff",
-                              color: s.status === "Overdue" ? "#991b1b" : s.status === "Due Soon" ? "#92400e" : "#3730a3"
-                            }}>
-                              {s.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {top && <p className="err" role="alert">{top}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
@@ -751,23 +572,6 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
     <Modal title={p.name} onClose={onClose}>
       <dl className="op-dl">{rows.map(([k, x]) => <div key={k}><dt>{k}</dt><dd>{x}</dd></div>)}</dl>
 
-      {petAgeDetails?.isAdult && (
-        <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", color: "#166534" }}>
-          <div style={{ fontWeight: 800, fontSize: "0.86rem", display: "flex", alignItems: "center", gap: "6px" }}>
-            <span>🐕</span> <span>Lifelong Adult Maintenance Schedule Active</span>
-          </div>
-          <div style={{ marginTop: "4px", fontSize: "0.8rem", color: "#15803d", lineHeight: 1.45 }}>
-            Patient is on adult routine maintenance ({petAgeDetails.years} yr{petAgeDetails.years > 1 ? "s" : ""}):
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "4px 8px", marginTop: "6px" }}>
-              <div><b>• Annual Core Boosters:</b> DHPP & Rabies</div>
-              <div><b>• Adult Deworming:</b> Every 3 months (90 days)</div>
-              <div><b>• Flea/Tick/Heartworm:</b> Monthly (every 30 days)</div>
-              <div><b>• Wellness:</b> Comprehensive Annual Exam</div>
-              {petAgeDetails.isSenior && <div><b>• Senior Canine:</b> Semi-annual Blood Chemistry</div>}
-            </div>
-          </div>
-        </div>
-      )}
       {(p.allergies || []).length > 0 && <div className="op-sec"><h4>Allergies</h4><ul className="ow-tags">{p.allergies.map(a => <li className="ow-tag" key={a}>{a}</li>)}</ul></div>}
       {p.notes && <div className="op-sec"><h4>Care notes</h4><p>{p.notes}</p></div>}
       
@@ -776,101 +580,6 @@ export function PetProfileModal({ pet: p, db, me, onClose, onVacc, onBook }) {
         <p className="op-line"><Icon n="syringe" size={16} /> {V.length ? <>{V.length} vaccine record{V.length > 1 ? "s" : ""}{over ? <span className="op-chip no">{over} overdue</span> : soon ? <span className="op-chip wait">{soon} due soon</span> : <span className="op-chip ok">Up to date</span>}</> : "No vaccine records yet"}</p>
         <p className="op-line"><Icon n="calendar" size={16} /> {next ? `Next visit: ${next.date} at ${fmt12(next.time)} (${next.status})` : "No visit booked"}</p>
       </div>
-
-      {/* Lagomorph & Feline Toxicology Banners */}
-      {normSpecies === "Lagomorph" && (
-        <div style={{ background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 12px", color: "#991b1b", fontSize: "0.8rem", marginBottom: "10px" }}>
-          <b>🚫 Lagomorph Safety Rule:</b> Strict ban on Fipronil (Frontline). Fipronil is fatal to rabbits.
-        </div>
-      )}
-
-      {normSpecies === "Feline" && (
-        <div style={{ background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 12px", color: "#991b1b", fontSize: "0.8rem", marginBottom: "10px" }}>
-          <b>🚫 Feline Safety Rule:</b> Strict ban on Permethrin. Permethrin is fatal to cats.
-        </div>
-      )}
-
-      {normSpecies === "Avian" && (
-        <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "8px", padding: "8px 12px", color: "#92400e", fontSize: "0.8rem", marginBottom: "10px" }}>
-          <b>⚠️ Avian Airborne Safety:</b> Inhaled non-stick Teflon/PTFE fumes and aerosol sprays cause acute fatal lung hemorrhage.
-        </div>
-      )}
-
-      {p.birth && petSchedule.length > 0 && (
-        <div className="op-sec">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
-            <h4 style={{ margin: 0 }}>Automated Preventive Schedule & Roadmap</h4>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "0.8rem", color: "#0b3a5b", fontWeight: 700 }}>
-                Calculated Age: {petAge(p.birth)}
-              </span>
-              {isAdultPet && (
-                <button type="button" className="lnk" style={{ fontSize: "0.75rem" }} onClick={() => setShowArchived(!showArchived)}>
-                  {showArchived ? "Hide Foundation Shots ▲" : "View Foundation Shots ▼"}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {nextMilestone && (
-            <div style={{ background: "#eff6ff", border: "1.5px solid #93c5fd", borderRadius: "10px", padding: "10px 12px", marginBottom: "12px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
-                <div>
-                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#1e40af", textTransform: "uppercase" }}>
-                    🎯 Current Recommended Care ({nextMilestone.workflow || "Care"})
-                  </div>
-                  <div style={{ fontSize: "0.92rem", fontWeight: 700, color: "#1e3a8a", marginTop: "2px" }}>{nextMilestone.care} ({nextMilestone.ageLabel})</div>
-                  <div style={{ fontSize: "0.8rem", color: "#2563eb", marginTop: "1px" }}>Target: <b>{nextMilestone.target}</b> · Spacing: {nextMilestone.protocol}</div>
-                  <div style={{ fontSize: "0.8rem", color: "#1e40af", marginTop: "2px" }}>Calculated Target Date: <b>{nextMilestone.targetDate}</b></div>
-                </div>
-                <button className="btn sm gold" style={{ whiteSpace: "nowrap" }} onClick={() => onBook(p.id, `${nextMilestone.care} (${nextMilestone.ageLabel})`)}>
-                  Book this visit
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div style={{ maxHeight: "220px", overflowY: "auto", border: "1px solid var(--ln)", borderRadius: "8px", padding: "4px" }}>
-            <table style={{ width: "100%", fontSize: "0.78rem", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "var(--mu)", borderBottom: "1px solid var(--ln)" }}>
-                  <th style={{ padding: "6px 4px" }}>Loop / Age</th>
-                  <th style={{ padding: "6px 4px" }}>Care Required</th>
-                  <th style={{ padding: "6px 4px" }}>Target Date</th>
-                  <th style={{ padding: "6px 4px" }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displaySchedule.map(s => (
-                  <tr key={s.id} style={{ borderBottom: "1px solid var(--ln)" }}>
-                    <td style={{ padding: "6px 4px", fontWeight: 600 }}>
-                      <span style={{ fontSize: "0.68rem", color: s.workflow === "Immunization" ? "#2563eb" : "#059669", display: "block" }}>
-                        {s.workflow || "Care"}
-                      </span>
-                      {s.ageLabel}
-                    </td>
-                    <td style={{ padding: "6px 4px" }}>
-                      <div style={{ fontWeight: 600, color: "#0f172a" }}>{s.care}</div>
-                      <small style={{ color: "var(--mu)", fontSize: "0.74rem" }}>{s.target}</small>
-                      {s.constraints && (
-                        <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "2px" }}>
-                          <i>{s.constraints}</i>
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{s.targetDate}</td>
-                    <td style={{ padding: "6px 4px" }}>
-                      <span className={`op-chip ${s.status === "Completed" ? "ok" : s.status === "Overdue" ? "no" : s.status === "Due Soon" ? "wait" : ""}`} style={{ fontSize: "0.72rem" }}>
-                        {s.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       <p className="ow-hint">Need to change the name, breed or birth date? Ask the clinic front desk, they keep the official record.</p>
       <div className="row end"><button className="btn ghost" onClick={onVacc}>Vaccination card</button><button className="btn" onClick={onBook}>Book a visit</button></div>

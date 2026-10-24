@@ -2,6 +2,9 @@ import pg from 'pg';
 import dotenv from 'dotenv';
 dotenv.config();
 
+// Ensure DATE (OID 1082) is returned as raw 'YYYY-MM-DD' string without timezone shifting
+pg.types.setTypeParser(1082, (val) => val);
+
 const { Pool } = pg;
 
 const connectionString = process.env.DATABASE_URL;

@@ -34,6 +34,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const [triage, setTriage] = useState("Routine");
   const [notes, setNotes] = useState(appt?.reason ? `Reason: ${appt.reason}` : "");
   const [fasted, setFasted] = useState(false);
+  const [valErr, setValErr] = useState("");
 
   const weightAnalysis = assessWeight(weight, species, pet.breed || "", lastWeight);
   const tempAnalysis = assessTemp(temp, species);
@@ -57,6 +58,16 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
     e.preventDefault();
     const w = parseFloat(weight);
     const t = parseFloat(temp);
+
+    if (isNaN(w) || w < 0.05 || w > 120) {
+      setValErr("Please enter a valid patient weight between 0.05 kg and 120 kg.");
+      return;
+    }
+    if (isNaN(t) || t < 33 || t > 45) {
+      setValErr("Please enter a valid body temperature between 33°C and 45°C.");
+      return;
+    }
+    setValErr("");
 
     const intakeVitals = {
       weight: !isNaN(w) ? w : null,
@@ -389,6 +400,12 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
               </div>
             </div>
           </div>
+
+          {valErr && (
+            <p className="err" role="alert" style={{ marginTop: "12px", marginBottom: "0" }}>
+              {valErr}
+            </p>
+          )}
 
           <div className="row end" style={{ marginTop: "20px", gap: "10px" }}>
             <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>

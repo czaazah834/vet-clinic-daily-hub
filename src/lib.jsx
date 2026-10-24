@@ -130,7 +130,11 @@ export function checkField(f, raw) {
   return "";
 }
 export const petOpts = (db, me) => scope(db, me, "pets").map(p => [p.id, `${p.name} (${ownerName(db, p.ownerId)})`]);
-export const ownerName = (db, id) => (db.owners.find(o => o.id === id) || {}).name || "—";
+export const ownerName = (db, id) => {
+  if (!id) return "—";
+  const o = (db?.owners || []).find(x => x.id === id || (typeof id === "string" && (x.id === id.replace(/^o(\d+)/, "o_$1") || x.id.replace(/^o_(\d+)/, "o$1") === id)));
+  return o?.name || "—";
+};
 export const petName = (db, id) => (db.pets.find(p => p.id === id) || {}).name || "—";
 
 /* ---------- entity config ---------- */

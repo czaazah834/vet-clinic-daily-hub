@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Badge, VETS, scope, petName, dueState, TODAY, ICON, I } from "../../lib.jsx";
 import { auth, OFFLINE_MSG } from "../../authApi.js";
-import { setPrefill, Avatar, PhotoUpload, pick, petAge, Icon, Modal } from "./ui.jsx";
+import { setPrefill, Avatar, toSquare, pick, petAge, Icon, Modal } from "./ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails } from "../../preventiveSchedule.js";
 import MedProfile from "./MedProfile.jsx";
 
@@ -57,8 +57,9 @@ const tone = s => s === "Overdue" ? "er" : s === "Due soon" ? "wa" : "";
 export function OwnerVacc({ db, setDb, me, go, say }) {
   const pets = scope(db, me, "pets");
   const [sel, setSel] = useState(() => (pick.petId && pets.some(p => p.id === pick.petId) ? pick.petId : pets[0] ? pets[0].id : ""));
-  const [det, setDet] = useState(null), [st, setSt] = useState(""), [q, setQ] = useState(""), [tab, setTab] = useState("vacc"), [pic, setPic] = useState(false);
+  const [det, setDet] = useState(null), [st, setSt] = useState(""), [q, setQ] = useState(""), [tab, setTab] = useState("vacc");
   const [isFlipped, setIsFlipped] = useState(false); // Controls the 3D page flip animation
+  const fileInputRef = useRef(null);
 
   useEffect(() => { pick.petId = null; }, []);
   
@@ -83,9 +84,36 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
   const savePhoto = async photo => {
     try {
       const r = await auth.petPhoto(sel, photo);
-      setDb(d => ({ ...d, pets: d.pets.map(x => x.id === r.pet.id ? r.pet : x) }));
-      say(photo ? "Picture saved" : "Picture removed");
-    } catch (x) { say(x.offline ? OFFLINE_MSG : x.message || "We couldn’t save the picture. Please try again."); }
+      const updatedPet = r?.pet || { ...p, photo };
+      setDb(d => ({
+        ...d,
+        pets: (d.pets || []).map(x => x.id === sel ? { ...x, ...updatedPet, photo } : x)
+      }));
+      say(photo ? "Picture saved to vaccination card" : "Picture removed");
+    } catch (x) {
+      console.warn("Photo save error:", x);
+      say(x.offline ? OFFLINE_MSG : x.message || "We couldn’t save the picture. Please try again.");
+    }
+  };
+
+  const handlePhotoFileChange = async e => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
+      say("Only JPG, PNG or WEBP pictures are allowed.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      say("Picture is too big. The limit is 5 MB.");
+      return;
+    }
+    try {
+      const squareBase64 = await toSquare(file);
+      await savePhoto(squareBase64);
+    } catch (err) {
+      say(err.message === "small" ? "Picture is too small. Use at least 64 × 64 pixels." : "Could not process picture.");
+    }
   };
 
   const badge = id => {
@@ -117,7 +145,6 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
     setSel(id);
     setSt("");
     setQ("");
-    setPic(false);
     setIsFlipped(false);
   };
   const movePet = step => {
@@ -271,19 +298,54 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                   <div className="vc-profile-body" style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
                     <div className="vc-profile-layout" style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: "20px", alignItems: "start" }}>
                       
-                      {/* Photo Box with Stamp */}
+                      {/* Photo Box with Direct File Explorer Upload */}
                       <div style={{ textAlign: "center" }}>
-                        <div style={{ position: "relative", width: 104, height: 104, margin: "0 auto", borderRadius: "16px", overflow: "hidden", border: "3px solid #3b82f6", boxShadow: "0 4px 14px rgba(0,0,0,0.12)" }}>
+                        <div
+                          style={{
+                            position: "relative",
+                            width: 104,
+                            height: 104,
+                            margin: "0 auto",
+                            borderRadius: "16px",
+                            overflow: "hidden",
+                            border: "3px solid #3b82f6",
+                            boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
+                            cursor: "pointer"
+                          }}
+                          onClick={() => fileInputRef.current?.click()}
+                          title="Click to choose a photo from your files"
+                        >
                           <Avatar src={p.photo} fallback={<Icon n="paw" size={48} />} size={104} />
+                          
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            onChange={handlePhotoFileChange}
+                            hidden
+                          />
+
                           <button
                             type="button"
                             className="vc-cam vc-noprint"
-                            onClick={() => setPic(x => !x)}
-                            style={{ position: "absolute", bottom: 4, right: 4, background: "#1e3a8a", color: "#fff", border: "none", borderRadius: "50%", width: 26, height: 26, display: "grid", placeItems: "center", cursor: "pointer" }}
-                            title="Update pet photo"
+                            onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                            style={{ position: "absolute", bottom: 4, right: 4, background: "#1e3a8a", color: "#fff", border: "none", borderRadius: "50%", width: 28, height: 28, display: "grid", placeItems: "center", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.25)" }}
+                            title="Upload picture from files"
                           >
-                            <Icon n="camera" size={13} />
+                            <Icon n="camera" size={14} />
                           </button>
+
+                          {p.photo && (
+                            <button
+                              type="button"
+                              className="vc-noprint"
+                              onClick={(e) => { e.stopPropagation(); savePhoto(""); }}
+                              style={{ position: "absolute", top: 4, right: 4, background: "rgba(220, 38, 38, 0.9)", color: "#fff", border: "none", borderRadius: "50%", width: 22, height: 22, display: "grid", placeItems: "center", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}
+                              title="Remove photo"
+                            >
+                              ✕
+                            </button>
+                          )}
                         </div>
                         <div style={{ marginTop: 6, fontSize: "10px", color: "#059669", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                           Patient Verified
@@ -496,13 +558,6 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
 
               </div>
             </div>
-
-            {/* Photo upload drawer */}
-            {pic && (
-              <div className="vc-pic vc-noprint" style={{ marginBottom: 14 }}>
-                <PhotoUpload src={p.photo} fallback={<Icon n="paw" size={30} />} size={56} label="Add picture" onSave={savePhoto} onRemove={() => savePhoto("")} />
-              </div>
-            )}
 
             {/* Navigation Tabs (Vaccinations / Medical Profile) */}
             <div className="ow-tabs vc-noprint" role="tablist" aria-label={`${p.name} sections`}>
