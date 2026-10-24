@@ -21,19 +21,11 @@ function Dash({ db, setDb, me, go, say }) {
   const [actionError, setActionError] = useState("");
   const [handoff, setHandoff] = useState(null);
   const [activeSoap, setActiveSoap] = useState(null); // { appt, pet }
-  const [scope, setScope] = useState("my");          // "all" = whole clinic, "my" = assigned to this doctor
 
-  const isMyVet = a => {
-    if (a.vetId === me.id || (me.vetId && a.vetId === me.vetId)) return true;
-    return false;
-  };
-
-  const stages = vetQueue(db.appts || [], TODAY, scope === "all" ? null : [me.id, me.vetId].filter(Boolean));
+  const stages = vetQueue(db.appts || [], TODAY, [me.id, me.vetId].filter(Boolean));
   const { waiting, active: inConsult, completed, expected: notArrived } = stages;
   const queue = [...waiting, ...inConsult, ...completed];
   const due = certifiedRecalls(db.vacc || [], plus(14));
-  const allWaiting = vetQueue(db.appts || [], TODAY).waiting;
-  const myWaiting = allWaiting.filter(isMyVet);
 
   const startConsult = async a => {
     if (starting.current) return;
@@ -97,12 +89,7 @@ function Dash({ db, setDb, me, go, say }) {
             <h3>Active clinical queue</h3>
             <p>Patients checked in by the front desk appear here for examination and SOAP notes.{notArrived > 0 ? ` ${notArrived} more expected today, not yet checked in.` : ""}</p>
           </div>
-          <div className="sf-toolbar">
-            <div className="sf-seg" role="group" aria-label="Queue scope">
-              <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>All clinic ({allWaiting.length})</button>
-              <button type="button" aria-pressed={scope === "my"} onClick={() => setScope("my")}>My patients ({myWaiting.length})</button>
-            </div>
-          </div>
+          <span className="meta">Assigned patients only</span>
         </div>
 
         <div className="sf-actions" role="group" aria-label="Queue stage" style={{flexWrap: "wrap", marginBottom: 12}}>

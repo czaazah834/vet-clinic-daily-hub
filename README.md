@@ -673,3 +673,16 @@ care for checked-in patients; they cannot book, reschedule, confirm or cancel
 appointments. A doctor can record a clinical follow-up request in SOAP; reception
 or the owner selects and books its time slot. These permissions apply to calendar
 prefills, patient cards, directory actions and direct API requests.
+
+### Vet calendar and administrative feedback
+
+The vet queue shows assigned patients. Calendar timeline, month/day and list
+views share the same patient-care actions: starting care shows pending/error
+feedback, active visits resume SOAP, and completed visits open the exact saved,
+read-only notes. Booking remains restricted to owners and reception.
+
+Staff and audit refreshes cancel obsolete reads and retain prior results on
+errors. Staff polling waits for pending requests; access changes reload the
+current revisions. Audit results identify their saved search and do not append
+pages from a failed new search. Invitation fields remain fixed while sending,
+and the created activation link stays visible while staff lists refresh.
