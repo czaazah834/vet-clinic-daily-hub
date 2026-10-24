@@ -130,8 +130,9 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
             <button
               type="button"
               className="btn sm ghost"
-              disabled={!historyComplete} title={!historyComplete?"Load all saved history before printing the complete card.":undefined} onClick={() => window.print()}
-              title="Print official document"
+              disabled={!historyComplete}
+              onClick={() => window.print()}
+              title={!historyComplete ? "Load all saved history before printing the complete card." : "Print official document"}
               style={{ display: "flex", alignItems: "center", gap: "6px" }}
             >
               <Printer size={14} />

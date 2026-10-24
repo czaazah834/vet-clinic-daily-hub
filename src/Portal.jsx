@@ -8,17 +8,11 @@ import { auth } from "./authApi.js";
 import { accountProfile, saveAccountProfile } from "./accountProfile.js";
 import { Avatar } from "./roles/owner/ui.jsx";
 import StaffHeader from "./roles/StaffHeader.jsx";
+import ReportsPage from "./roles/ReportsPage.jsx";
 import "./staff-modern.css";   // vet + vet assistant refresh, scoped to .th-vet / .th-assistant
+
 function Reports({ db, me }) {
-  const [r, setR] = useState({ type: "appts", from: "", to: "" }), c = E[r.type], bad = r.from && r.to && r.from > r.to;
-  let list = [...scope(db, me, r.type)]; if (c.sort) list.sort(c.sort);
-  if (r.type !== "pets") list = list.filter(x => (!r.from || x.date >= r.from) && (!r.to || x.date <= r.to));
-  return (<>
-    <div className="bar"><select value={r.type} onChange={e => setR({ type: e.target.value, from: "", to: "" })} aria-label="Report type">{["appts", "vacc", "records", "pets"].map(k => <option key={k} value={k}>{E[k].title}</option>)}</select>
-      {r.type !== "pets" && <><input type="date" value={r.from} onChange={e => setR({ ...r, from: e.target.value })} aria-label="From" /><input type="date" value={r.to} onChange={e => setR({ ...r, to: e.target.value })} aria-label="To" /></>}
-      <button className="btn ghost" disabled={db.summary && !db.historyComplete} title={db.summary && !db.historyComplete?"Load all saved history before printing a complete report.":undefined} onClick={() => window.print()}>Print</button></div>
-    {bad ? <p className="err">The “From” date must be on or before the “To” date.</p> : <><p><b>{list.length}</b> record(s)</p><Table db={db} ent={r.type} list={list} me={me} /></>}
-  </>);
+  return <ReportsPage db={db} me={me} />;
 }
 export default function Portal(props) {
   return <ClinicHistory key={`${props.me.id}:${props.me.role}`} db={props.db} me={props.me}>{db=><PortalBody {...props} db={db}/>}</ClinicHistory>;

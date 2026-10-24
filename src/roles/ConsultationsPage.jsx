@@ -77,9 +77,10 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
             <button
               type="button"
               className="btn sm ghost"
-              disabled={!historyComplete} title={!historyComplete?"Load all saved history before printing a complete clinical record.":undefined} onClick={() => window.print()}
+              disabled={!historyComplete}
+              onClick={() => window.print()}
               style={{ display: "flex", alignItems: "center", gap: "5px" }}
-              title="Print medical certificate / consultation summary"
+              title={!historyComplete ? "Load all saved history before printing a complete clinical record." : "Print medical certificate / consultation summary"}
             >
               <Printer size={15} /> Print EMR
             </button>

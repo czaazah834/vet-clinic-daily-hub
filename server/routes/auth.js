@@ -587,7 +587,7 @@ router.post('/staff/invite', requireAuth, async (req, res) => {
   const roleName = staffRole === 'vet' ? 'Veterinarian' : 'Vet Assistant';
 
   if (em.length>255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'Enter a valid staff email address.' });
-  if (typeof name !== 'string' || !name.trim() || name.length>100 || /[<>&\u0000-\u001f]/.test(name)) return res.status(400).json({ error: 'Enter a staff name up to 100 characters.' });
+  if (typeof name !== 'string' || !name.trim() || /\d/.test(name) || !/^(?=.*\p{L})[\p{L}\p{M}'’ -]{2,50}$/u.test(name.trim())) return res.status(400).json({ error: 'Staff full name must be 2 to 50 characters and contain letters only (no numbers).' });
 
   try {
     const existingUser = await query('SELECT id FROM users WHERE LOWER(email) = $1', [em]);
@@ -684,7 +684,7 @@ router.get('/staff/invite-info', async (req, res) => {
 
 // 12. ACCEPT STAFF INVITATION (Sets password + sends TextBee OTP)
 router.post('/staff/accept-invite', async (req,res) => {
-  const {token,firstName,lastName,birthday,mobileNumber,password}=req.body;
+  const {token,firstName,lastName,middleInitial,birthday,mobileNumber,password,houseStreet,city,state,country,zipCode}=req.body;
   const validName=v=>typeof v==='string'&&v.trim().length>0&&v.trim().length<=50&&/^[\p{L} .'-]+$/u.test(v.trim());
   const phone=typeof mobileNumber==='string'?parsePhoneNumberFromString(mobileNumber,'PH'):null;
   if(typeof token!=='string'||token.length>256||!token||!validName(firstName)||!validName(lastName)||typeof birthday!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(birthday)||!Number.isFinite(Date.parse(birthday))||new Date(birthday).toISOString().slice(0,10)!==birthday||birthday<'1900-01-01'||birthday>=new Date().toISOString().slice(0,10)||!phone?.isValid()||!['MOBILE','FIXED_LINE_OR_MOBILE'].includes(phone.getType())) return res.status(400).json({error:'Enter your full name, real birth date and a valid mobile number.'});
@@ -700,8 +700,14 @@ router.post('/staff/accept-invite', async (req,res) => {
       if(!usable)throw Object.assign(new Error('This invitation is expired, revoked or already used. Contact the administrator.'),{status:409});
       if(!['vet','assistant'].includes(inv.role))throw Object.assign(new Error('Invalid staff invitation role.'),{status:400});
       const vetId=inv.role==='vet'?'v_'+randomHex(8):null;
-      await client.query(`INSERT INTO users(id,first_name,last_name,birthday,password_hash,email,role,vet_id,mobile_number,email_verified_at,mobile_verified)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),false)`,[userId,firstName.trim(),lastName.trim(),birthday,pwHash,inv.email,inv.role,vetId,phone.number]);
+      await client.query(`INSERT INTO users(id,first_name,last_name,middle_initial,birthday,password_hash,email,role,vet_id,mobile_number,email_verified_at,mobile_verified)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),false)`,[userId,firstName.trim(),lastName.trim(),(middleInitial||'').trim()||null,birthday,pwHash,inv.email,inv.role,vetId,phone.number]);
+      if(houseStreet && city) {
+        await client.query(
+          `INSERT INTO addresses(user_id,house_street,country,city,state,zip_code) VALUES($1,$2,$3,$4,$5,$6)`,
+          [userId, houseStreet.trim(), (country||'Philippines').trim(), city.trim(), (state||'').trim(), (zipCode||'').trim()]
+        );
+      }
       await client.query('UPDATE staff_invitations SET accepted_at=NOW() WHERE id=$1',[inv.id]);
       await client.query('UPDATE users SET mobile_otp_requested_at=clock_timestamp() WHERE id=$1',[userId]);
       await client.query("INSERT INTO verification_tokens(user_id,token_hash,type,expired_at,delivery_confirmed,destination) VALUES($1,$2,'mobile_otp',NOW()+INTERVAL '10 minutes',false,$3)",[userId,sha256(otpCode),phone.number]);

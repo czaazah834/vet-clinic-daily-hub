@@ -12,10 +12,19 @@ import {
   Stethoscope,
   ConciergeBell,
   X,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  AlertTriangle,
+  Calendar,
+  UserX,
+  CreditCard,
+  Clock,
+  CheckCircle2,
+  ShieldAlert
 } from "lucide-react";
 import { M, by, Stats, Hero, TODAY, plus, ROLES, VETS, uid, addLog, Badge } from "../lib.jsx";
 import { auth } from "../authApi.js";
+import { pn, emOk, tc } from "../validate.js";
 import ClinicCalendar from "./ClinicCalendar.jsx";
 import DailySalesPage from "./DailySalesPage.jsx";
 import ClientsAndPatientsPage from "./ClientsAndPatientsPage.jsx";
@@ -44,6 +53,8 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
     role: "assistant"
   });
   const [loading, setLoading] = useState(false);
+  const [touched, setTouched] = useState({ name: false, email: false });
+  const [numWarn, setNumWarn] = useState("");
   const [err, setErr] = useState("");
   const [success, setSuccess] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -51,15 +62,39 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
 
   const review = useSubmissionReview(f);
 
+  const validateName = (name) => {
+    const s = String(name || "").trim();
+    if (!s) return "Staff full name is required.";
+    if (/\d/.test(name)) return "Numbers are not allowed in names. Please enter letters only.";
+    if (s.length < 2) return "Full name must be at least 2 characters.";
+    if (s.length > 50) return "Full name cannot exceed 50 characters.";
+    return pn(s);
+  };
+
+  const validateEmail = (email) => {
+    const s = String(email || "").trim();
+    if (!s) return "Staff email address is required.";
+    return emOk(s) ? "" : "Enter a valid email address (user@domain.com).";
+  };
+
+  const nameError = touched.name ? validateName(f.name) : "";
+  const emailError = touched.email ? validateEmail(f.email) : "";
+
   const submit = async (e) => {
     e.preventDefault();
     setErr("");
     if (inviting.current) return;
-    if (!f.name.trim()) return setErr("Staff full name is required");
-    if (!f.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) return setErr("Valid staff email required");
+
+    setTouched({ name: true, email: true });
+    const nErr = validateName(f.name);
+    if (nErr) return setErr(nErr);
+    const emErr = validateEmail(f.email);
+    if (emErr) return setErr(emErr);
+
+    const formattedName = tc(f.name.trim());
 
     if (!await review.ask({title:"Review staff invitation",confirmLabel:"Send invitation",description:"Check the email and role. This sends an invitation allowing the recipient to create a staff account with the selected access.",fields:[
-        ["Staff name",f.name.trim()],
+        ["Staff name",formattedName],
         ["Email",f.email.trim().toLowerCase()],
         ["Role",f.role === "vet" ? "Veterinarian" : "Vet assistant"]]}))return;
     inviting.current = true;
@@ -67,7 +102,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
     try {
       const res = await auth.inviteStaff({
         email: f.email.trim().toLowerCase(),
-        name: f.name.trim(),
+        name: formattedName,
         role: f.role
       });
 
@@ -76,7 +111,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
         onCreated?.();
         setDb(p => ({
           ...p,
-          log: addLog(p, me, `Administrator ${me.name} created staff invitation for ${f.name} (${f.role}).`)
+          log: addLog(p, me, `Administrator ${me.name} created staff invitation for ${formattedName} (${f.role}).`)
         }));
       } else {
         setErr(res.error || "Failed to dispatch staff invitation.");
@@ -182,9 +217,36 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
                 type="text"
                 placeholder={f.role === "vet" ? "e.g. Dr. Roberto Santos" : "e.g. Liza Ramos"}
                 value={f.name}
-                onChange={e => setF({ ...f, name: e.target.value })}
+                className={nameError || numWarn ? "bad" : touched.name && !validateName(f.name) ? "ok" : ""}
+                onChange={e => {
+                  const raw = e.target.value;
+                  if (/\d/.test(raw)) {
+                    setNumWarn("Numbers are not allowed in names. Only letters, spaces, hyphens, and apostrophes are accepted.");
+                  } else {
+                    setNumWarn("");
+                  }
+                  const filtered = raw.replace(/[0-9]/g, "");
+                  setF({ ...f, name: filtered });
+                }}
+                onBlur={() => {
+                  setTouched(p => ({ ...p, name: true }));
+                  if (f.name.trim()) setF(p => ({ ...p, name: tc(p.name.trim()) }));
+                }}
                 required
               />
+              {(nameError || numWarn) ? (
+                <span className="err" style={{ display: "block", marginTop: "4px", fontSize: "12px", color: "#dc2626" }}>
+                  {numWarn || nameError}
+                </span>
+              ) : touched.name && !validateName(f.name) ? (
+                <span style={{ display: "block", marginTop: "4px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>
+                  ✓ Valid name format (letters only, 2-50 characters)
+                </span>
+              ) : (
+                <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
+                  Letters only, minimum 2 to 50 characters. No numbers allowed.
+                </span>
+              )}
             </div>
 
             <div className="fld">
@@ -194,12 +256,24 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
                 type="email"
                 placeholder="staff@pawcare.com"
                 value={f.email}
-                onChange={e => setF({ ...f, email: e.target.value })}
+                className={emailError ? "bad" : touched.email && !validateEmail(f.email) ? "ok" : ""}
+                onChange={e => setF({ ...f, email: e.target.value.trim() })}
+                onBlur={() => setTouched(p => ({ ...p, email: true }))}
                 required
               />
-              <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
-                The email service sends a secure setup link to this address.
-              </span>
+              {emailError ? (
+                <span className="err" style={{ display: "block", marginTop: "4px", fontSize: "12px", color: "#dc2626" }}>
+                  {emailError}
+                </span>
+              ) : touched.email && !validateEmail(f.email) ? (
+                <span style={{ display: "block", marginTop: "4px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>
+                  ✓ Valid email address
+                </span>
+              ) : (
+                <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
+                  The email service sends a secure setup link to this address.
+                </span>
+              )}
             </div>
 
             <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px 14px", fontSize: "12px", color: "#1e40af", marginTop: "14px", marginBottom: "18px", lineHeight: 1.5 }}>
@@ -279,15 +353,245 @@ function Dash({ db, setDb, me, go, say }) {
         ]}
       />
 
-      <section className="card" style={{marginTop:16}}>
-        <h3>Needs attention</h3><p>Review exceptions and direct the responsible team to the next action.</p>
-        {staff.error && <p role="alert">{staff.error} <button className="btn ghost sm" onClick={()=>staff.load()}>Retry staff status</button></p>}
-        <div style={{display:'grid',gap:12}}>
-          <div><b>{staff.data ? locked.length : '—'} active staff account(s) locked</b> · Review the reason and unlock access if appropriate. <button className="btn ghost sm" onClick={()=>go('users')}>Review staff access</button></div>
-          <div><b>{staff.data ? reassign.length : '—'} upcoming visit(s) assigned to inactive doctors</b> · Ask reception to confirm reassignment with the client. <button className="btn ghost sm" onClick={()=>go('cal')}>Review calendar</button></div>
-          <div><b>{staff.data ? inactiveCare.length : '—'} arrived visit(s) assigned to inactive doctors</b> · Reactivate the responsible veterinarian to complete a handoff, then deactivate after transfer. Reception cannot reschedule started care. <button className="btn ghost sm" onClick={()=>go('users')}>Review responsible staff</button></div>
-          <div><b>{unpaid.length} completed visit(s) unpaid</b> · Ask reception to resolve its checkout inbox. <button className="btn ghost sm" onClick={()=>go('sales')}>Review sales</button></div>
-          <div><b>{unfinished.length} arrived visit(s) unfinished</b> · Check with the assigned clinical team. <button className="btn ghost sm" onClick={()=>go('records')}>Review clinical records</button></div>
+      {/* Operational Triage: Needs Attention Board */}
+      <section className="card" style={{ marginTop: 16, padding: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px", marginBottom: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{
+              width: "36px",
+              height: "36px",
+              borderRadius: "10px",
+              background: (locked.length + reassign.length + inactiveCare.length + unpaid.length + unfinished.length) > 0 ? "#fef3c7" : "#dcfce7",
+              color: (locked.length + reassign.length + inactiveCare.length + unpaid.length + unfinished.length) > 0 ? "#b45309" : "#15803d",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}>
+              {(locked.length + reassign.length + inactiveCare.length + unpaid.length + unfinished.length) > 0 ? (
+                <ShieldAlert size={20} />
+              ) : (
+                <CheckCircle2 size={20} />
+              )}
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: "17px", color: "var(--navy, #0f172a)", fontWeight: 700 }}>
+                Clinic Exceptions &amp; Operational Attention
+              </h3>
+              <p style={{ margin: "2px 0 0", fontSize: "12.5px", color: "#64748b" }}>
+                Active administrative triage: review clinical blocks, unbilled records, and doctor handoffs.
+              </p>
+            </div>
+          </div>
+
+          <span style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "4px 12px",
+            borderRadius: "99px",
+            fontSize: "12px",
+            fontWeight: 700,
+            background: (locked.length + reassign.length + inactiveCare.length + unpaid.length + unfinished.length) > 0 ? "#fff1f2" : "#f0fdf4",
+            color: (locked.length + reassign.length + inactiveCare.length + unpaid.length + unfinished.length) > 0 ? "#be123c" : "#15803d",
+            border: `1px solid ${(locked.length + reassign.length + inactiveCare.length + unpaid.length + unfinished.length) > 0 ? "#fecdd3" : "#86efac"}`
+          }}>
+            {(locked.length + reassign.length + inactiveCare.length + unpaid.length + unfinished.length) > 0 ? (
+              <>
+                <AlertTriangle size={13} />
+                <span>{(locked.length + reassign.length + inactiveCare.length + unpaid.length + unfinished.length)} Action Item(s) Pending</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={13} />
+                <span>All Operations On Track (0 Exceptions)</span>
+              </>
+            )}
+          </span>
+        </div>
+
+        {staff.error && (
+          <div role="alert" style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: "10px", padding: "10px 14px", fontSize: "13px", marginBottom: "14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span>{staff.error}</span>
+            <button className="btn ghost sm" onClick={() => staff.load()} style={{ fontSize: "12px" }}>Retry Staff Sync</button>
+          </div>
+        )}
+
+        {/* Actionable Exception Items */}
+        <div style={{ display: "grid", gap: "10px" }}>
+          {/* 1. Locked Staff */}
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderRadius: "12px",
+            background: locked.length > 0 ? "#fff1f2" : "#f8fafc",
+            border: `1px solid ${locked.length > 0 ? "#fecdd3" : "#e2e8f0"}`,
+            flexWrap: "wrap",
+            gap: "10px"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: 1 }}>
+              <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: locked.length > 0 ? "#ffe4e6" : "#f1f5f9", color: locked.length > 0 ? "#e11d48" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Lock size={16} />
+              </div>
+              <div>
+                <b style={{ color: locked.length > 0 ? "#9f1239" : "#1e293b", fontSize: "13.5px" }}>
+                  {staff.data ? locked.length : "—"} Active Staff Account(s) Locked
+                </b>
+                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>
+                  Failed password limits or security lockouts. Review the incident reason and restore portal access.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={locked.length > 0 ? "btn sm gold" : "btn ghost sm"}
+              onClick={() => go("users")}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              Review Staff Access
+            </button>
+          </div>
+
+          {/* 2. Scheduled Visits for Inactive Doctors */}
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderRadius: "12px",
+            background: reassign.length > 0 ? "#fffbeb" : "#f8fafc",
+            border: `1px solid ${reassign.length > 0 ? "#fde68a" : "#e2e8f0"}`,
+            flexWrap: "wrap",
+            gap: "10px"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: 1 }}>
+              <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: reassign.length > 0 ? "#fef3c7" : "#f1f5f9", color: reassign.length > 0 ? "#d97706" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Calendar size={16} />
+              </div>
+              <div>
+                <b style={{ color: reassign.length > 0 ? "#92400e" : "#1e293b", fontSize: "13.5px" }}>
+                  {staff.data ? reassign.length : "—"} Upcoming Visit(s) Assigned to Inactive Doctors
+                </b>
+                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>
+                  The assigned veterinarian is inactive. Ask front desk / reception to reassign patient slots to active doctors.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={reassign.length > 0 ? "btn sm gold" : "btn ghost sm"}
+              onClick={() => go("cal")}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              Review Calendar Slots
+            </button>
+          </div>
+
+          {/* 3. Arrived Patients with Inactive Caregiver */}
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderRadius: "12px",
+            background: inactiveCare.length > 0 ? "#fff1f2" : "#f8fafc",
+            border: `1px solid ${inactiveCare.length > 0 ? "#fecdd3" : "#e2e8f0"}`,
+            flexWrap: "wrap",
+            gap: "10px"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: 1 }}>
+              <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: inactiveCare.length > 0 ? "#ffe4e6" : "#f1f5f9", color: inactiveCare.length > 0 ? "#e11d48" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <UserX size={16} />
+              </div>
+              <div>
+                <b style={{ color: inactiveCare.length > 0 ? "#9f1239" : "#1e293b", fontSize: "13.5px" }}>
+                  {staff.data ? inactiveCare.length : "—"} Arrived Visit(s) Assigned to Inactive Doctors
+                </b>
+                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>
+                  Reactivate the responsible doctor to complete a clinical handoff, or reassign in clinic queues.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={inactiveCare.length > 0 ? "btn sm" : "btn ghost sm"}
+              onClick={() => go("users")}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              Manage Staff Status
+            </button>
+          </div>
+
+          {/* 4. Unpaid Completed Consultations */}
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderRadius: "12px",
+            background: unpaid.length > 0 ? "#fffbeb" : "#f8fafc",
+            border: `1px solid ${unpaid.length > 0 ? "#fde68a" : "#e2e8f0"}`,
+            flexWrap: "wrap",
+            gap: "10px"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: 1 }}>
+              <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: unpaid.length > 0 ? "#fef3c7" : "#f1f5f9", color: unpaid.length > 0 ? "#d97706" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <CreditCard size={16} />
+              </div>
+              <div>
+                <b style={{ color: unpaid.length > 0 ? "#92400e" : "#1e293b", fontSize: "13.5px" }}>
+                  {unpaid.length} Completed Visit(s) Unpaid
+                </b>
+                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>
+                  Doctor has signed off consultations; front desk checkout is awaiting payment and receipt issuance.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={unpaid.length > 0 ? "btn sm gold" : "btn ghost sm"}
+              onClick={() => go("sales")}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              Resolve in Sales
+            </button>
+          </div>
+
+          {/* 5. In-Progress Unfinished Consultations */}
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderRadius: "12px",
+            background: unfinished.length > 0 ? "#eff6ff" : "#f8fafc",
+            border: `1px solid ${unfinished.length > 0 ? "#bfdbfe" : "#e2e8f0"}`,
+            flexWrap: "wrap",
+            gap: "10px"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: 1 }}>
+              <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: unfinished.length > 0 ? "#dbeafe" : "#f1f5f9", color: unfinished.length > 0 ? "#2563eb" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Clock size={16} />
+              </div>
+              <div>
+                <b style={{ color: unfinished.length > 0 ? "#1e40af" : "#1e293b", fontSize: "13.5px" }}>
+                  {unfinished.length} Arrived Visit(s) in Progress
+                </b>
+                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>
+                  Patients checked-in or undergoing medical examination. Awaiting attending veterinarian SOAP finalization.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={unfinished.length > 0 ? "btn sm" : "btn ghost sm"}
+              onClick={() => go("records")}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              Review Clinical EMR
+            </button>
+          </div>
         </div>
       </section>
       <ReminderStatus />
