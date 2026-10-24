@@ -2074,20 +2074,6 @@ clinicRouter.post("/walk-in", async (req, res) => {
           intakeVitals: aRow.intake_vitals
         };
       }
-        const aRow = insAppt.rows[0];
-        appt = {
-          id: aRow.id,
-          petId: aRow.pet_id,
-          vetId: aRow.vet_id,
-          date: toDateStr(aRow.date),
-          time: aRow.time,
-          reason: aRow.reason,
-          status: aRow.status,
-          billingStatus: aRow.billing_status,
-          amount: parseFloat(aRow.amount),
-          intakeVitals: aRow.intake_vitals
-        };
-      }
 
       return {
         owner: effectiveOwner,
