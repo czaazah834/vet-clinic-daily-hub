@@ -21,7 +21,25 @@ export default function DevInbox({ onOpen }) {
             <small>{m.kind === "sms" ? "SMS to" : "Email to"} {m.to || "(no address)"} · {new Date(m.at).toLocaleTimeString()}</small>
             <b>{m.subject}</b>
             <pre>{m.body}</pre>
-            {m.link && <button type="button" className="btn gold sm" onClick={() => onOpen(m.link)}>{m.link.label || "Open link"}</button>}
+            {m.link && (
+              <button
+                type="button"
+                className="btn gold sm"
+                onClick={() => onOpen(m.link)}
+                style={{
+                  marginTop: "6px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontWeight: 700,
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  boxShadow: "0 4px 12px rgba(245, 158, 11, 0.25)"
+                }}
+              >
+                {m.kind === "sms" ? "📱 " : "📩 "} {m.link.label || "Verify My Account"} →
+              </button>
+            )}
           </li>
         ))}</ul>
       </>}

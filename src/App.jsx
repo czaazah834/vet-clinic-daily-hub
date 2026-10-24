@@ -232,10 +232,30 @@ export default function App() {
   if (me) return <Portal cfg={CFG[me.role]} me={me} db={db} setDb={setDb} onLogout={() => logout()} />;
   const screen =
     view === "verifying" ? (
-      <div className="lg auth">
-        <div className="lgr auth-ok" style={{ margin: "40px auto", maxWidth: 440, textAlign: "center" }}>
-          <h2 style={{ marginTop: 12 }}>Verifying your email</h2>
-          <p className="auth-fine">Please wait a moment while we confirm your email and prepare your mobile security code…</p>
+      <div className="lg auth cardl">
+        <aside className="lgl photo">
+          <div className="brandrow">
+            <Logo size={28} />
+            <span>PawCare</span>
+          </div>
+          <div className="cap">
+            <h1>Email <em>Confirmation</em></h1>
+            <p>Confirming your email address and preparing your 6-digit mobile security code.</p>
+          </div>
+        </aside>
+        <div className="auth-verify-card">
+          <div className="verifying-pulse-logo">
+            <span style={{ fontSize: "38px" }}>🐾</span>
+          </div>
+          <h2>Verifying your email...</h2>
+          <p className="card-subtitle">
+            Please wait a moment while we validate your security link and prepare your mobile security code.
+          </p>
+          <div className="verify-steps" style={{ marginTop: "16px" }}>
+            <span className="verify-step-pill done">✓ Security Link Confirmed</span>
+            <span className="verify-step-sep">›</span>
+            <span className="verify-step-pill active">Connecting Mobile Code...</span>
+          </div>
         </div>
       </div>
     )

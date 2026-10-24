@@ -1,64 +1,243 @@
 import { useState, useEffect, useRef } from "react";
 import { Logo, I } from "../lib.jsx";
 import { validateCode } from "../validate.js";
-import { useLive, Field } from "../roles/owner/ui.jsx";
+import { useLive } from "../roles/owner/ui.jsx";
 import { auth, OFFLINE_MSG } from "../authApi.js";
+import OtpBoxInput from "./OtpBoxInput.jsx";
+import {
+  Mail,
+  CheckCircle2,
+  Smartphone,
+  ArrowRight,
+  RotateCcw,
+  ExternalLink,
+  ShieldCheck,
+  Copy,
+  Check,
+  Sparkles,
+  Lock,
+  ArrowLeft
+} from "lucide-react";
 import "./auth.css";
-
-/* The three screens between "Create account" / "account locked" and a working log in.
-   Flow (same as login_registration): register -> CheckEmail -> email link -> Otp (SMS code) -> Log in.
-   A locked account: unlock email -> Unlock (2-minute cooling countdown) -> Log in. */
-
-const digits6 = s => s.replace(/\D/g, "").slice(0, 6);
-const Side = ({ title, text, icons }) => (
-  <aside className="lgl"><Logo size={72} /><h1>{title}</h1><p>{text}</p><div className="lart sm" aria-hidden="true">{icons.map(e => <span key={e}><I e={e} size={40} /></span>)}</div></aside>
-);
+import "./brand.css";
 
 /* ---------- 1. "Check your email" after registering ---------- */
 export function CheckEmail({ email, go }) {
-  const [busy, setBusy] = useState(false), [msg, setMsg] = useState(""), [err, setErr] = useState(""), [cool, setCool] = useState(30);
-  useEffect(() => { if (cool <= 0) return; const t = setTimeout(() => setCool(c => c - 1), 1000); return () => clearTimeout(t); }, [cool]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [cool, setCool] = useState(30);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (cool <= 0) return;
+    const t = setTimeout(() => setCool((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cool]);
+
+  const copyEmail = () => {
+    if (!email) return;
+    navigator.clipboard?.writeText(email);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const resend = async () => {
     if (busy || cool > 0) return;
-    setBusy(true); setMsg(""); setErr("");
-    try { await auth.resendVerification(email); setMsg("If that account is unverified, a new link was sent."); setCool(30); }
-    catch (x) { setErr(x.offline ? OFFLINE_MSG : x.message || "Please try again."); }
+    setBusy(true);
+    setMsg("");
+    setErr("");
+    try {
+      await auth.resendVerification(email);
+      setMsg("A fresh verification link has been sent to your email!");
+      setCool(30);
+    } catch (x) {
+      setErr(x.offline ? OFFLINE_MSG : x.message || "Please try again.");
+    }
     setBusy(false);
   };
+
+  const domain = (email || "").split("@")[1]?.toLowerCase() || "";
+  const isGmail = domain.includes("gmail");
+  const isOutlook = domain.includes("outlook") || domain.includes("hotmail");
+  const isYahoo = domain.includes("yahoo");
+
   return (
-    <div className="lg auth">
-      <Side title="Almost there" text="Verify your email, then your mobile number. After that you can log in." icons={["🐶", "🐱", "🐰"]} />
-      <div className="lgr auth-ok">
-        <I e="📋" size={48} />
-        <h2>Check your email</h2>
-        <p>We sent a verification link to <b>{email}</b>. It expires in 24 hours. Check your spam folder too.</p>
-        <p className="auth-fine">After you click the link we will text a 6-digit code to your mobile number.</p>
-        {msg && <p className="okm" role="status">{msg}</p>}
-        {err && <p className="err" role="alert">{err}</p>}
-        <button className="btn gold wide" onClick={() => go("login")}>Go to log in</button>
-        <div className="auth-links"><span>Didn’t get it?</span><button type="button" className="lnk" disabled={cool > 0 || busy} onClick={resend}>{cool > 0 ? `Send again in ${cool}s` : "Send again"}</button></div>
+    <div className="lg auth cardl">
+      <aside className="lgl photo">
+        <div className="brandrow">
+          <Logo size={28} />
+          <span>PawCare</span>
+        </div>
+        <div className="cap">
+          <h1>
+            Almost <em>there!</em>
+          </h1>
+          <p>Verify your email address, then enter your mobile security code to activate your account.</p>
+        </div>
+      </aside>
+
+      <div className="auth-verify-card">
+        {/* Step Tracker */}
+        <div className="verify-steps">
+          <span className="verify-step-pill done">
+            <CheckCircle2 size={13} /> 1. Registered
+          </span>
+          <span className="verify-step-sep">›</span>
+          <span className="verify-step-pill active">
+            <Mail size={13} /> 2. Verify Email
+          </span>
+          <span className="verify-step-sep">›</span>
+          <span className="verify-step-pill">
+            <Smartphone size={13} /> 3. Mobile Code
+          </span>
+        </div>
+
+        {/* Animated Envelope Graphic */}
+        <div className="envelope-badge-wrap">
+          <div className="envelope-pulse-bg" />
+          <div className="envelope-icon-box">
+            <Mail size={32} />
+          </div>
+          <div className="envelope-paw-tag">🐾</div>
+        </div>
+
+        <h2>Check your inbox</h2>
+        <p className="card-subtitle">
+          We sent a secure verification link to activate your PawCare portal account.
+        </p>
+
+        {/* User Email Pill with Copy */}
+        <div className="user-email-pill" title="Click to copy email address">
+          <span>{email || "your email address"}</span>
+          <button type="button" onClick={copyEmail} aria-label="Copy email address">
+            {copied ? <Check size={14} color="#059669" /> : <Copy size={14} />}
+          </button>
+        </div>
+
+        {/* 1-Click Webmail Quick Launchers */}
+        <div className="webmail-shortcuts" aria-label="Quick email access">
+          {isGmail && (
+            <a
+              href="https://mail.google.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="webmail-btn"
+              style={{ borderColor: "#ea4335", color: "#c5221f" }}
+            >
+              <ExternalLink size={14} /> Open Gmail
+            </a>
+          )}
+          {isOutlook && (
+            <a
+              href="https://outlook.live.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="webmail-btn"
+              style={{ borderColor: "#0078d4", color: "#005a9e" }}
+            >
+              <ExternalLink size={14} /> Open Outlook
+            </a>
+          )}
+          {isYahoo && (
+            <a
+              href="https://mail.yahoo.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="webmail-btn"
+              style={{ borderColor: "#6001d2", color: "#5000b8" }}
+            >
+              <ExternalLink size={14} /> Open Yahoo Mail
+            </a>
+          )}
+          {!isGmail && !isOutlook && !isYahoo && (
+            <>
+              <a href="https://mail.google.com" target="_blank" rel="noopener noreferrer" className="webmail-btn">
+                <ExternalLink size={13} /> Gmail
+              </a>
+              <a href="https://outlook.live.com" target="_blank" rel="noopener noreferrer" className="webmail-btn">
+                <ExternalLink size={13} /> Outlook
+              </a>
+              <a href="https://mail.yahoo.com" target="_blank" rel="noopener noreferrer" className="webmail-btn">
+                <ExternalLink size={13} /> Yahoo
+              </a>
+            </>
+          )}
+        </div>
+
+        {/* Status / Error alerts */}
+        {msg && <p className="okm" role="status" style={{ margin: "10px 0" }}>{msg}</p>}
+        {err && <p className="err" role="alert" style={{ margin: "10px 0" }}>{err}</p>}
+
+        {/* Tips Guidance Box */}
+        <div className="verify-tips-box">
+          <b><Sparkles size={14} color="#f59e0b" /> What to expect:</b>
+          <ul>
+            <li>Click the <b>“Verify My Account”</b> button inside the email.</li>
+            <li>Can’t find it? Check your <b>Spam or Junk</b> folder.</li>
+            <li>The email link stays valid for <b>24 hours</b>.</li>
+          </ul>
+        </div>
+
+        {/* Resend Action */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "14px" }}>
+          <button
+            type="button"
+            className="btn ghost wide"
+            disabled={cool > 0 || busy}
+            onClick={resend}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+          >
+            <RotateCcw size={15} />
+            {busy ? "Sending..." : cool > 0 ? `Resend email in ${cool}s` : "Resend verification email"}
+          </button>
+
+          <button
+            type="button"
+            className="btn gold wide"
+            onClick={() => go("login")}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+          >
+            Back to Log in <ArrowRight size={16} />
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-/* ---------- 2. Mobile code (OTP) ---------- */
+/* ---------- 2. Mobile code (OTP) with 6 Boxes ---------- */
 export function Otp({ onDone, onBack }) {
   const f = useLive({ code: "" }, validateCode);
-  const [phone, setPhone] = useState(""), [ready, setReady] = useState(false), [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(""), [info, setInfo] = useState(""), [n, setN] = useState(0);
-  const fail = x => setErr(x.offline ? OFFLINE_MSG : x.message || "Something went wrong. Please try again.");
-  const send = async first => {
-    setErr(""); setInfo("");
-    try { await auth.otpSend(); setN(60); if (!first) setInfo("New code sent."); } catch (x) { fail(x); }
+  const [phone, setPhone] = useState("");
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [info, setInfo] = useState("");
+  const [n, setN] = useState(60);
+
+  const fail = (x) => setErr(x.offline ? OFFLINE_MSG : x.message || "Something went wrong. Please try again.");
+
+  const send = async (first = false) => {
+    setErr("");
+    setInfo("");
+    try {
+      await auth.otpSend();
+      setN(60);
+      if (!first) setInfo("A new 6-digit SMS security code was sent to your phone.");
+    } catch (x) {
+      fail(x);
+    }
   };
+
   const started = useRef(false);
   useEffect(() => {
-    if (started.current) return; started.current = true;
+    if (started.current) return;
+    started.current = true;
     (async () => {
       try {
         const i = await auth.otpInfo();
-        if (i.mobileVerified) return onDone(null);        // nothing left to verify: send them to Log in
+        if (i.mobileVerified) return onDone(null); // already verified
         if (i.phone) setPhone(i.phone);
         setReady(true);
         setN(60);
@@ -68,29 +247,129 @@ export function Otp({ onDone, onBack }) {
       }
     })();
   }, []); // eslint-disable-line
-  useEffect(() => { if (n <= 0) return; const t = setTimeout(() => setN(c => c - 1), 1000); return () => clearTimeout(t); }, [n]);
 
-  const submit = async e => {
-    e.preventDefault(); setErr(""); setInfo(""); f.submit();
-    if (!f.valid || busy) return;
+  useEffect(() => {
+    if (n <= 0) return;
+    const t = setTimeout(() => setN((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [n]);
+
+  const handleVerify = async (codeToVerify) => {
+    const code = (codeToVerify || f.v.code || "").trim();
+    if (code.length < 6 || busy) return;
     setBusy(true);
-    try { const r = await auth.otpVerify(f.v.code.trim()); onDone(r.user || null); return; } catch (x) { fail(x); }
+    setErr("");
+    setInfo("");
+    try {
+      const r = await auth.otpVerify(code);
+      onDone(r.user || null);
+      return;
+    } catch (x) {
+      fail(x);
+    }
     setBusy(false);
   };
+
+  const submit = async (e) => {
+    e && e.preventDefault();
+    handleVerify(f.v.code);
+  };
+
+  // Mask phone for security: e.g. "+63 917 123 4567" -> "+63 917 ••• ••67"
+  const maskPhone = (raw) => {
+    if (!raw) return "your registered mobile number";
+    const s = String(raw).trim();
+    if (s.length < 7) return s;
+    return s.slice(0, 6) + " ••• ••" + s.slice(-2);
+  };
+
   return (
-    <div className="lg auth">
-      <Side title="Verify your mobile" text="One last check so we can reach you about your pets’ visits and vaccines." icons={["🐾", "📅"]} />
-      <form className="lgr" onSubmit={submit} noValidate>
-        <button type="button" className="lnk" onClick={onBack}>← Back to log in</button>
-        <h2>Enter your code</h2>
-        <p className="auth-note">Email verified. We texted a 6-digit code to <b>{ready ? phone || "your mobile number" : "…"}</b>. It lasts 5 minutes. After 3 wrong tries you must wait 15 minutes.</p>
-        <div className="otp-field">
-          <Field id="otp" label="6-digit code" req value={f.v.code} filter={digits6} filterMsg="Numbers only" inputMode="numeric" maxLen={6} onChange={x => f.set("code", x)} onBlur={() => f.blur("code")} error={f.show("code", false)} valid={f.ok("code")} autoComplete="one-time-code" />
+    <div className="lg auth cardl">
+      <aside className="lgl photo">
+        <div className="brandrow">
+          <Logo size={28} />
+          <span>PawCare</span>
         </div>
-        {info && <p className="okm" role="status">{info}</p>}
-        {err && <p className="err" role="alert">{err}</p>}
-        <button className="btn gold wide" disabled={busy || !ready}>{busy ? "Checking…" : "Verify code"}</button>
-        <div className="auth-links"><span>Didn’t get a code?</span><button type="button" className="lnk" disabled={n > 0 || busy} onClick={() => send(false)}>{n > 0 ? `Send again in ${n}s` : "Send again"}</button></div>
+        <div className="cap">
+          <h1>
+            Security <em>Verification</em>
+          </h1>
+          <p>We texted a 6-digit code to your phone to safeguard your pets’ health records.</p>
+        </div>
+      </aside>
+
+      <form className="auth-verify-card" onSubmit={submit} noValidate>
+        {/* Step Tracker */}
+        <div className="verify-steps">
+          <span className="verify-step-pill done">
+            <CheckCircle2 size={13} /> 1. Email Verified
+          </span>
+          <span className="verify-step-sep">›</span>
+          <span className="verify-step-pill active">
+            <Smartphone size={13} /> 2. Mobile OTP
+          </span>
+          <span className="verify-step-sep">›</span>
+          <span className="verify-step-pill">
+            <Sparkles size={13} /> 3. Enter Hub
+          </span>
+        </div>
+
+        {/* Security Badge */}
+        <div className="envelope-badge-wrap">
+          <div className="envelope-pulse-bg" />
+          <div className="envelope-icon-box" style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)" }}>
+            <ShieldCheck size={34} />
+          </div>
+          <div className="envelope-paw-tag">📱</div>
+        </div>
+
+        <h2>Enter 6-digit code</h2>
+        <p className="card-subtitle">
+          Code sent to <b>{ready ? maskPhone(phone) : "your phone..."}</b>. It stays valid for 5 minutes.
+        </p>
+
+        {/* 6 Individual OTP Boxes */}
+        <OtpBoxInput
+          value={f.v.code}
+          onChange={(newCode) => {
+            f.set("code", newCode);
+            setErr("");
+          }}
+          hasError={!!err}
+          autoFocus={true}
+          onComplete={(fullCode) => {
+            // Automatically attempt verification when all 6 digits are typed!
+            handleVerify(fullCode);
+          }}
+        />
+
+        {info && <p className="okm" role="status" style={{ margin: "10px 0" }}>{info}</p>}
+        {err && <p className="err" role="alert" style={{ margin: "10px 0" }}>{err}</p>}
+
+        <button
+          type="submit"
+          className="btn gold wide"
+          disabled={busy || !ready || f.v.code.length < 6}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", margin: "18px 0 10px" }}
+        >
+          {busy ? "Verifying code..." : "Verify & Enter Portal"} <ArrowRight size={17} />
+        </button>
+
+        <div className="auth-links" style={{ justifyContent: "space-between", marginTop: "14px" }}>
+          <button type="button" className="lnk" onClick={onBack} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+            <ArrowLeft size={14} /> Back to log in
+          </button>
+
+          <button
+            type="button"
+            className="lnk"
+            disabled={n > 0 || busy}
+            onClick={() => send(false)}
+            style={{ fontWeight: 600, color: n > 0 ? "#94a3b8" : "#2563eb" }}
+          >
+            {n > 0 ? `Resend SMS in ${n}s` : "Resend SMS code"}
+          </button>
+        </div>
       </form>
     </div>
   );
@@ -98,34 +377,106 @@ export function Otp({ onDone, onBack }) {
 
 /* ---------- 3. Unlock link: 2-minute cooling countdown ---------- */
 export function Unlock({ token, onDone }) {
-  const [wait, setWait] = useState(null), [left, setLeft] = useState(0), [err, setErr] = useState("");
+  const [wait, setWait] = useState(null);
+  const [left, setLeft] = useState(0);
+  const [err, setErr] = useState("");
+
   const check = async () => {
     try {
       const r = await auth.unlock(token);
       if (r.status === "ok") return onDone("Account unlocked. You can log in now.");
       if (r.status === "wait") return setWait({ s: r.seconds, at: Date.now() });
       onDone("That unlock link is invalid or expired. Try logging in again to get a new one.", true);
-    } catch (x) { setErr(x.offline ? OFFLINE_MSG : x.message || "We couldn’t check that link. Please try again."); }
+    } catch (x) {
+      setErr(x.offline ? OFFLINE_MSG : x.message || "We couldn’t check that link. Please try again.");
+    }
   };
+
   const started = useRef(false);
-  useEffect(() => { if (started.current) return; started.current = true; check(); }, []); // eslint-disable-line
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    check();
+  }, []); // eslint-disable-line
+
   useEffect(() => {
     if (!wait) return;
     const end = wait.at + wait.s * 1000;
-    const tick = () => { const l = Math.max(0, Math.ceil((end - Date.now()) / 1000)); setLeft(l); if (!l) { clearInterval(id); setWait(null); check(); } };   // timer done: ask the server again, it unlocks the account
-    const id = setInterval(tick, 1000); tick();
+    const tick = () => {
+      const l = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      setLeft(l);
+      if (!l) {
+        clearInterval(id);
+        setWait(null);
+        check();
+      }
+    };
+    const id = setInterval(tick, 1000);
+    tick();
     return () => clearInterval(id);
   }, [wait]); // eslint-disable-line
+
   return (
-    <div className="lg auth">
-      <Side title="Unlocking your account" text="For your protection the unlock link works only after a short cooling period." icons={["🔐", "🐾"]} />
-      <div className="lgr auth-ok">
-        <I e="🔐" size={48} />
-        <h2>Cooling period</h2>
-        {err ? <p className="err" role="alert">{err}</p>
-          : wait ? <><p className="auth-note bad" role="status">Cooling period started. Your account will unlock in</p><p className="auth-count" aria-live="off">{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</p><p className="auth-fine">Keep this page open. It unlocks by itself when the timer ends.</p></>
-          : <p>Checking your link…</p>}
-        <button className="btn ghost wide" onClick={() => onDone("")}>Back to log in</button>
+    <div className="lg auth cardl">
+      <aside className="lgl photo">
+        <div className="brandrow">
+          <Logo size={28} />
+          <span>PawCare</span>
+        </div>
+        <div className="cap">
+          <h1>
+            Account <em>Protection</em>
+          </h1>
+          <p>For your security, locked accounts require a short cooling period before re-activating.</p>
+        </div>
+      </aside>
+
+      <div className="auth-verify-card">
+        <div className="envelope-badge-wrap">
+          <div className="envelope-pulse-bg" />
+          <div className="envelope-icon-box" style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)" }}>
+            <Lock size={32} />
+          </div>
+          <div className="envelope-paw-tag">🛡️</div>
+        </div>
+
+        <h2>Cooling Period Active</h2>
+
+        {err ? (
+          <p className="err" role="alert">{err}</p>
+        ) : wait ? (
+          <>
+            <p className="card-subtitle">
+              Cooling period in progress. Your account will automatically unlock when the timer finishes:
+            </p>
+            <div
+              style={{
+                fontSize: "46px",
+                fontWeight: 800,
+                color: "var(--navy)",
+                letterSpacing: "0.04em",
+                fontVariantNumeric: "tabular-nums",
+                margin: "12px 0 16px"
+              }}
+            >
+              {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
+            </div>
+            <p className="auth-fine" style={{ marginBottom: "20px" }}>
+              Please keep this page open. It will automatically redirect once unlocked.
+            </p>
+          </>
+        ) : (
+          <p className="card-subtitle">Verifying security token...</p>
+        )}
+
+        <button
+          type="button"
+          className="btn ghost wide"
+          onClick={() => onDone("")}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+        >
+          <ArrowLeft size={16} /> Return to Log in
+        </button>
       </div>
     </div>
   );

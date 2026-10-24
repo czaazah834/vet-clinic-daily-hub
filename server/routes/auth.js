@@ -32,6 +32,61 @@ export function getAppUrl(req) {
 const router = express.Router();
 const G = 'Invalid email or password.';
 
+function renderVerifyEmailHtml(name, verifyLink) {
+  return `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify your PawCare Account</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,0.08);border:1px solid #e2e8f0;">
+            <tr>
+              <td style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);padding:32px 28px;text-align:center;">
+                <div style="font-size:38px;margin-bottom:8px;">🐾</div>
+                <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:800;letter-spacing:-0.02em;">PawCare Daily Hub</h1>
+                <p style="margin:6px 0 0;color:#dbeafe;font-size:14px;">Veterinary Clinic & Pet Health Portal</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:36px 32px;">
+                <h2 style="margin:0 0 12px;color:#002B49;font-size:20px;font-weight:700;">Welcome, ${name || 'Pet Parent'}! 🐶🐱</h2>
+                <p style="margin:0 0 20px;color:#475569;font-size:15px;line-height:1.6;">
+                  Thank you for creating an account with PawCare. To complete your registration and secure your pet's vaccination cards and appointment bookings, please verify your email address.
+                </p>
+                <div style="text-align:center;margin:32px 0;">
+                  <a href="${verifyLink}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#ffe28a,#ffd24d);color:#002B49;font-size:16px;font-weight:800;padding:15px 36px;border-radius:99px;text-decoration:none;box-shadow:0 8px 20px rgba(255,200,60,0.4);border:1px solid #facc15;">
+                    Verify My Email Address →
+                  </a>
+                </div>
+                <p style="margin:24px 0 0;color:#64748b;font-size:13px;line-height:1.5;background:#f8fafc;padding:12px 16px;border-radius:12px;border:1px dashed #cbd5e1;">
+                  ⏱️ <b>Notice:</b> This link will expire in <b>24 hours</b>. If you didn't create a PawCare account, you can safely ignore this email.
+                </p>
+                <div style="margin-top:24px;padding-top:20px;border-top:1px solid #f1f5f9;font-size:12px;color:#94a3b8;word-break:break-all;">
+                  Button not working? Copy and paste this URL into your browser:<br>
+                  <a href="${verifyLink}" style="color:#2563eb;text-decoration:underline;">${verifyLink}</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:#f8fafc;padding:20px 32px;text-align:center;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">
+                PawCare Veterinary Clinic • Caloocan City • Philippine Standard Animal Healthcare
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+  </html>
+  `;
+}
+
 // Middleware to authenticate user via session cookie or Bearer token
 export async function requireAuth(req, res, next) {
   const sid = req.cookies?.sid || (req.headers.authorization && req.headers.authorization.replace('Bearer ', ''));
@@ -185,7 +240,7 @@ router.post('/register', async (req, res) => {
       em,
       'Welcome to PawCare - Verify your email address',
       `Hello ${fn}!\n\nPlease verify your email for your PawCare account:\n${verifyLink}\n\nWarm regards,\nPawCare Team`,
-      `<p>Hello <b>${fn}</b>!</p><p>Please verify your email address to activate your PawCare account:</p><p><a href="${verifyLink}" style="background:#0b3a5b;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Verify My Account</a></p>`
+      renderVerifyEmailHtml(fn, verifyLink)
     );
 
     res.json({
@@ -351,7 +406,7 @@ router.post('/resend-verification', async (req, res) => {
       em,
       'PawCare - Verify your email address',
       `Please verify your email address:\n${verifyLink}`,
-      `<p>Please verify your email address to activate your PawCare account:</p><p><a href="${verifyLink}" style="background:#0b3a5b;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">Verify My Account</a></p>`
+      renderVerifyEmailHtml(u.name || 'Pet Parent', verifyLink)
     );
 
     res.json({ status: 'ok', message: 'Verification link sent to your email.' });
