@@ -686,3 +686,39 @@ errors. Staff polling waits for pending requests; access changes reload the
 current revisions. Audit results identify their saved search and do not append
 pages from a failed new search. Invitation fields remain fixed while sending,
 and the created activation link stays visible while staff lists refresh.
+
+### Reception booking and checkout confirmation
+
+Calendar booking locks the form while saving, keeps failed entries visible with
+an inline error, and uses the exact server-confirmed visit. Checkout shows an
+initial loading state and retains loaded tasks on a failed refresh; reads do not
+overlap and obsolete responses cannot replace newer inbox data.
+
+Cash received is entered by reception and is never filled from a booking amount
+or increased when invoice items change. Payment fields lock while saving. A
+receipt opens only after the response confirms the same completed visit, paid
+amount, itemized invoice and payment details. Server role, claim and invoice
+validation remain authoritative. Missing intake assessments are shown as
+unrecorded rather than normal.
+
+
+### Connected visit handoffs
+
+Owner bookings become saved Scheduled visits. Reception confirms the visit,
+records intake and assigns a live veterinarian. Existing-patient walk-ins from
+the patient card use the same saved booking and intake flow. A patient joins the
+vet queue only after measured intake is saved. Waiting and active visits stay in
+reception's queue across midnight.
+
+Reception can use **Manage appointment** in the calendar's timeline, month or
+list view to change an upcoming Scheduled/Confirmed visit's doctor or schedule.
+Use the list view to find visits assigned to a doctor who is no longer active.
+Changes keep the visit ID, owner notes and linked follow-up; changed slots return
+to Scheduled for confirmation with the owner. Started visits require the
+existing clinical handoff process rather than appointment rescheduling.
+
+The assigned vet finalizes saved notes, which completes the visit and creates
+reception's checkout task. Reception records payment; the owner sees the saved
+notes and receipt. Admin reviews these records, exceptions and audit history.
+Booking, cancellation and payment screens require matching server confirmation
+before displaying success. Admin and vet accounts cannot book visits.

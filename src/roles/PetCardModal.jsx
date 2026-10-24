@@ -1,7 +1,8 @@
+import ExistingPatientCheckInModal from "./ExistingPatientCheckInModal.jsx";
 import { canBookAppointments } from "../appointmentPermissions.js";
 import { useState, useRef } from "react";
 import { PawPrint, Printer, RotateCw, Calendar, CheckCircle2, Clock, CreditCard, Receipt, ArrowRight, X } from "lucide-react";
-import { Badge, VETS, TODAY, ICON, I, moveAppt, uid } from "../lib.jsx";
+import { Badge, TODAY, ICON, I, moveAppt } from "../lib.jsx";
 import { Avatar, Icon, toSquare } from "./owner/ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails } from "../preventiveSchedule.js";
 import { auth, OFFLINE_MSG } from "../authApi.js";
@@ -36,6 +37,7 @@ function stateOf(v) {
 }
 
 export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBook, onCheckIn, onBill }) {
+  const [walkIn, setWalkIn] = useState(false);
   const [actionError, setActionError] = useState("");
   const p = (db.pets || []).find(x => x.id === petId) || {};
   const o = (db.owners || []).find(x => x.id === p.ownerId) || {};
@@ -43,6 +45,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
   const fileInputRef = useRef(null);
 
   if (!p.id) return null;
+  if (walkIn) return <ExistingPatientCheckInModal db={db} setDb={setDb} me={me} initialPetId={p.id} onClose={() => setWalkIn(false)} onCheckIn={visit => { onClose(); onCheckIn?.(visit); }} />;
 
   const activeAppt = appt ? (db.appts || []).find(a => a.id === appt.id && a.petId === p.id) : (db.appts || []).find(a => a.petId === p.id && a.date === TODAY && a.status !== "Cancelled");
   const ageDetails = p.birth ? computeAgeDetails(p.birth) : null;
@@ -172,7 +175,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                 ) : null}
               </div>
               <div style={{ fontSize: "12.5px", color: "#475569", marginTop: "3px" }}>
-                <b>Reason:</b> {activeAppt.reason || "General Consultation"} &bull; <b>Veterinarian:</b> {(VETS.find(v => v[0] === activeAppt.vetId) || [])[1] || "Dr. Cruz"}
+                <b>Reason:</b> {activeAppt.reason || "General Consultation"} &bull; <b>Veterinarian:</b> {(db.vets || []).find(v => v.id === activeAppt.vetId)?.name || "Veterinarian not recorded"}
               </div>
             </div>
 
@@ -308,25 +311,8 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               <button
                 type="button"
                 className="btn sm gold"
-                onClick={() => {
-                  const newAppt = {
-                    id: "a_" + uid(),
-                    petId: p.id,
-                    vetId: "v1",
-                    date: TODAY,
-                    time: new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" }),
-                    reason: "Walk-in Consultation & Routine Exam",
-                    status: "Scheduled",
-                    billingStatus: "Unbilled",
-                    amount: 600
-                  };
-                  setDb(prev => ({
-                    ...prev,
-                    appts: [newAppt, ...(prev.appts || [])]
-                  }));
-                  onClose();
-                  onCheckIn && onCheckIn(newAppt);
-                }}
+                onClick={() => setWalkIn(true)}
+                disabled={!onCheckIn}
                 style={{ fontWeight: 700 }}
               >
                 Check in as Today&rsquo;s Walk-in

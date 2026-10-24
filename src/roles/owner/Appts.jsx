@@ -1,3 +1,5 @@
+import { confirmedBooking, confirmedCancellation } from "../../receptionSaves.js";
+import { intakeVisitSnapshot } from "../../intakeVisit.js";
 import { currentVaccinationDue, vaccinationAppointment, vaccinationBooking, vaccinationStatus } from "../../ownerVaccination.js";
 import { api } from "../../api.js";
 import { today as bookingToday, lastDay } from "../../booking.js";
@@ -46,6 +48,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   const pets = scope(db, me, "pets"), owner = db.owners.find(o => o.id === me.ownerId) || {};
   const prev = editing ? serviceOf(editing) : "", svc0 = editing ? prev : start?.service || (start?.reason ? inferService(start.reason) : "");
   const f = useLive({ followUpId: editing?.followUpId || start?.followUpId || "", service: svc0, petId: editing ? editing.petId : (start && start.petId) || (pets.length === 1 ? pets[0].id : ""), vetId: editing ? editing.vetId : "", date: editing ? editing.date : (start && start.date) || "", time: editing ? editing.time : "", notes: editing ? editing.notes || "" : "" }, mkRules(db, me, editing));
+  const bookingFlight = useRef(false);
   const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const { v } = f, S = SERVICES[v.service];
   const followUp = db.records.find(r => r.id === v.followUpId && r.petId === v.petId);
@@ -54,9 +57,9 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   const ready = S && v.vetId && v.date;
   const nextDay = null;
   const timeHint = availability.error || (availability.loading && !times.length ? "Checking available times…" : "") || (!S ? "Choose a service first" : !ready ? "Choose a veterinarian and date to see open times" : times.length ? `${times.length} open time${times.length > 1 ? "s" : ""} for ${S.label.toLowerCase()} (${durText(S.dur)}) with ${vetName}` : holidayName(v.date) ? `Closed for ${holidayName(v.date)}.` : `No open times for ${S.label.toLowerCase()} (${durText(S.dur)}) that day.`);
-  const moved = editing && editing.status === "Confirmed" && (editing.date !== v.date || editing.time !== v.time || editing.vetId !== v.vetId || prev !== v.service);
+  const moved = editing && editing.status === "Confirmed" && (editing.date !== v.date || editing.time !== v.time || editing.vetId !== v.vetId || editing.petId !== v.petId || editing.service !== v.service);
   const submit = async e => {
-    e.preventDefault(); if (saving) return; f.submit(); if (!f.valid) return;
+    e.preventDefault(); if (bookingFlight.current) return; f.submit(); if (!f.valid) return;
     setSaveError("");
     if (!times.includes(v.time)) { say("Choose an available time from the refreshed list."); availability.refresh(); return; }
     if (!scope(db, me, "pets").some(p => p.id === v.petId)) { say("You can only book for your own pets"); return onClose(); }
@@ -79,41 +82,32 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
       actorRole: "owner"
     };
 
-    let finalApptId = apptId;
+    let saved;
+    bookingFlight.current = true;
     setSaving(true);
     try {
-      if (editing) {
-        const res = await api.put(`/api/appointments/${editing.id}`, payload);
-        if (res?.appointment?.id) finalApptId = res.appointment.id;
-      } else {
-        const res = await api.post("/api/appointments", payload);
-        if (res?.appointment?.id) finalApptId = res.appointment.id;
-      }
+      const res = editing ? await api.put(`/api/appointments/${editing.id}`, payload) : await api.post("/api/appointments", payload);
+      saved = confirmedBooking(res, payload);
     } catch (err) {
       setSaveError(err.message);
+      bookingFlight.current = false;
       setSaving(false);
-      say(err.message);
       availability.refresh();
       return;
     }
-
-    setDb(p => {
-      const data = { followUpId: v.followUpId || null, id: finalApptId, petId: v.petId, vetId: v.vetId, date: v.date, time: v.time, service: v.service, reason, notes };
-      return {
-        ...p,
-        appts: editing
-          ? p.appts.map(a => a.id === editing.id ? { ...a, ...data, status: moved ? "Scheduled" : a.status } : a)
-          : [...(p.appts || []).filter(a => a.id !== finalApptId), { ...data, status: "Scheduled" }],
-        log: addLog(p, me, `${editing ? "Rescheduled/updated" : "Booked"} ${S.label.toLowerCase()} visit for ${petName(p, v.petId)} on ${v.date} ${v.time}`)
-      };
-    });
+    setDb(p => ({...p,
+      appts: editing ? p.appts.map(a => a.id === editing.id ? {...a,...saved} : a)
+        : [...p.appts.filter(a => a.id !== saved.id), saved],
+      log: addLog(p, me, `${editing ? "Updated" : "Booked"} visit for ${petName(p, saved.petId)} on ${saved.date} ${saved.time}`)
+    }));
 
     say(editing ? (moved ? "Updated. The clinic will re-confirm your new time" : "Appointment updated") : "Booked! The clinic will confirm your visit");
     onClose();
   };
   return (
-    <Modal title={editing ? "Edit appointment" : "Book a visit"} onClose={onClose}>
+    <Modal title={editing ? "Edit appointment" : "Book a visit"} onClose={() => { if (!bookingFlight.current) onClose(); }}>
       <form onSubmit={submit} noValidate>
+        <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
         {start && (start.fromVaccineCard || start.vaccineName) && (
           <div className="ow-banner ok" style={{ marginBottom: 12 }}>
             <span>
@@ -138,6 +132,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
         {saveError && <p className="err" role="alert">{saveError}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
         <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Close</button><button className="btn" disabled={!pets.length || saving}>{saving ? "Saving…" : editing ? "Save changes" : "Book visit"}</button></div>
+        </fieldset>
       </form>
     </Modal>
   );
@@ -153,23 +148,26 @@ function CancelDialog({ a, db, setDb, me, say, onClose }) {
     if (!cur || !mine || !OPEN.includes(cur.status)) { say("This visit can no longer be cancelled"); return onClose(); }
     const why = f.v.why === "Other" ? f.v.other.trim() : f.v.why;
     inFlight.current = true; setSaving(true); setSaveError("");
+    let saved;
     try {
-      await api.patch(`/api/appointments/${a.id}/status`, { status: "Cancelled", cancelReason: why, actorName: me.name, actorRole: "owner" });
+      saved = confirmedCancellation(await api.patch(`/api/appointments/${a.id}/status`, { status: "Cancelled", cancelReason: why, expectedVisit: intakeVisitSnapshot(cur) }), cur);
     } catch (err) {
       inFlight.current = false; setSaving(false); setSaveError(err.message);
       return;
     }
-    setDb(p => ({ ...p, appts: p.appts.map(x => x.id === a.id ? { ...x, status: "Cancelled", cancelReason: why } : x), log: addLog(p, me, `${petName(p, a.petId)}: ${a.status} → Cancelled (${why})`) }));
+    setDb(p => ({ ...p, appts: p.appts.map(x => x.id === a.id ? { ...x, ...saved } : x), log: addLog(p, me, `${petName(p, a.petId)}: ${a.status} → Cancelled (${why})`) }));
     say("Appointment cancelled"); onClose();
   };
   return (
-    <Modal title="Cancel this visit?" onClose={onClose}>
+    <Modal title="Cancel this visit?" onClose={() => { if (!inFlight.current) onClose(); }}>
       <form onSubmit={go} noValidate>
+        <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
         <p>{petName(db, a.petId)} · {a.date} at {fmt12(a.time)}</p>
         <Field id="why" label="Reason for cancelling" req type="select" value={f.v.why} onChange={x => f.set("why", x)} onBlur={() => f.blur("why")} options={CANCEL_WHY.map(r => [r, r])} error={f.show("why")} valid={f.ok("why")} hint="This helps the clinic plan its day" />
         {f.v.why === "Other" && <Field id="other" label="Tell us more" req type="textarea" rows={2} max={120} value={f.v.other} onChange={x => f.set("other", x)} onBlur={() => f.blur("other")} error={f.show("other")} valid={f.ok("other")} hint="A few words is enough" />}
         {saveError && <p className="err" role="alert">{saveError}</p>}
         <div className="row end"><button type="button" className="btn ghost" disabled={saving} onClick={onClose}>Keep visit</button><button className="btn danger" disabled={saving}>{saving ? "Cancelling…" : "Cancel visit"}</button></div>
+        </fieldset>
       </form>
     </Modal>
   );

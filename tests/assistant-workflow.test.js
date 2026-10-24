@@ -57,3 +57,16 @@ test('waiting patients show emergency then priority, using appointment time to b
   assert.deepEqual(assistantQueue(visits,date).waiting,[emergency,p1,p2,routine]);
   assert.deepEqual(visits,[routine,p2,p1,emergency]);
 });
+
+test('unfinished arrivals survive midnight while daily statistics stay on their visit date', () => {
+  const yesterday='2026-10-24';
+  const visit=(id,status,day,triageLevel='Routine')=>({id,status,date:day,time:'10:00',intakeVitals:{triageLevel}});
+  const waiting=visit('older-waiting','Checked-in',yesterday), active=visit('older-active','In consultation',yesterday);
+  const emergency=visit('today-emergency','Checked-in',date,'Emergency');
+  const completed=visit('older-completed','Completed',yesterday), scheduled=visit('older-scheduled','Scheduled',yesterday);
+  const todayDone=visit('today-completed','Completed',date);
+  const result=assistantQueue([completed,scheduled,waiting,active,todayDone,emergency],date);
+  assert.deepEqual(result.waiting,[emergency,waiting]);assert.deepEqual(result.consultation,[active]);
+  assert.deepEqual(result.completed,[todayDone]);assert.deepEqual(result.arrivals,[]);
+  assert.deepEqual(result.visits,[todayDone,emergency]);
+});

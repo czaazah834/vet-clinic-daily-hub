@@ -226,7 +226,8 @@ function Dash({ db, setDb, me, go, say }) {
   const unfinished = db.appts.filter(a=>["Checked-in","In consultation"].includes(a.status) && a.date <= TODAY);
   const locked = (staff.data?.staff || []).filter(u=>u.active && u.locked);
   const inactiveIds = (staff.data?.staff || []).filter(u=>!u.active).flatMap(u=>[u.id,u.vetId].filter(Boolean));
-  const reassign = db.appts.filter(a=>a.date >= TODAY && ["Scheduled","Confirmed","Checked-in"].includes(a.status) && inactiveIds.includes(a.vetId));
+  const inactiveCare = unfinished.filter(a=>inactiveIds.includes(a.vetId));
+  const reassign = db.appts.filter(a=>a.date >= TODAY && ["Scheduled","Confirmed"].includes(a.status) && inactiveIds.includes(a.vetId));
 
   const logs = (db.log || []).filter(l => {
     const text = (l.msg || l.action || "").toLowerCase();
@@ -276,6 +277,7 @@ function Dash({ db, setDb, me, go, say }) {
         <div style={{display:'grid',gap:12}}>
           <div><b>{staff.data ? locked.length : '—'} active staff account(s) locked</b> · Review the reason and unlock access if appropriate. <button className="btn ghost sm" onClick={()=>go('users')}>Review staff access</button></div>
           <div><b>{staff.data ? reassign.length : '—'} upcoming visit(s) assigned to inactive doctors</b> · Ask reception to confirm reassignment with the client. <button className="btn ghost sm" onClick={()=>go('cal')}>Review calendar</button></div>
+          <div><b>{staff.data ? inactiveCare.length : '—'} arrived visit(s) assigned to inactive doctors</b> · Review staff access and coordinate a veterinarian handoff. Reception cannot reschedule started care. <button className="btn ghost sm" onClick={()=>go('users')}>Review responsible staff</button></div>
           <div><b>{unpaid.length} completed visit(s) unpaid</b> · Ask reception to resolve its checkout inbox. <button className="btn ghost sm" onClick={()=>go('sales')}>Review sales</button></div>
           <div><b>{unfinished.length} arrived visit(s) unfinished</b> · Check with the assigned clinical team. <button className="btn ghost sm" onClick={()=>go('records')}>Review clinical records</button></div>
         </div>
