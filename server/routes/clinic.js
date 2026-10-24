@@ -1,3 +1,5 @@
+import { clinicalCharges, validateClinicalCharges } from "../clinicalCharges.js";
+import { boosterDate } from "../../src/clinicalWorkflow.js";
 import { ensurePrescriptionSchema, normalizePrescription, prescriptionInvoice, validatePrescriptionSale } from "../prescriptions.js";
 import { ensureCareSchema, validateCarePlan } from "../careWorkflow.js";
 import { priceCatalog, canonicalInvoice } from "../priceCatalog.js";
@@ -165,6 +167,7 @@ clinicRouter.get("/state", async (req, res) => {
       invoiceItems: a.invoice_items || [],
       intakeVitals: a.intake_vitals || null,
       handoffs: owner ? [] : (a.handoffs || []),
+      followUpId: a.follow_up_id || null,
       cancelReason: a.cancel_reason || ""
     }));
 
@@ -219,6 +222,7 @@ clinicRouter.get("/state", async (req, res) => {
       careStatus: c.care_status || "Routine care",
       followUpDate: c.follow_up_date ? toDateStr(c.follow_up_date) : null,
       followUpReason: c.follow_up_reason || "",
+      performedServices: c.performed_services || [],
       prescriptionItems: c.prescription_items || [],
       prescription: c.prescription || ""
     }));
@@ -1515,6 +1519,7 @@ clinicRouter.get("/appointments/availability", async (req, res) => {
 
 async function saveBooking(req, res, editing = false) {
   try {
+    await ensureCareSchema();
     await ensureSchedulingSchema();
     const row = await withTransaction(async client => {
       await lockSchedule(client);
@@ -1530,6 +1535,14 @@ async function saveBooking(req, res, editing = false) {
         for (const id of new Set([v.petId, previous?.pet_id].filter(Boolean))) {
           if (!(await client.query("SELECT id FROM pets WHERE id = $1 AND owner_id = $2", [id, req.user.ownerId])).rows.length) throw bookingError("Pet not found.", 404);
         }
+      }
+      const followUpId = b.followUpId ?? previous?.follow_up_id ?? null;
+      if (previous?.follow_up_id && followUpId !== previous.follow_up_id) throw bookingError("Keep the linked follow-up when rescheduling.");
+      if (followUpId) {
+        const request = (await client.query("SELECT * FROM consultations WHERE id = $1 FOR UPDATE", [followUpId])).rows[0];
+        if (!request || request.pet_id !== v.petId || !request.follow_up_date || request.care_status === 'Routine care') throw bookingError("Choose an outstanding follow-up for this pet.");
+        const linked = await client.query("SELECT id FROM appointments WHERE follow_up_id=$1 AND status NOT IN ('Cancelled','No-show') AND id <> $2", [followUpId, previous?.id || '']);
+        if (linked.rows.length) throw bookingError("This follow-up already has a booked or completed visit.", 409);
       }
       const walkIn = !editing && b.bookingKind === "walk-in" && req.user.role === "assistant";
       let duration;
@@ -1547,10 +1560,14 @@ async function saveBooking(req, res, editing = false) {
       if (editing) values.push(changedSlot ? "Scheduled" : previous.status);
       // UPDATE uses the same parameter positions as INSERT.
       const saved = await client.query(sql, values);
+      if (followUpId) {
+        await client.query("UPDATE appointments SET follow_up_id=$1 WHERE id=$2", [followUpId, values[0]]);
+        saved.rows[0].follow_up_id = followUpId;
+      }
       await client.query("INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)", [req.user.name,req.user.role,`${editing ? "Updated" : "Booked"} appointment ${values[0]} on ${v.date} ${v.time}`]);
       return saved.rows[0];
     });
-    res.json({ success: true, appointment: { id: row.id, petId: row.pet_id, vetId: row.vet_id, date: toDateStr(row.date), time: row.time, reason: row.reason, notes: row.notes, service: row.service, durationMinutes: row.duration_minutes, bookingKind: row.booking_kind, status: row.status, billingStatus: row.billing_status, amount: Number(row.amount) } });
+    res.json({ success: true, appointment: { followUpId: row.follow_up_id || null, id: row.id, petId: row.pet_id, vetId: row.vet_id, date: toDateStr(row.date), time: row.time, reason: row.reason, notes: row.notes, service: row.service, durationMinutes: row.duration_minutes, bookingKind: row.booking_kind, status: row.status, billingStatus: row.billing_status, amount: Number(row.amount) } });
   } catch (error) {
     res.status(error.status || (error.code === "23505" ? 409 : 500)).json({ error: error.status ? error.message : error.code === "23505" ? "This booking already exists. Refresh before retrying." : "Unable to save the booking. Please retry." });
   }
@@ -1667,13 +1684,16 @@ clinicRouter.post("/appointments/:id/billing", async (req, res) => {
     await ensureCheckoutSchema();
     await ensureCheckoutInboxSchema();
     await ensurePrescriptionSchema();
+    await ensureCareSchema();
     const paymentDetails = { discount, reference: req.body.paymentReference || "", cashTendered: paymentMethod === "Cash" ? req.body.cashTendered : total, changeAmount: paymentMethod === "Cash" ? Math.round((req.body.cashTendered - total) * 100) / 100 : 0 };
     const result = await withTransaction(async client => {
       const current = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
       if (!current) throw Object.assign(new Error("Appointment not found."), { status: 404 });
       if (current.status !== "Completed" || current.billing_status === "Paid") throw Object.assign(new Error("Only a completed, unpaid consultation can be checked out."), { status: 409 });
-      const consultation = (await client.query("SELECT id, prescription_items FROM consultations WHERE appt_id = $1 ORDER BY date DESC, created_at DESC, id DESC LIMIT 1", [apptId])).rows[0];
+      const consultation = (await client.query("SELECT id, prescription_items, performed_services FROM consultations WHERE appt_id = $1 ORDER BY date DESC, created_at DESC, id DESC LIMIT 1", [apptId])).rows[0];
       if (!consultation) throw Object.assign(new Error("A finalized consultation is required before payment."), { status: 409 });
+      const chargeError = validateClinicalCharges(invoiceItems, consultation.performed_services || []);
+      if (chargeError) throw Object.assign(new Error(chargeError), {status:400});
       const saleError = validatePrescriptionSale(invoiceItems, consultation.prescription_items || []);
       if (saleError) throw Object.assign(new Error(saleError), {status: 400});
       await authorizeCheckoutPayment(client, apptId, req.user, req.body.claimToken);
@@ -2202,6 +2222,10 @@ clinicRouter.post("/consultations", async (req, res) => {
   if (weight !== undefined && (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0 || weight > 120)) return res.status(400).json({ error: "Enter a valid weight." });
   try {
     const rx = normalizePrescription(req.body.prescriptionItems, prescription);
+    const services = clinicalCharges(req.body.performedServices, vaccination);
+    if (!validDate(date) || date > clinicClock().date) throw bookingError("Enter a valid administration / consultation date that is not in the future.");
+    if (vaccination && (!Number.isInteger(vaccination.doseNo) || vaccination.doseNo < 1 || !Number.isInteger(vaccination.doseOf) || vaccination.doseOf < vaccination.doseNo || vaccination.doseOf > 20)) throw bookingError("Confirm the administered dose number and total planned doses (1–20).");
+    if (vaccination && (vaccination.scheduleApproved !== true || !boosterDate(date, vaccination.intervalDays) || vaccination.nextDue !== boosterDate(date, vaccination.intervalDays))) throw bookingError("Approve the booster interval and calculated date for this patient.");
     await ensureCheckoutInboxSchema();
     await ensureCheckoutSchema();
     await ensureCareSchema();
@@ -2219,14 +2243,15 @@ clinicRouter.post("/consultations", async (req, res) => {
       await client.query("UPDATE consultations SET care_status=$1, follow_up_date=$2, follow_up_reason=$3 WHERE id=$4", [req.body.careStatus || "Routine care", req.body.careStatus && req.body.careStatus !== "Routine care" ? req.body.followUpDate : null, req.body.careStatus && req.body.careStatus !== "Routine care" ? req.body.followUpReason.trim() : "", consultId]);
       await client.query("UPDATE consultations SET prescription_items=$1 WHERE id=$2", [JSON.stringify(rx.items), consultId]);
       inserted.rows[0].prescription_items = rx.items;
+      await client.query("UPDATE consultations SET performed_services=$1 WHERE id=$2", [JSON.stringify(services), consultId]);
       let savedVaccination = null;
       if (vaccination) {
         const pet = (await client.query("SELECT vaccination_card_id FROM pets WHERE id = $1", [petId])).rows[0];
         if (!pet?.vaccination_card_id) throw Object.assign(new Error("The patient needs a clinic-issued vaccination card."), { status: 409 });
         const saved = await client.query(
-          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, done, notes, vet_id, recorded_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11) RETURNING *`,
-          [vaccination.id || "v_" + crypto.randomUUID(), petId, pet.vaccination_card_id, vaccination.vaccine.trim(), vaccination.brand.trim(), vaccination.batch.trim(), date, vaccination.nextDue || null, vaccination.notes || "", vetId, req.user.name]
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, done, notes, vet_id, recorded_by, protocol_type, dose_no, dose_of)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12,$13,$14) RETURNING *`,
+          [vaccination.id || "v_" + crypto.randomUUID(), petId, pet.vaccination_card_id, vaccination.vaccine.trim(), vaccination.brand.trim(), vaccination.batch.trim(), date, vaccination.nextDue || null, vaccination.notes || "", vetId, req.user.name, `Vet-approved interval: ${vaccination.intervalDays} days`, vaccination.doseNo, vaccination.doseOf]
         );
         savedVaccination = saved.rows[0];
         await client.query("DELETE FROM vaccinations WHERE pet_id = $1 AND done = false AND LOWER(vaccine) = LOWER($2)", [petId, vaccination.vaccine]);
@@ -2235,7 +2260,7 @@ clinicRouter.post("/consultations", async (req, res) => {
         await client.query("UPDATE pets SET weight = $1 WHERE id = $2", [weight, petId]);
         await client.query("INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1,$2,$3,$4)", [petId, date, weight, req.user.name]);
       }
-      const invoice = prescriptionInvoice(rx.items);
+      const invoice = [...services, ...prescriptionInvoice(rx.items)];
       await client.query("UPDATE appointments SET status = 'Completed', billing_status = 'Unbilled', invoice_items=$2 WHERE id = $1", [apptId, JSON.stringify(invoice)]);
       await createCheckoutTask(client, apptId);
       await client.query("INSERT INTO audit_logs (user_name, user_role, action) VALUES ($1,$2,$3)", [req.user.name, req.user.role, `Finalized consultation ${consultId} for visit ${apptId}`]);

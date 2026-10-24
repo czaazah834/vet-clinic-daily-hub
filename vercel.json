@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "functions": {
     "api/index.js": {
-      "includeFiles": "{server/**,src/booking.js,src/prescription.js}",
+      "includeFiles": "{server/**,src/booking.js,src/prescription.js,src/clinicalWorkflow.js}",
       "maxDuration": 300
     }
   },

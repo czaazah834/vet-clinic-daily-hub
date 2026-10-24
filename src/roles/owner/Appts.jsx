@@ -1,6 +1,7 @@
 import { api } from "../../api.js";
 import { today as bookingToday, lastDay } from "../../booking.js";
 import { useAvailability } from "../../useAvailability.js";
+import { openFollowUps } from "../../clinicalWorkflow.js";
 import { useState, useEffect } from "react";
 import { Badge, I, ICON, TODAY, scope, petName, uid, addLog, dueState } from "../../lib.jsx";
 import ApptDetails from "./ApptDetails.jsx";
@@ -17,6 +18,7 @@ const mkRules = (db, me, editing) => v => {
   const TODAY = bookingToday(), LAST = lastDay();
   const e = {}, mine = scope(db, me, "pets").map(p => p.id), S = SERVICES[v.service];
   if (!v.service) e.service = "Choose a service"; else if (!S) e.service = "Pick a service from the list";
+  if (v.followUpId && !db.records.some(r => r.id === v.followUpId && r.petId === v.petId)) e.followUpId = "Select a follow-up request for this pet";
   if (!v.petId) e.petId = "Choose which pet is visiting"; else if (!mine.includes(v.petId)) e.petId = "Pick one of your own pets";
   if (!v.vetId) e.vetId = "Choose a veterinarian"; else if (!liveDoctors(db).some(x => x[0] === v.vetId)) e.vetId = "Pick a veterinarian from the list";
   const sameDay = editing && editing.date === v.date;
@@ -42,7 +44,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   const TODAY = bookingToday(), LAST = lastDay();
   const pets = scope(db, me, "pets"), owner = db.owners.find(o => o.id === me.ownerId) || {};
   const prev = editing ? serviceOf(editing) : "", svc0 = editing ? prev : start && start.reason ? inferService(start.reason) : "";
-  const f = useLive({ service: svc0, petId: editing ? editing.petId : (start && start.petId) || (pets.length === 1 ? pets[0].id : ""), vetId: editing ? editing.vetId : "", date: editing ? editing.date : (start && start.date) || "", time: editing ? editing.time : "", notes: editing ? editing.notes || "" : "" }, mkRules(db, me, editing));
+  const f = useLive({ followUpId: editing?.followUpId || start?.followUpId || "", service: svc0, petId: editing ? editing.petId : (start && start.petId) || (pets.length === 1 ? pets[0].id : ""), vetId: editing ? editing.vetId : "", date: editing ? editing.date : (start && start.date) || "", time: editing ? editing.time : "", notes: editing ? editing.notes || "" : "" }, mkRules(db, me, editing));
   const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const { v } = f, S = SERVICES[v.service];
   const availability = useAvailability({ ...v, excludeId: editing?.id });
@@ -62,6 +64,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
 
     const payload = {
       id: apptId,
+      followUpId: v.followUpId || null,
       petId: v.petId,
       vetId: v.vetId,
       date: v.date,
@@ -93,7 +96,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
     }
 
     setDb(p => {
-      const data = { id: finalApptId, petId: v.petId, vetId: v.vetId, date: v.date, time: v.time, service: v.service, reason, notes };
+      const data = { followUpId: v.followUpId || null, id: finalApptId, petId: v.petId, vetId: v.vetId, date: v.date, time: v.time, service: v.service, reason, notes };
       return {
         ...p,
         appts: editing
@@ -119,12 +122,13 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
         {!pets.length && <p className="ow-note">You have no pets on your account yet. Please ask the clinic front desk to register your pet first.</p>}
         {moved && <p className="ow-note">Changing the service, date, time or veterinarian sends this visit back to “Scheduled” so the clinic can re-confirm it.</p>}
         <ServicePicker value={v.service} onChange={x => { if (x === v.service) return; f.set("service", x); f.quiet({ time: "" }); }} error={f.show("service")} />
-        <Field id="petId" label="Pet" req type="select" value={v.petId} onChange={x => f.set("petId", x)} onBlur={() => f.blur("petId")} options={pets.map(p => [p.id, `${p.name} (${p.species})`])} error={f.show("petId")} valid={f.ok("petId")} hint="Which pet is coming in?" />
+        <Field id="petId" label="Pet" req type="select" disabled={!!editing?.followUpId} value={v.petId} onChange={x => f.patch({petId:x, followUpId:""})} onBlur={() => f.blur("petId")} options={pets.map(p => [p.id, `${p.name} (${p.species})`])} error={f.show("petId")} valid={f.ok("petId")} hint="Which pet is coming in?" />
         <Field id="vetId" label="Veterinarian" req type="select" value={v.vetId} onChange={x => f.patch({ vetId: x, time: "" })} onBlur={() => f.blur("vetId")} options={liveDoctors(db)} error={f.show("vetId")} valid={f.ok("vetId")} hint="Times below update for the vet you pick" />
         <Field id="date" label="Date" req type="date" min={TODAY} maxDate={LAST} value={v.date} onChange={x => f.patch({ date: x, time: "" })} onBlur={() => f.blur("date")} error={f.show("date")} valid={f.ok("date")} hint={holidayName(v.date) ? `${holidayName(v.date)} is a holiday. The clinic is closed` : `Pick a day within the next ${MAX_DAYS} days (closed on Philippine holidays)`} />
         {availability.error && <button type="button" className="btn ghost" onClick={availability.refresh}>Retry availability</button>}
         <SlotPicker times={times} value={v.time} onChange={x => f.set("time", x)} error={f.show("time")} hint={timeHint} dur={S ? S.dur : 30} suggest={nextDay} onSuggest={() => f.patch({ date: nextDay, time: "" })} />
         {S && v.time && times.includes(v.time) && <p className="ow-note info">{S.label}: {fmt12(v.time)} to {fmt12(addMin(v.time, S.dur))} with {vetName}</p>}
+        <label>Follow-up request (optional)<select value={v.followUpId} disabled={!!editing?.followUpId} onChange={e => f.set("followUpId", e.target.value)}><option value="">Regular visit</option>{db.records.filter(r => r.id === v.followUpId || openFollowUps(db,v.petId).some(x => x.id === r.id)).filter(r => r.petId === v.petId).map(r => <option key={r.id} value={r.id}>{r.followUpDate} · {r.followUpReason}</option>)}</select></label>
         <Field id="notes" label="Note for the clinic (optional)" type="textarea" rows={2} max={200} value={v.notes} onChange={x => f.set("notes", x)} onBlur={() => f.blur("notes")} error={f.show("notes")} hint="Symptoms, behavior or anything the clinic should know" />
         <Suggest items={NOTE_IDEAS} onPick={s => f.set("notes", addNote(v.notes, s, 200))} />
         <p className="ow-hint" style={{ marginTop: 10 }}>The clinic will reach you at {owner.phone || "your number on file"}. You can update it in My Profile.</p>

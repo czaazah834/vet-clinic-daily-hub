@@ -49,6 +49,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   const addItem = (item) => {
     setItems(prev => {
       const existing = prev.find(p => p.catalogId === item.id);
+      if (existing?.source === 'performed') return prev;
       const limit = item.requiresPrescription ? prescribed.find(p => p.catalogId === item.id)?.quantity || 0 : 1000;
       if (!limit || (existing?.qty || 0) >= limit) return prev;
       return existing ? prev.map(p => p.catalogId === item.id ? {...p, qty:p.qty + 1} : p) : [...prev, {catalogId:item.id,name:item.name,category:item.category,price:item.price,qty:1}];
@@ -57,11 +58,11 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   };
 
   const removeItem = (idx) => {
-    setItems(prev => prev.filter((_, i) => i !== idx));
+    setItems(prev => prev.filter((item, i) => i !== idx || item.source === 'performed'));
   };
 
   const updateQty = (idx, qty) => {
-    setItems(prev => prev.map((item, i) => i === idx ? { ...item, qty: Math.max(1, +qty || 1) } : item));
+    setItems(prev => prev.map((item, i) => i === idx && item.source !== 'performed' ? { ...item, qty: Math.max(1, +qty || 1) } : item));
   };
 
   const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -327,7 +328,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             </div>
 
             {catalogError && <p role="alert">{catalogError} <button type="button" onClick={() => { setCatalogError(""); setCatalogAttempt(x => x + 1); }}>Retry prices</button></p>}
-            <p>Choose services and other products from the clinic catalog. Unit prices are fixed.</p>
+            <p>Choose services and other products from the clinic catalog. Unit prices are fixed. Veterinarian-confirmed services are included once and retained for checkout.</p>
             {!!prescribed.length && <div style={{padding:12,background:"#eff6ff",borderRadius:8,marginBottom:12}}><b>Veterinarian-prescribed products loaded</b><p>Confirm the actual product form, package size and supply before dispensing. Reduce or remove items that are not dispensed; the signed prescription is retained.</p>{prescribed.map(p => <p key={p.catalogId}><b>{p.name}</b> · {p.quantity} item(s)/package(s)<br />{p.instructions}</p>)}</div>}
             {/* Bill Line Items Table */}
             <div style={{ border: "1px solid #cbd5e1", borderRadius: "10px", overflow: "hidden", marginBottom: "16px" }}>
@@ -358,6 +359,8 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                         <input
                           type="number"
                           min="1"
+                          readOnly={it.source === 'performed'}
+                          aria-label={it.source === 'performed' ? 'Confirmed service quantity' : 'Quantity'}
                           value={it.qty}
                           onChange={e => updateQty(idx, e.target.value)}
                           style={{ width: "50px", textAlign: "center", padding: "4px", fontSize: "12px", border: "1px solid #cbd5e1", borderRadius: "4px" }}
@@ -376,7 +379,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                         ₱{(it.price * it.qty).toLocaleString()}
                       </td>
                       <td style={{ padding: "8px 6px", textAlign: "center" }}>
-                        {items.length > 0 && (
+                        {it.source !== 'performed' && items.length > 0 && (
                           <button
                             type="button"
                             onClick={() => removeItem(idx)}

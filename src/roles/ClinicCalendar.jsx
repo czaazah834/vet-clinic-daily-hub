@@ -1,3 +1,5 @@
+import { prefill } from "./owner/ui.jsx";
+import { openFollowUps } from "../clinicalWorkflow.js";
 import { useAvailability } from "../useAvailability.js";
 import { lastDay, today as bookingToday, SERVICES, openSlots, reservationCovers, addMin, durOf } from "../booking.js";
 import { useState } from "react";
@@ -91,7 +93,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const canGoNextMonth = cur.y < curYearMin + 1 || (cur.y === curYearMin + 1 && cur.m < 11);
 
   // Modals
-  const [bookingSlot, setBookingSlot] = useState(null); // { date, time, vetId }
+  const [bookingSlot, setBookingSlot] = useState(() => { const start = prefill.data; prefill.data = null; return start ? {...start, time:"", vetId:""} : null; }); // { date, time, vetId }
   const [checkInAppt, setCheckInAppt] = useState(null);
   const [activeSoap, setActiveSoap] = useState(null);
   const [billingAppt, setBillingAppt] = useState(null);
@@ -150,11 +152,12 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   };
 
   // Quick booking submit saved to PostgreSQL backend
-  const handleQuickBook = async (petId, serviceName, reasonText, targetVetId, targetDate, targetTime) => {
+  const handleQuickBook = async (petId, serviceName, reasonText, targetVetId, targetDate, targetTime, followUpId) => {
     const newApptId = "a_" + uid();
     const reason = serviceName ? `${SERVICES[serviceName]?.label || serviceName}: ${reasonText}` : reasonText;
     const newAppt = {
       id: newApptId,
+      followUpId: followUpId || null,
       petId,
       vetId: targetVetId,
       date: targetDate,
@@ -169,6 +172,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
     try {
       await api.post("/api/appointments", {
         id: newApptId,
+        followUpId: followUpId || null,
         petId,
         vetId: targetVetId,
         date: targetDate,
@@ -1005,12 +1009,13 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 
 function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
   const TODAY = bookingToday();
-  const [petId, setPetId] = useState(db.pets[0] ? db.pets[0].id : "");
+  const [petId, setPetId] = useState(slot.petId || db.pets[0]?.id || "");
   const [vetId, setVetId] = useState(slot.vetId || "v1");
   const [date, setDate] = useState(slot.date && slot.date >= TODAY ? slot.date : TODAY);
   const [time, setTime] = useState(slot.time || "09:00");
   const [service, setService] = useState("checkup");
   const [reason, setReason] = useState("");
+  const [followUpId, setFollowUpId] = useState(slot.followUpId || "");
   const [dateErr, setDateErr] = useState("");
 
   const curYear = new Date().getFullYear();
@@ -1050,7 +1055,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
       setDateErr(`${selectedPet.name || "Patient"} already has a scheduled visit at ${time} on this date.`);
       return;
     }
-    onBook(petId, service, reason || "General visit", vetId, date, time);
+    onBook(petId, service, reason || "General visit", vetId, date, time, followUpId);
   };
 
   return (
@@ -1070,7 +1075,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
           <div style={{ display: "grid", gap: "12px" }}>
             <div className="fld">
               <label>Select Patient (Pet &amp; Owner)</label>
-              <select value={petId} onChange={e => setPetId(e.target.value)} required>
+              <select value={petId} onChange={e => { setPetId(e.target.value); setFollowUpId(""); }} required>
                 {db.pets.map(p => {
                   const o = db.owners.find(x => x.id === p.ownerId) || {};
                   return (
@@ -1082,6 +1087,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
               </select>
             </div>
 
+            <label>Follow-up request (optional)<select value={followUpId} onChange={e => setFollowUpId(e.target.value)}><option value="">Regular visit</option>{openFollowUps(db,petId).map(r => <option key={r.id} value={r.id}>{r.followUpDate} · {r.followUpReason}</option>)}</select></label>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div className="fld">
                 <label>Veterinarian</label>
