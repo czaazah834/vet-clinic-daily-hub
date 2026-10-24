@@ -1,18 +1,24 @@
 import HandoffModal from "./HandoffModal.jsx";
 import VaccinationCards from "./VaccinationCards.jsx";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AlertTriangle, Thermometer, Scale, CalendarDays, Search, Play, FileText } from "lucide-react";
-import { I, M, Stats, Hero, TODAY, plus, moveAppt, petName, ICON, Badge } from "../lib.jsx";
+import { I, Stats, Hero, TODAY, plus, moveAppt, petName, ICON, Badge } from "../lib.jsx";
 import SoapConsultationModal from "./SoapConsultationModal.jsx";
 import ClinicCalendar from "./ClinicCalendar.jsx";
 import ClientsAndPatientsPage from "./ClientsAndPatientsPage.jsx";
-import ConsultationsPage from "./ConsultationsPage.jsx";
+import ConsultationsPage, { ConsultationDetailModal } from "./ConsultationsPage.jsx";
+import { vetQueue, certifiedRecalls, completedVisitRecord } from "../vetQueue.js";
 
 const doctorName = n => { const s = String(n || "").trim(); return /^dr\.?\s/i.test(s) ? s : `Dr. ${s}`; };
 const tempTone = s => (s === "normal" ? "" : s === "high_fever" || s === "hypothermia" ? "er" : "wa");
 const weightTone = s => (s === "ideal" ? "" : "wa");
 
 function Dash({ db, setDb, me, go, say }) {
+  const [stage, setStage] = useState("waiting");
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [startingId, setStartingId] = useState(null);
+  const starting = useRef(false);
+  const [actionError, setActionError] = useState("");
   const [handoff, setHandoff] = useState(null);
   const [activeSoap, setActiveSoap] = useState(null); // { appt, pet }
   const [scope, setScope] = useState("my");          // "all" = whole clinic, "my" = assigned to this doctor
@@ -22,31 +28,36 @@ function Dash({ db, setDb, me, go, say }) {
     return false;
   };
 
-  const todayAppts = (db.appts || []).filter(a => (a.date === TODAY || ["Checked-in", "In consultation"].includes(a.status)) && a.status !== "Cancelled");
-  const scoped = scope === "all" ? todayAppts : todayAppts.filter(isMyVet);
-  // Workflow: the doctor only sees patients the front desk has already checked in (Scheduled / Confirmed stay at the front desk).
-  const queue = scoped.filter(a => ["Checked-in", "In consultation", "Completed"].includes(a.status)).sort((a, b) => a.time.localeCompare(b.time));
-  const notArrived = scoped.filter(a => ["Scheduled", "Confirmed"].includes(a.status)).length;
-  const waiting = queue.filter(a => a.status === "Checked-in");
-  const inConsult = queue.filter(a => a.status === "In consultation");
-  const completed = queue.filter(a => a.status === "Completed");
-  const due = (db.vacc || []).filter(v => v.nextDue && !v.done && v.nextDue <= plus(14));
-  const allWaiting = todayAppts.filter(a => a.status === "Checked-in");
-  const myWaiting = todayAppts.filter(a => isMyVet(a) && a.status === "Checked-in");
+  const stages = vetQueue(db.appts || [], TODAY, scope === "all" ? null : [me.id, me.vetId].filter(Boolean));
+  const { waiting, active: inConsult, completed, expected: notArrived } = stages;
+  const queue = [...waiting, ...inConsult, ...completed];
+  const due = certifiedRecalls(db.vacc || [], plus(14));
+  const allWaiting = vetQueue(db.appts || [], TODAY).waiting;
+  const myWaiting = allWaiting.filter(isMyVet);
 
   const startConsult = async a => {
+    if (starting.current) return;
+    setActionError("");
     const pet = db.pets.find(p => p.id === a.petId);
-    if (!pet) return say("Patient record not found.");
-    // Front desk normally records intake vitals first; warn the doctor, but never block care.
-    if (!a.intakeVitals) say("No intake vitals on file for this patient. Record them in the SOAP notes.");
-    if (!await moveAppt(setDb, a.id, "In consultation", me, say, a)) return;
-    setActiveSoap({ appt: { ...a, status: "In consultation" }, pet });
+    if (!pet) return setActionError("Patient record not found. Refresh clinic records before retrying.");
+    starting.current = true;
+    setStartingId(a.id);
+    try {
+      if (!a.intakeVitals) say("No intake vitals on file for this patient. Record them in the SOAP notes.");
+      if (!await moveAppt(setDb, a.id, "In consultation", me, setActionError, a)) return;
+      setStage("active");
+      setActiveSoap({ appt: { ...a, status: "In consultation" }, pet });
+    } finally {
+      starting.current = false;
+      setStartingId(null);
+    }
   };
 
-  const openEmr = petId => {
-    const pet = db.pets.find(p => p.id === petId);
-    if (!pet) return;
-    setActiveSoap({ appt: queue.find(x => x.petId === petId) || null, pet });
+  const openCompleted = visit => {
+    setActionError("");
+    const record = completedVisitRecord(db.records || [], visit);
+    if (!record) return setActionError("Saved notes for this completed visit are unavailable. Refresh clinic records and try again.");
+    setSelectedRecord(record);
   };
 
   return (
@@ -58,8 +69,8 @@ function Dash({ db, setDb, me, go, say }) {
       >
         <div className="sf-actions">
           {waiting.length > 0 && (
-            <button className="btn gold" onClick={() => startConsult(waiting[0])}>
-              <Play size={16} aria-hidden="true" />Start next consultation ({petName(db, waiting[0].petId)})
+            <button className="btn gold" disabled={!!startingId} onClick={() => startConsult(waiting[0])}>
+              <Play size={16} aria-hidden="true" />{startingId ? "Starting consultation…" : `Start next consultation (${petName(db, waiting[0].petId)})`}
             </button>
           )}
           <button className="btn" onClick={() => go("cal")}><CalendarDays size={16} aria-hidden="true" />Schedule calendar</button>
@@ -73,9 +84,12 @@ function Dash({ db, setDb, me, go, say }) {
           ["clock", waiting.length, "Waiting in queue"],
           ["file", inConsult.length, "In consultation"],
           ["check", completed.length, "Completed today"],
-          ["syringe", due.length, "Vaccines due soon"],
+          ["syringe", due.length, "Certified boosters due / overdue (14 days)"],
         ]}
       />
+
+      {startingId && <p role="status">Starting consultation… Please wait for confirmation.</p>}
+      {actionError && <p role="alert" className="sf-note">{actionError}</p>}
 
       <section className="card" style={{ marginTop: 16 }}>
         <div className="sf-section-hd">
@@ -91,9 +105,15 @@ function Dash({ db, setDb, me, go, say }) {
           </div>
         </div>
 
-        {queue.length ? (
+        <div className="sf-actions" role="group" aria-label="Queue stage" style={{flexWrap: "wrap", marginBottom: 12}}>
+          {[["waiting", "Waiting"], ["active", "Active"], ["completed", "Completed"]].map(([key, label]) => (
+            <button key={key} className={`btn sm ${stage === key ? "gold" : "ghost"}`} aria-pressed={stage === key} onClick={() => setStage(key)}>{label} ({stages[key].length})</button>
+          ))}
+        </div>
+        {stage === "waiting" && <p>Emergency and priority patients appear first, followed by appointment date and time.</p>}
+        {stages[stage].length ? (
           <div className="sf-grid">
-            {queue.map(a => {
+            {stages[stage].map(a => {
               const p = db.pets.find(x => x.id === a.petId) || {};
               const o = db.owners.find(x => x.id === p.ownerId) || {};
               const iv = a.intakeVitals;
@@ -117,8 +137,8 @@ function Dash({ db, setDb, me, go, say }) {
                       {(a.handoffs || []).map((h, i) => <p key={i} style={{whiteSpace: "pre-wrap"}}><b>Handoff: {h.from} → {h.to}</b> ({new Date(h.at).toLocaleString()})<br />{h.note}</p>)}
                       {iv ? (
                         <div className="sf-chips">
-                          <span className={`sf-chip ${tempTone(iv.tempAnalysis?.status)}`}><Thermometer size={12} aria-hidden="true" />{iv.temp}&deg;C, {iv.tempAnalysis?.label || "Normal"}</span>
-                          <span className={`sf-chip ${weightTone(iv.weightAnalysis?.status)}`}><Scale size={12} aria-hidden="true" />{iv.weight} kg, {iv.weightAnalysis?.label || "Normal"}{iv.weightAnalysis?.trend ? ` (${iv.weightAnalysis.trend})` : ""}</span>
+                          <span className={`sf-chip ${tempTone(iv.tempAnalysis?.status)}`}><Thermometer size={12} aria-hidden="true" />{iv.temp}&deg;C, {iv.tempAnalysis?.label || "Assessment not recorded"}</span>
+                          <span className={`sf-chip ${weightTone(iv.weightAnalysis?.status)}`}><Scale size={12} aria-hidden="true" />{iv.weight} kg, {iv.weightAnalysis?.label || "Assessment not recorded"}{iv.weightAnalysis?.trend ? ` (${iv.weightAnalysis.trend})` : ""}</span>
                           {iv.triageNotes && <span className="sf-chip mu">&ldquo;{iv.triageNotes}&rdquo;</span>}
                         </div>
                       ) : (
@@ -129,20 +149,21 @@ function Dash({ db, setDb, me, go, say }) {
 
                   <div className="sf-row-act">
                     <Badge v={a.status} />
-                    {["Checked-in", "In consultation"].includes(a.status) && <button className="btn sm" onClick={() => setHandoff(a)}>Hand over care</button>}
-                    {a.status === "Checked-in" && <button className="btn sm gold" onClick={() => startConsult(a)}>Start consultation</button>}
-                    {a.status === "In consultation" && <button className="btn sm gold" onClick={() => setActiveSoap({ appt: a, pet: p })}>Resume SOAP notes</button>}
-                    {a.status === "Completed" && <button className="btn sm ghost" onClick={() => openEmr(p.id)}><FileText size={14} aria-hidden="true" />View EMR</button>}
+                    {["Checked-in", "In consultation"].includes(a.status) && <button className="btn sm" disabled={!!startingId} onClick={() => setHandoff(a)}>Hand over care</button>}
+                    {a.status === "Checked-in" && <button className="btn sm gold" disabled={!!startingId} onClick={() => startConsult(a)}>{startingId === a.id ? "Starting…" : "Start consultation"}</button>}
+                    {a.status === "In consultation" && <button className="btn sm gold" disabled={!!startingId} onClick={() => setActiveSoap({ appt: a, pet: p })}>Resume SOAP notes</button>}
+                    {a.status === "Completed" && <button className="btn sm ghost" onClick={() => openCompleted(a)}><FileText size={14} aria-hidden="true" />View saved notes</button>}
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="empty sm">No checked-in patients yet. They appear here as soon as the front desk records their vitals.</div>
+          <div className="empty sm">No patients in this stage.</div>
         )}
       </section>
 
+      {selectedRecord && <ConsultationDetailModal record={selectedRecord} db={db} setDb={setDb} me={me} onClose={() => setSelectedRecord(null)} />}
       {handoff && <HandoffModal appt={handoff} db={db} me={me} setDb={setDb} onClose={() => setHandoff(null)} />}
       {activeSoap && (
         <SoapConsultationModal

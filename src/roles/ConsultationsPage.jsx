@@ -17,9 +17,10 @@ import {
   ShieldCheck,
   ChevronRight
 } from "lucide-react";
-import { TODAY, VETS, ICON, I, petName, ownerName } from "../lib.jsx";
+import { TODAY, ICON, I, petName, ownerName } from "../lib.jsx";
 import { formatSpeciesLabel } from "../preventiveSchedule.js";
 import { isVet } from "./clinicValidation.js";
+import { consultationAppointment } from "../vetQueue.js";
 import PetCardModal from "./PetCardModal.jsx";
 import SoapConsultationModal from "./SoapConsultationModal.jsx";
 
@@ -27,14 +28,14 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
   const [cardPetId, setCardPetId] = useState(null);
   const pet = (db.pets || []).find(p => p.id === record.petId) || {};
   const owner = (db.owners || []).find(o => o.id === pet.ownerId || o.userId === pet.ownerId) || {};
-  const vetInfo = VETS.find(v => v[0] === record.vetId) || [record.vetId, "Dr. Ana Cruz, DVM"];
+  const vetName = (db.vets || []).find(v => v.id === record.vetId)?.name || "Veterinarian not recorded";
 
   // Find corresponding appointment if any
-  const appt = (db.appts || []).find(a => a.id === record.apptId || (a.petId === pet.id && a.date === record.date));
+  const appt = consultationAppointment(db.appts || [], record);
   const iv = appt?.intakeVitals;
 
   // Find any vaccines administered on this date for this pet
-  const vaccsGiven = (db.vacc || db.vaccs || []).filter(v => v.petId === pet.id && v.date === record.date && v.done);
+  const vaccsGiven = (db.vacc || db.vaccs || []).filter(v => v.petId === pet.id && v.date === record.date && v.done && v.vetId);
 
   // Parse lines of prescription for medical Rx format
   const rxLines = (record.prescription || "")
@@ -54,7 +55,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
                 Official Medical EMR Record
               </span>
               <span style={{ fontSize: "12px", color: "#64748b" }}>Case ID: <b>REC-{record.id.slice(-6).toUpperCase()}</b></span>
-              {!isVet(me?.role) && (
+              {(!isVet(me?.role) || !onEdit) && (
                 <span style={{ background: "#f1f5f9", color: "#475569", padding: "2px 7px", borderRadius: "4px", fontSize: "11px", fontWeight: 600 }}>
                   Read-Only Clinical View
                 </span>
@@ -65,7 +66,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
               <span>SOAP Clinical Consultation: <b>{pet.name || "Patient"}</b></span>
             </h3>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-              Examined on <b>{record.date}</b> &bull; Attending Veterinarian: <b>{vetInfo[1]}</b>
+              Examined on <b>{record.date}</b> &bull; Attending Veterinarian: <b>{vetName}</b>
             </p>
           </div>
 
@@ -107,17 +108,17 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
               {pet.name} ({formatSpeciesLabel(pet.species)})
             </div>
             <div style={{ fontSize: "12px", color: "#475569" }}>
-              Breed: {pet.breed || "Mixed"} &bull; Sex: {pet.sex || "Unknown"}
+              Breed: {pet.breed || "Not recorded"} &bull; Sex: {pet.sex || "Unknown"}
             </div>
           </div>
 
           <div>
             <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#64748b", fontWeight: 700 }}>Client &amp; Contact</span>
             <div style={{ fontWeight: 700, fontSize: "14px", color: "#1e293b", marginTop: "2px" }}>
-              {owner.name || "Walk-in Owner"}
+              {owner.name || "Not recorded"}
             </div>
             <div style={{ fontSize: "12px", color: "#475569" }}>
-              Phone: {owner.phone || "No phone"} &bull; {owner.address || "Metro Manila"}
+              Phone: {owner.phone || "No phone"} &bull; {owner.address || "Address not recorded"}
             </div>
           </div>
 
@@ -146,7 +147,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
               <span>Subjective (Chief Complaint &amp; Clinical History)</span>
             </div>
             <p style={{ margin: 0, fontSize: "13.5px", color: "#334155", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-              {record.symptoms || "Patient presented for routine veterinary consultation and physical examination."}
+              {record.symptoms || "Not recorded"}
             </p>
           </div>
 
@@ -162,25 +163,25 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
               <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
                 <span style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>Weight</span>
                 <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--navy)" }}>
-                  {iv?.weight ? `${iv.weight} kg` : pet.weight ? `${pet.weight} kg` : "—"}
+                  {iv?.weight != null ? `${iv.weight} kg` : "Not recorded"}
                 </div>
               </div>
               <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
                 <span style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>Body Temp</span>
                 <div style={{ fontSize: "16px", fontWeight: 700, color: "#166534" }}>
-                  {iv?.temp ? `${iv.temp}°C` : "38.5°C"}
+                  {iv?.temp != null ? `${iv.temp}°C` : "Not recorded"}
                 </div>
               </div>
               <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
                 <span style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>Triage Level</span>
                 <div style={{ fontSize: "14px", fontWeight: 700, color: iv?.triageLevel === "Emergency" ? "#b91c1c" : "#1e40af" }}>
-                  {iv?.triageLevel || "Routine"}
+                  {iv?.triageLevel || "Not recorded"}
                 </div>
               </div>
             </div>
 
             <p style={{ margin: 0, fontSize: "13px", color: "#334155", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-              {record.objective || "Vitals within normal physiological limits for species and life stage. Alert and responsive."}
+              {record.objective || "Not recorded"}
             </p>
           </div>
 
@@ -191,7 +192,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
               <span>Assessment &amp; Veterinary Diagnosis</span>
             </div>
             <div style={{ fontSize: "15px", fontWeight: 700, color: "#1e3a8a", margin: "2px 0 4px" }}>
-              {record.diagnosis || "General Healthy Examination — No Acute Pathologies Identified"}
+              {record.diagnosis || "Not recorded"}
             </div>
           </div>
 
@@ -202,7 +203,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
               <span>Plan (In-Clinic Procedures &amp; Care Rendered)</span>
             </div>
             <p style={{ margin: 0, fontSize: "13.5px", color: "#334155", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-              {record.treatment || "Routine physical wellness checkup, client counseling on preventative nutrition and preventive calendar."}
+              {record.treatment || "Not recorded"}
             </p>
           </div>
 
@@ -214,7 +215,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
                 <b style={{ color: "#166534", fontSize: "14px" }}>Veterinary Prescription &amp; Home Administration</b>
               </div>
               <span style={{ fontSize: "11px", background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "6px", fontWeight: 700 }}>
-                Dispensed by Front Desk
+                Saved prescription
               </span>
             </div>
 
@@ -231,7 +232,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
               </div>
             ) : (
               <div style={{ color: "#64748b", fontSize: "12.5px", fontStyle: "italic" }}>
-                No home medications prescribed during this visit.
+                No prescription recorded.
               </div>
             )}
           </div>
@@ -240,16 +241,16 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
           {vaccsGiven.length > 0 && (
             <div style={{ border: "1px solid #cbd5e1", borderRadius: "10px", padding: "12px 14px", background: "#f8fafc" }}>
               <b style={{ color: "var(--navy)", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
-                <Syringe size={16} color="#2563eb" /> Certified Vaccines Administered During This Visit
+                <Syringe size={16} color="#2563eb" /> Certified Vaccines Recorded on This Date
               </b>
               <div style={{ display: "grid", gap: "6px" }}>
                 {vaccsGiven.map(v => (
                   <div key={v.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0", fontSize: "12.5px" }}>
                     <div>
-                      <b>{v.vaccine}</b> <span style={{ color: "#64748b" }}>({v.brand || "Defensor 3"} &bull; Lot: {v.batch || "LOT-2026"})</span>
+                      <b>{v.vaccine}</b> <span style={{ color: "#64748b" }}>({v.brand || "Brand not recorded"} &bull; Lot: {v.batch || "Not recorded"})</span>
                     </div>
                     <span style={{ fontSize: "11.5px", color: "#15803d", fontWeight: 700 }}>
-                      Next Booster: {v.nextDue || "Annual"}
+                      Next Booster: {v.nextDue || "Not recorded"}
                     </span>
                   </div>
                 ))}
@@ -262,7 +263,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
         {/* Footer Actions */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "22px", paddingTop: "14px", borderTop: "1px solid #e2e8f0" }}>
           <div style={{ fontSize: "12px", color: "#64748b" }}>
-            Authenticated by <b>{vetInfo[1]}</b> &bull; Signed Electronic Record
+            Recorded veterinarian: <b>{vetName}</b>
           </div>
           <div style={{ display: "flex", gap: "10px" }}>
             {isVet(me?.role) && onEdit && (
@@ -394,7 +395,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
               style={{ padding: "6px 10px", fontSize: "12.5px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
             >
               <option value="">All Attending Veterinarians</option>
-              {VETS.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              {(db.vets || []).map(({id, name}) => <option key={id} value={id}>{name}</option>)}
             </select>
           </label>
         </div>
@@ -429,7 +430,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
                 {filtered.map(r => {
                   const pet = pets.find(p => p.id === r.petId) || {};
                   const owner = owners.find(o => o.id === pet.ownerId || o.userId === pet.ownerId) || {};
-                  const vetInfo = VETS.find(v => v[0] === r.vetId) || [r.vetId, "Dr. Ana Cruz"];
+                  const vetInfo = [r.vetId, (db.vets || []).find(v => v.id === r.vetId)?.name || "Veterinarian not recorded"];
                   const hasRx = r.prescription && r.prescription.trim().length > 0;
 
                   return (
@@ -481,7 +482,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
                           fontWeight: 700,
                           fontSize: "12px"
                         }}>
-                          {r.diagnosis || "Routine Examination"}
+                          {r.diagnosis || "Not recorded"}
                         </div>
                         {r.treatment && (
                           <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
