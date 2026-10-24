@@ -228,8 +228,12 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="modal clinical-soap" style={{ width: "min(760px, 100%)", maxHeight: "94vh" }}>
-        <style>{`.clinical-soap input[type=checkbox]{width:auto;flex:0 0 auto}.clinical-soap .service-check{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}`}</style>
+        <style>{`.clinical-soap input[type=checkbox]{width:auto;flex:0 0 auto}.clinical-soap .service-check{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}.clinical-soap .tabs{flex-wrap:wrap}.clinical-soap .tabs button{white-space:normal;max-width:100%;min-width:0}`}</style>
         {followUpRequest && <div className="ow-note info"><b>Linked {followUpRequest.careStatus}</b><p>Target: {followUpRequest.followUpDate} · {followUpRequest.followUpReason}</p></div>}
+        {(appt?.handoffs || []).length > 0 && <section className="ow-note info" aria-label="Veterinarian handoff instructions" style={{overflowWrap:'anywhere'}}>
+          <b>Care handoff history</b>
+          {appt.handoffs.map((h,i)=><div key={i}><p><b>{h.from} → {h.to}</b> · {new Intl.DateTimeFormat('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'}).format(new Date(h.at))}</p><p style={{whiteSpace:'pre-wrap'}}>{h.note}</p></div>)}
+        </section>}
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px", marginBottom: "14px" }}>
           <div>
@@ -581,4 +585,3 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     </div>
   );
 }
-

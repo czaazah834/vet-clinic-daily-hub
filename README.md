@@ -555,3 +555,26 @@ and is also created on first use. Deployment must include `src/reminderCall.js`
 alongside the server files. Checks: `node --test tests/reminder-call.test.js`,
 `npm run test:clinic`, `npm run test:scheduling:postgres` with a disposable local
 database, and `npm run build`.
+
+### Veterinarian handoff confirmation and continuity
+
+The care-transfer form shows the actual patient and saved intake and sends the
+visit snapshot it opened. The server checks that optional `expectedVisit` under
+the appointment lock before transferring; changed assignment, status, slot,
+reason or intake requires refreshing and reopening the form. Existing callers
+without a snapshot retain their original transfer rules. A successful response
+now also identifies the saved visit, recipient and handoff instructions.
+
+The form blocks repeated saves, retains instructions on failure and confirms the
+actual receiving vet after saving. If the clinic-state refresh fails, the receipt
+still confirms the transfer and offers a separate refresh retry. The former vet's
+local patient history is removed unless another assignment still grants access,
+matching the server scope. Transfer, instructions and audit remain atomic; the
+receiving vet's visit returns to Checked-in, without creating another reservation.
+
+Saved handoff history is visible in the receiving vet's SOAP screen as well as
+the queue, with Manila timestamps. SOAP history tabs wrap on small screens.
+Checks: `node --test tests/vet-handoff.test.js server/tests/care-workflow.test.js`,
+`npm run test:clinic`, `npm run test:scheduling`,
+`npm run test:scheduling:postgres` with a disposable local database, and
+`npm run build`.
