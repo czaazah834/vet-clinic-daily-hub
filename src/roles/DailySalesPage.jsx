@@ -208,7 +208,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
       </div>
 
       {/* Amber Banner: If visits are completed by doctor and waiting for front desk checkout */}
-      {unbilledCompleted.length > 0 && (
+      {me.role === "assistant" && unbilledCompleted.length > 0 && (
         <div style={{ background: "#fefce8", border: "1.5px solid #fde047", borderRadius: "12px", padding: "14px 18px", marginBottom: "18px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>

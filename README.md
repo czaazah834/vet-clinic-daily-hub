@@ -204,3 +204,46 @@ Validate against a disposable local database (no provider messages):
 ```bash
 TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/pawcare npm run test:registration:postgres
 ```
+
+### Administrator governance
+
+The administrator portal uses real account records for staff access and account
+counts. Its overview guides review of locked staff, visits assigned to inactive
+doctors, unfinished arrivals, unpaid completed visits and automatic reminder
+exceptions. Reception performs booking, intake and payment; veterinarians author
+clinical records. Admin calendar and clinical views remain read-only, and the
+sales page provides financial review/printing without collection controls.
+
+Apply `server/database/staff-access.sql` after `schema.sql` before deploying with
+a runtime database role that cannot alter tables. `npm run db:init` includes it;
+admin endpoints also attempt the idempotent migration. Existing accounts remain
+active by default. Deactivation retains historical records and removes doctors
+from new booking choices. Reception must reassign affected upcoming visits.
+
+Staff access changes require a reason and the latest integer `revision` from
+`GET /api/admin/staff`. Only veterinarian and assistant accounts are eligible;
+admin/owner accounts cannot be changed here. Stale actions return 409. Access
+changes and their audit entries commit together and revoke existing sessions.
+Reactivation preserves account locks and verification requirements; unlocking
+clears failed attempts and cooldowns, then requires a fresh sign-in.
+
+Staff invitations permit only the vet/assistant roles. An admin can revoke an
+unused invitation or issue a replacement. Invitation creation returns an
+admin-only activation link and a delivery status, **not a login token**. Provider
+acceptance is not proof of inbox delivery. Development outbox responses report
+`not_sent`. Acceptance validates identity/mobile/password, locks and consumes the
+invitation once, and creates a restricted OTP session atomically. After mobile
+verification, staff sign in again. OTP values are never returned by setup.
+
+The overview shows the latest 100 saved audit entries. System Audit Trail searches
+all saved entries with pages of 50, including trusted staff access changes,
+invitations and successful verified sign-ins. A sign-in session and its audit
+entry commit together. This adds future sign-in history; it cannot reconstruct
+older events that were never recorded.
+
+Validate governance against an isolated schema in a disposable local database
+(provider adapters are mocked, so no email/SMS is sent):
+
+```bash
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/pawcare npm run test:admin:postgres
+```

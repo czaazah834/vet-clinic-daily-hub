@@ -173,7 +173,7 @@ test('a concurrently consumed or expired OTP cannot complete registration again'
 
 test('fully verified account can log in normally and receive a new session', async () => {
   const password = 'Synthetic123!';
-  steps = [{ sql: /SELECT \* FROM users/, rows: [{ ...user, mobile_verified: true, password_hash: await hashPassword(password) }] }, { sql: /UPDATE users SET failed_login_attempts = 0/ }, { sql: /INSERT INTO sessions/, check: p => assert.equal(p[1], user.id) }];
+  steps = [{ sql: /SELECT \* FROM users/, rows: [{ ...user, mobile_verified: true, password_hash: await hashPassword(password) }] }, { sql: /UPDATE users SET failed_login_attempts = 0/ }, { sql: /INSERT INTO sessions/, check: p => assert.equal(p[1], user.id) }, { sql: /INSERT INTO audit_logs/, check: p => { assert.equal(p[1], 'owner'); assert.match(p[2], /Signed in/); } }];
   const { res, data } = await request('/login', { body: { email: user.email, password } });
   assert.equal(res.status, 200);
   assert.equal(data.user.id, user.id);
@@ -187,4 +187,17 @@ test('development outbox is unavailable to anonymous and authenticated callers',
     assert.equal(res.status, 404);
     assert.equal(data.outbox, undefined);
   }
+});
+
+
+test('inactive account cannot sign in or use an existing session', async () => {
+  steps=[{sql:/SELECT \* FROM users/,rows:[{...user,is_active:false}]}];
+  assert.equal((await request('/login',{body:{email:user.email,password:'Synthetic123!'}})).res.status,403);
+  steps=[session({...user,mobile_verified:true,is_active:false})];
+  assert.equal((await request('/me',{session:true})).res.status,403);
+});
+test('invitation response preserves the admin login token and reports provider status', async () => {
+  steps=[session({...user,role:'admin',mobile_verified:true}),{sql:/SELECT id FROM users/,rows:[]},{sql:/INSERT INTO staff_invitations/},{sql:/INSERT INTO audit_logs/}];
+  const result=await request('/staff/invite',{session:true,body:{name:'Synthetic Staff',email:'staff@example.test',role:'vet'}});
+  assert.equal(result.res.status,200);assert.equal(result.data.token,undefined);assert.match(result.data.inviteLink,/\?invite=/);assert.equal(result.data.delivery,'unknown');
 });

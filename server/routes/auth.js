@@ -1,3 +1,5 @@
+import { randomInt } from 'node:crypto';
+import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import express from 'express';
 import { query, withTransaction } from '../db.js';
 import {
@@ -105,6 +107,7 @@ export async function requireAuth(req, res, next) {
     if (!r.rows.length) return res.status(401).json({ error: 'Session expired. Please log in again.' });
 
     const user = r.rows[0];
+    if (user.is_active === false) return res.status(403).json({ error: 'Your account is inactive. Contact the clinic administrator.' });
     if (!user.mobile_verified || (user.role === 'owner' && !user.email_verified_at)) {
       return res.status(403).json({ error: 'Complete email and mobile verification, then log in.', needsOtp: true });
     }
@@ -273,6 +276,7 @@ router.post('/login', async (req, res) => {
     }
 
     const u = r.rows[0];
+    if (u.is_active === false) return res.status(403).json({ error: 'Your account is inactive. Contact the clinic administrator.' });
 
     // Check account lockout
     if (u.is_locked) {
@@ -331,10 +335,14 @@ router.post('/login', async (req, res) => {
 
     // Create session
     const sid = randomHex(32);
-    await query(
-      'INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'14 days\')',
-      [sha256(sid), u.id]
-    );
+    await withTransaction(async client => {
+      await client.query(
+        'INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'14 days\')',
+        [sha256(sid), u.id]
+      );
+      await client.query('INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)',
+        [`${u.first_name} ${u.last_name}`.trim(),u.role,`Signed in (${u.id}).`]);
+    });
 
     res.cookie('sid', sid, {
       httpOnly: true,
@@ -631,11 +639,12 @@ router.post('/staff/invite', requireAuth, async (req, res) => {
 
   const { email, name, role } = req.body;
   const em = String(email || '').trim().toLowerCase();
-  const staffRole = role === 'assistant' ? 'assistant' : 'vet';
+  if (!['assistant','vet'].includes(role)) return res.status(400).json({error:'Choose Veterinarian or Vet Assistant.'});
+  const staffRole = role;
   const roleName = staffRole === 'vet' ? 'Veterinarian' : 'Vet Assistant';
 
-  if (!em) return res.status(400).json({ error: 'Staff email address is required.' });
-  if (!name) return res.status(400).json({ error: 'Staff full name is required.' });
+  if (em.length>255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'Enter a valid staff email address.' });
+  if (typeof name !== 'string' || !name.trim() || name.length>100 || /[<>&\u0000-\u001f]/.test(name)) return res.status(400).json({ error: 'Enter a staff name up to 100 characters.' });
 
   try {
     const existingUser = await query('SELECT id FROM users WHERE LOWER(email) = $1', [em]);
@@ -644,7 +653,8 @@ router.post('/staff/invite', requireAuth, async (req, res) => {
     }
 
     const rawToken = randomHex(32);
-    await query(
+    await withTransaction(async client => {
+    await client.query(
       `INSERT INTO staff_invitations (email, name, role, token_hash, invited_by, expired_at)
        VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '7 days')
        ON CONFLICT (email) DO UPDATE SET
@@ -657,10 +667,13 @@ router.post('/staff/invite', requireAuth, async (req, res) => {
       [em, name.trim(), staffRole, sha256(rawToken), req.user.id]
     );
 
+    await client.query('INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)',[req.user.name,req.user.role,`Created staff invitation for ${em} (${staffRole})`]);
+    });
+
     const siteUrl = getAppUrl(req);
     const inviteLink = `${siteUrl}/?invite=${rawToken}`;
 
-    await sendMail(
+    const delivery = await sendMail(
       em,
       `PawCare Staff Invitation: Set up your ${roleName} Account`,
       `Hello ${name},\n\nYou have been invited by the Clinic Administrator to join PawCare Clinic as a ${roleName}.\n\nClick the link below to set your password and complete your mobile phone verification via OTP:\n${inviteLink}\n\nThis invitation link expires in 7 days.\n\nWarm regards,\nPawCare Administration`,
@@ -687,9 +700,9 @@ router.post('/staff/invite', requireAuth, async (req, res) => {
 
     res.json({
       status: 'ok',
-      message: `Invitation successfully sent to ${em} via Brevo!`,
-      inviteLink,
-      token: rawToken
+      message: 'Staff invitation created.',
+      delivery: delivery?.via === 'dev_outbox' ? 'not_sent' : delivery?.ok ? 'accepted' : 'unknown',
+      inviteLink
     });
   } catch (err) {
     console.error('Staff invite error:', err);
@@ -727,88 +740,33 @@ router.get('/staff/invite-info', async (req, res) => {
 });
 
 // 12. ACCEPT STAFF INVITATION (Sets password + sends TextBee OTP)
-router.post('/staff/accept-invite', async (req, res) => {
-  const { token, firstName, lastName, birthday, mobileNumber, password } = req.body;
-  if (!token) return res.status(400).json({ error: 'Invitation token is required.' });
-  if (!mobileNumber) return res.status(400).json({ error: 'Mobile number is required for OTP verification.' });
-
+router.post('/staff/accept-invite', async (req,res) => {
+  const {token,firstName,lastName,birthday,mobileNumber,password}=req.body;
+  const validName=v=>typeof v==='string'&&v.trim().length>0&&v.trim().length<=50&&/^[\p{L} .'-]+$/u.test(v.trim());
+  const phone=typeof mobileNumber==='string'?parsePhoneNumberFromString(mobileNumber,'PH'):null;
+  if(typeof token!=='string'||token.length>256||!token||!validName(firstName)||!validName(lastName)||typeof birthday!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(birthday)||!Number.isFinite(Date.parse(birthday))||new Date(birthday).toISOString().slice(0,10)!==birthday||birthday<'1900-01-01'||birthday>=new Date().toISOString().slice(0,10)||!phone?.isValid()||!['MOBILE','FIXED_LINE_OR_MOBILE'].includes(phone.getType())) return res.status(400).json({error:'Enter your full name, real birth date and a valid mobile number.'});
+  const pwErr=validatePasswordComplexity(password);
+  if(pwErr)return res.status(400).json({error:pwErr});
   try {
-    const r = await query(
-      `SELECT * FROM staff_invitations WHERE token_hash = $1 AND expired_at > NOW()`,
-      [sha256(token)]
-    );
-    if (!r.rows.length) {
-      return res.status(400).json({ error: 'Invitation link is invalid or has expired.' });
-    }
-    const inv = r.rows[0];
-    if (inv.accepted_at) {
-      return res.status(400).json({ error: 'This invitation has already been used.' });
-    }
-
-    const pwErr = validatePasswordComplexity(password);
-    if (pwErr) return res.status(400).json({ error: pwErr });
-
-    const pwHash = await hashPassword(password);
-    const userId = 'u_' + randomHex(8);
-    const vetId = inv.role === 'vet' ? 'v_' + randomHex(8) : null;
-
-    // Insert user account with email pre-verified
-    await query(
-      `INSERT INTO users (
-        id, first_name, last_name, birthday,
-        password_hash, email, role, vet_id, mobile_number,
-        email_verified_at, mobile_verified
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), false)`,
-      [
-        userId,
-        (firstName || inv.name).trim(),
-        (lastName || '').trim(),
-        birthday || '1990-01-01',
-        pwHash,
-        inv.email,
-        inv.role,
-        vetId,
-        mobileNumber.trim()
-      ]
-    );
-
-    // Mark invitation accepted
-    await query('UPDATE staff_invitations SET accepted_at = NOW() WHERE id = $1', [inv.id]);
-
-    // Generate TextBee SMS OTP
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    await query(
-      `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at)
-       VALUES ($1, $2, 'mobile_otp', NOW() + INTERVAL '10 minutes')`,
-      [userId, sha256(otpCode)]
-    );
-
-    await sendSms(
-      mobileNumber.trim(),
-      `PawCare Staff Security: Your verification OTP code is ${otpCode}. Valid for 10 minutes.`
-    );
-
-    // Create session cookie with needsOtp
-    const sid = randomHex(32);
-    await query(
-      `INSERT INTO sessions (token_hash, user_id, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
-      [sha256(sid), userId]
-    );
-
-    res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
-
-    res.json({
-      status: 'ok',
-      needsOtp: true,
-      message: `Account created! Verification code sent via TextBee to ${mobileNumber}.`,
-      token: sid,
-      devCode: otpCode
+    const pwHash=await hashPassword(password),userId='u_'+randomHex(8),sid=randomHex(32),otpCode=String(randomInt(100000,1000000));
+    await withTransaction(async client=>{
+      const inv=(await client.query('SELECT * FROM staff_invitations WHERE token_hash=$1 FOR UPDATE',[sha256(token)])).rows[0];
+      // Check the database clock after acquiring the lock: revocation may have committed while we waited.
+      const usable=inv&&!inv.accepted_at&&(await client.query('SELECT expired_at > clock_timestamp() AS valid FROM staff_invitations WHERE id=$1',[inv.id])).rows[0]?.valid;
+      if(!usable)throw Object.assign(new Error('This invitation is expired, revoked or already used. Contact the administrator.'),{status:409});
+      if(!['vet','assistant'].includes(inv.role))throw Object.assign(new Error('Invalid staff invitation role.'),{status:400});
+      const vetId=inv.role==='vet'?'v_'+randomHex(8):null;
+      await client.query(`INSERT INTO users(id,first_name,last_name,birthday,password_hash,email,role,vet_id,mobile_number,email_verified_at,mobile_verified)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),false)`,[userId,firstName.trim(),lastName.trim(),birthday,pwHash,inv.email,inv.role,vetId,phone.number]);
+      await client.query('UPDATE staff_invitations SET accepted_at=NOW() WHERE id=$1',[inv.id]);
+      await client.query("INSERT INTO verification_tokens(user_id,token_hash,type,expired_at) VALUES($1,$2,'mobile_otp',NOW()+INTERVAL '10 minutes')",[userId,sha256(otpCode)]);
+      await client.query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '7 days')",[sha256(sid),userId]);
+      await client.query('INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)',[`${firstName.trim()} ${lastName.trim()}`,inv.role,`Accepted staff invitation ${inv.id}; mobile verification pending (${userId}).`]);
     });
-  } catch (err) {
-    console.error('Accept staff invite failed:', err);
-    res.status(500).json({ error: 'Failed to complete staff registration: ' + err.message });
-  }
+    await sendSms(phone.number,`PawCare Staff Security: Your verification OTP code is ${otpCode}. Valid for 10 minutes.`);
+    res.cookie('sid',sid,{httpOnly:true,sameSite:'lax',path:'/',maxAge:7*86400*1000});
+    res.json({status:'ok',needsOtp:true,message:'Account created. Verify your mobile number to continue.',token:sid});
+  }catch(error){res.status(error.status||(error.code==='23505'?409:500)).json({error:error.status?error.message:error.code==='23505'?'This account already exists. Log in or contact the administrator.':'Unable to complete staff setup. Try logging in if your account was already created.'});}
 });
 
 export const authRouter = router;
