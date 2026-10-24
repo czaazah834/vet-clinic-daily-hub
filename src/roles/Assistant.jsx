@@ -22,6 +22,7 @@ import PetApprovalModal from "./PetApprovalModal.jsx";
 import PetRequestsPage from "./PetRequestsPage.jsx";
 import AssistantVaccinationManager from "./AssistantVaccinationManager.jsx";
 import PetCardModal from "./PetCardModal.jsx";
+import ClientsAndPatientsPage from "./ClientsAndPatientsPage.jsx";
 import { formatSpeciesLabel } from "../preventiveSchedule.js";
 
 function Dash({ db, setDb, me, go, say }) {
@@ -651,9 +652,10 @@ export const assistant = {
     { k: "home", l: "Front Desk", i: "bell", dash: 1, sub: "Today’s arrival queue, walk-in registration, and reminders." },
     { k: "pet-requests", l: "Online Pet Requests", i: "paw", Page: PetRequestsPage, sub: "Review and approve online pet registrations with automated vaccination cards." },
     { k: "cal", l: "Appointments & Calendar", i: "calendar", Page: ClinicCalendar, sub: "Unified calendar schedules, slot booking, and appointments management." },
-    M("owners", "Client Masterlist", "user", "owners", "Registered pet owners and primary contact details."),
-    M("pets", "Patient Masterlist", "paw", "pets", "All animal patients and profiles."),
+    { k: "clients-patients", l: "Clients & Patients Masterlist", i: "users", Page: ClientsAndPatientsPage, sub: "Unified masterlist of pet owners, animal patient profiles, and official vaccination cards." },
     { k: "vacc", l: "Vaccination Cards", i: "syringe", Page: AssistantVaccinationManager, sub: "Manage official pet vaccination cards, log doctor-administered shots, and track boosters." },
     M("records", "Consultations", "file", "records", "Read-only view of veterinary consultation notes."),
+    { k: "pets", hide: true, Page: ClientsAndPatientsPage },
+    { k: "owners", hide: true, Page: ClientsAndPatientsPage },
   ],
 };

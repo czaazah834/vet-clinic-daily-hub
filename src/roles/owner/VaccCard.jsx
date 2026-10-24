@@ -77,7 +77,25 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
   const over = all.filter(v => stateOf(v) === "Overdue"), soon = all.filter(v => stateOf(v) === "Due soon");
   const p = pets.find(x => x.id === sel), o = (db.owners || []).find(x => x.id === me.ownerId) || {};
   const ageDetails = p?.birth ? computeAgeDetails(p.birth) : null;
-  const mine = all.filter(v => v.petId === sel);
+  const mine = all
+    .filter(v => v.petId === sel)
+    .filter((v, idx, arr) => {
+      if (!v.done) {
+        const hasCompleted = arr.some(other =>
+          other.id !== v.id &&
+          other.done &&
+          (
+            (other.vaccine?.toLowerCase().includes("rabies") && v.vaccine?.toLowerCase().includes("rabies")) ||
+            (other.vaccine?.toLowerCase().includes("dhpp") && v.vaccine?.toLowerCase().includes("dhpp")) ||
+            (other.vaccine?.toLowerCase().includes("5-in-1") && v.vaccine?.toLowerCase().includes("5-in-1")) ||
+            (other.vaccine?.toLowerCase().includes("deworm") && v.vaccine?.toLowerCase().includes("deworm")) ||
+            other.vaccine?.toLowerCase() === v.vaccine?.toLowerCase()
+          )
+        );
+        if (hasCompleted) return false;
+      }
+      return true;
+    });
   const count = s => mine.filter(v => stateOf(v) === s).length;
   const next = mine.filter(v => !v.done && v.nextDue).sort((a, b) => a.nextDue.localeCompare(b.nextDue))[0];
 

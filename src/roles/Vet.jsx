@@ -16,6 +16,7 @@ import {
 import { I, M, Stats, Hero, TODAY, plus, moveAppt, petName, ownerName, ICON, Badge, dueState } from "../lib.jsx";
 import SoapConsultationModal from "./SoapConsultationModal.jsx";
 import ClinicCalendar from "./ClinicCalendar.jsx";
+import ClientsAndPatientsPage from "./ClientsAndPatientsPage.jsx";
 
 function Dash({ db, setDb, me, go, say }) {
   const [activeSoap, setActiveSoap] = useState(null); // { appt, pet }
@@ -66,10 +67,30 @@ function Dash({ db, setDb, me, go, say }) {
               Start Next Consultation ({petName(db, waiting[0].petId)})
             </button>
           )}
-          <button className="btn ghost" onClick={() => go("cal")}>
+          <button
+            className="btn"
+            onClick={() => go("cal")}
+            style={{
+              background: "#ffffff",
+              color: "#1e3a8a",
+              border: "1.5px solid #ffffff",
+              fontWeight: 700,
+              boxShadow: "0 2px 4px rgba(0,0,0,0.08)"
+            }}
+          >
             View Schedule Calendar
           </button>
-          <button className="btn ghost" onClick={() => go("pets")}>
+          <button
+            className="btn"
+            onClick={() => go("pets")}
+            style={{
+              background: "#ffffff",
+              color: "#1e3a8a",
+              border: "1.5px solid #ffffff",
+              fontWeight: 700,
+              boxShadow: "0 2px 4px rgba(0,0,0,0.08)"
+            }}
+          >
             Search Patient EMR
           </button>
         </div>
@@ -311,10 +332,10 @@ export const vet = {
   menu: [
     { k: "home", l: "Clinical Queue", i: "stethoscope", dash: 1, sub: "Live patient queue, SOAP consultation notes and EMR records." },
     { k: "cal", l: "Doctor Schedule", i: "calendar", Page: ClinicCalendar, sub: "Clinic appointment calendar and timetable." },
-    M("pets", "Patient EMR", "paw", "pets", "Digital medical records, breed history, weight, and allergies."),
+    { k: "pets", l: "Patient EMR & Masterlist", i: "paw", Page: ClientsAndPatientsPage, sub: "Digital medical records, patient profiles, and official vaccination cards." },
     M("records", "SOAP Consultations", "file", "records", "Record diagnoses, treatments, and prescriptions."),
     M("vacc", "Vaccination Station", "syringe", "vacc", "Administer vaccines and track calculated booster dates."),
-    M("owners", "Client Contacts", "user", "owners", "Read-only access to pet owner contact information."),
+    { k: "owners", hide: true, Page: ClientsAndPatientsPage },
     { k: "reports", l: "Clinical Reports", i: "chart", rep: 1, sub: "Filter and print clinic consultation summaries." },
   ],
 };

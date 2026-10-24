@@ -43,7 +43,27 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
 
   const activeAppt = appt || (db.appts || []).find(a => a.petId === p.id && a.date === TODAY && a.status !== "Cancelled");
   const ageDetails = p.birth ? computeAgeDetails(p.birth) : null;
-  const vaccs = (db.vacc || db.vaccs || []).filter(v => v.petId === p.id).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const vaccs = (db.vacc || db.vaccs || [])
+    .filter(v => v.petId === p.id)
+    .filter((v, idx, arr) => {
+      // If uncompleted placeholder exists but a completed shot of the same type is already present, filter out placeholder
+      if (!v.done) {
+        const hasCompleted = arr.some(other =>
+          other.id !== v.id &&
+          other.done &&
+          (
+            (other.vaccine?.toLowerCase().includes("rabies") && v.vaccine?.toLowerCase().includes("rabies")) ||
+            (other.vaccine?.toLowerCase().includes("dhpp") && v.vaccine?.toLowerCase().includes("dhpp")) ||
+            (other.vaccine?.toLowerCase().includes("5-in-1") && v.vaccine?.toLowerCase().includes("5-in-1")) ||
+            (other.vaccine?.toLowerCase().includes("deworm") && v.vaccine?.toLowerCase().includes("deworm")) ||
+            other.vaccine?.toLowerCase() === v.vaccine?.toLowerCase()
+          )
+        );
+        if (hasCompleted) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const count = s => vaccs.filter(v => stateOf(v) === s).length;
   const cardIdFormatted = p.vaccinationCardId || `VACC-${new Date().getFullYear()}-3067`;
 

@@ -134,7 +134,7 @@ clinicRouter.get("/state", async (req, res) => {
       cancelReason: a.cancel_reason || ""
     }));
 
-    const vaccs = vaccsRes.rows.map(v => ({
+    const rawVaccs = vaccsRes.rows.map(v => ({
       id: v.id,
       petId: v.pet_id,
       cardId: v.card_id,
@@ -152,6 +152,24 @@ clinicRouter.get("/state", async (req, res) => {
       vetId: v.vet_id || "",
       recordedBy: v.recorded_by || ""
     }));
+
+    const vaccs = rawVaccs.filter((v, idx, arr) => {
+      if (!v.done) {
+        const hasDoneMatch = arr.some(other =>
+          other.petId === v.petId &&
+          other.done &&
+          (
+            (other.vaccine?.toLowerCase().includes("rabies") && v.vaccine?.toLowerCase().includes("rabies")) ||
+            (other.vaccine?.toLowerCase().includes("dhpp") && v.vaccine?.toLowerCase().includes("dhpp")) ||
+            (other.vaccine?.toLowerCase().includes("5-in-1") && v.vaccine?.toLowerCase().includes("5-in-1")) ||
+            (other.vaccine?.toLowerCase().includes("deworm") && v.vaccine?.toLowerCase().includes("deworm")) ||
+            other.vaccine?.toLowerCase() === v.vaccine?.toLowerCase()
+          )
+        );
+        if (hasDoneMatch) return false;
+      }
+      return true;
+    });
 
     const consults = consultsRes.rows.map(c => ({
       id: c.id,
@@ -2094,8 +2112,52 @@ clinicRouter.post("/vaccinations", async (req, res) => {
     notes, vetId, recordedBy, actorName, actorRole
   } = req.body;
   const vaccId = id || ("v_" + Math.random().toString(36).slice(2, 8));
+  const isDone = done !== undefined ? Boolean(done) : true;
 
   try {
+    if (isDone) {
+      // Reconcile with any existing unadministered placeholder for this pet
+      const existingPlaceholder = await query(
+        `SELECT id FROM vaccinations 
+         WHERE pet_id = $1 AND done = false 
+           AND (
+             LOWER(vaccine) = LOWER($2)
+             OR (LOWER($2) LIKE '%rabies%' AND LOWER(vaccine) LIKE '%rabies%')
+             OR (LOWER($2) LIKE '%dhpp%' AND LOWER(vaccine) LIKE '%dhpp%')
+             OR (LOWER($2) LIKE '%5-in-1%' AND LOWER(vaccine) LIKE '%5-in-1%')
+             OR (LOWER($2) LIKE '%deworm%' AND LOWER(vaccine) LIKE '%deworm%')
+             OR (LOWER($2) LIKE '%fvrcp%' AND LOWER(vaccine) LIKE '%fvrcp%')
+           )
+         ORDER BY date DESC LIMIT 1`,
+        [petId, vaccine]
+      );
+
+      if (existingPlaceholder.rows.length) {
+        const placeholderId = existingPlaceholder.rows[0].id;
+        const upd = await query(
+          `UPDATE vaccinations SET
+             vaccine = $1, brand = $2, batch = $3, date = $4, next_due = $5,
+             dose_no = $6, dose_of = $7, done = true, automated = false,
+             notes = $8, vet_id = $9, recorded_by = $10
+           WHERE id = $11
+           RETURNING *`,
+          [vaccine, brand || "", batch || "", date, nextDue || null, doseNo || 1, doseOf || 1, notes || "", vetId || "", recordedBy || actorName || "Veterinarian", placeholderId]
+        );
+        // Clean up any other remaining unadministered duplicates of this vaccine for this pet
+        await query(
+          `DELETE FROM vaccinations WHERE pet_id = $1 AND done = false AND id <> $2
+           AND (
+             (LOWER($3) LIKE '%rabies%' AND LOWER(vaccine) LIKE '%rabies%')
+             OR (LOWER($3) LIKE '%dhpp%' AND LOWER(vaccine) LIKE '%dhpp%')
+             OR (LOWER($3) LIKE '%5-in-1%' AND LOWER(vaccine) LIKE '%5-in-1%')
+           )`,
+          [petId, placeholderId, vaccine]
+        );
+        await recordAudit(actorName, actorRole, `Updated & certified vaccination ${vaccine} for pet ${petId}`);
+        return res.json({ success: true, vaccination: upd.rows[0] });
+      }
+    }
+
     const result = await query(
       `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, notes, vet_id, recorded_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
@@ -2111,8 +2173,20 @@ clinicRouter.post("/vaccinations", async (req, res) => {
          notes = EXCLUDED.notes,
          recorded_by = EXCLUDED.recorded_by
        RETURNING *`,
-      [vaccId, petId, cardId || "VACC-DEFAULT", vaccine, brand || "", batch || "", date, nextDue || null, doseNo || 1, doseOf || 1, done !== undefined ? done : true, Boolean(automated), protocolType || "", notes || "", vetId || "", recordedBy || actorName || "Front Desk Assistant"]
+      [vaccId, petId, cardId || "VACC-DEFAULT", vaccine, brand || "", batch || "", date, nextDue || null, doseNo || 1, doseOf || 1, isDone, Boolean(automated), protocolType || "", notes || "", vetId || "", recordedBy || actorName || "Front Desk Assistant"]
     );
+
+    if (isDone) {
+      await query(
+        `DELETE FROM vaccinations WHERE pet_id = $1 AND done = false AND id <> $2
+         AND (
+           (LOWER($3) LIKE '%rabies%' AND LOWER(vaccine) LIKE '%rabies%')
+           OR (LOWER($3) LIKE '%dhpp%' AND LOWER(vaccine) LIKE '%dhpp%')
+           OR (LOWER($3) LIKE '%5-in-1%' AND LOWER(vaccine) LIKE '%5-in-1%')
+         )`,
+        [petId, result.rows[0].id, vaccine]
+      );
+    }
 
     await recordAudit(actorName, actorRole, `Logged vaccination ${vaccine} (${batch || "No lot#"}) for pet ${petId}`);
     res.json({ success: true, vaccination: result.rows[0] });
