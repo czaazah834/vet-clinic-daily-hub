@@ -12,6 +12,7 @@ import {
   verifyCsrfToken,
 } from '../security.js';
 import { sendMail, sendSms } from '../services.js';
+import { validateOwnerRegistration } from '../registrationValidation.js';
 
 export function getAppUrl(req) {
   if (req) {
@@ -154,29 +155,12 @@ export function requireRole(...roles) {
 // 1. REGISTER
 router.post('/register', async (req, res) => {
   try {
-    const fn = (req.body.firstName || req.body.first_name || 'Pet').trim();
-    const ln = (req.body.lastName || req.body.last_name || 'Owner').trim();
-    const mi = (req.body.middleInitial || req.body.middle_initial || '').trim().toUpperCase() || null;
-    const bd = req.body.birthday || '1995-01-01';
-    const mob = (req.body.mobile || req.body.mobileNumber || req.body.phone || '+639170000000').trim();
-
-    const houseStreet = req.body.house_street || req.body.address?.houseStreet || (typeof req.body.address === 'string' ? req.body.address : 'Street');
-    const country = req.body.country || req.body.address?.country || 'Philippines';
-    const state = req.body.state || req.body.address?.state || 'Metro Manila';
-    const city = req.body.city || req.body.address?.city || 'Quezon City';
-    const zipCode = req.body.zip_code || req.body.address?.zipCode || '1100';
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) return res.status(400).json({ error: 'Enter the registration fields.' });
+    if (req.body.role && req.body.role !== 'owner') return res.status(403).json({ error: 'Public registration is only available for Pet Owners. Staff accounts must be invited by the Clinic Administrator.' });
+    const validated = await validateOwnerRegistration(req.body);
+    if (Object.keys(validated.errors).length) return res.status(400).json({ error: 'Please fix the highlighted fields.', errors: validated.errors });
+    const {firstName:fn,lastName:ln,middleInitial:mi,birthday:bd,mobile:mob,houseStreet,country,state,city,zipCode,email:em} = validated;
     const fullAddress = `${houseStreet}, ${city}, ${state} ${zipCode}, ${country}`;
-
-    const em = String(req.body.email || '').trim().toLowerCase();
-    if (!em) return res.status(400).json({ error: 'Email address is required.' });
-
-    // Strict RBAC: Public registration is strictly restricted to Pet Owners only!
-    // Staff (Veterinarians and Vet Assistants) must be invited by the Clinic Administrator.
-    if (req.body.role && req.body.role !== 'owner') {
-      return res.status(403).json({
-        error: 'Public registration is only available for Pet Owners. Staff accounts must be invited by the Clinic Administrator.'
-      });
-    }
 
     // Check existing
     const existing = await query('SELECT id FROM users WHERE LOWER(email) = $1', [em]);
@@ -184,60 +168,60 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'An account with this email already exists.' });
     }
 
-    const pwErr = validatePasswordComplexity(req.body.password);
-    if (pwErr) return res.status(400).json({ error: pwErr });
-
     const pwHash = await hashPassword(req.body.password);
     const userId = 'u_' + randomHex(8);
     const ownerId = 'o_' + randomHex(8);
 
-    // Insert user
-    await query(
-      `INSERT INTO users (
-        id, first_name, last_name, middle_initial, birthday,
-        password_hash, email, role, vet_id, owner_id, mobile_number,
-        email_verified_at, mobile_verified
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-      [
-        userId,
-        fn,
-        ln,
-        mi,
-        bd,
-        pwHash,
-        em,
-        'owner',
-        null,
-        ownerId,
-        mob,
-        null,
-        false,
-      ]
-    );
-
-    // Insert address
-    await query(
-      `INSERT INTO addresses (user_id, house_street, country, state, city, zip_code)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userId, houseStreet, country, state, city, zipCode]
-    );
-
-    // Insert into owners table
-    const fullName = `${fn}${mi ? ' ' + mi + '.' : ''} ${ln}`.trim();
-    await query(
-      `INSERT INTO owners (id, user_id, name, email, phone, address)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (id) DO NOTHING`,
-      [ownerId, userId, fullName, em, mob, fullAddress]
-    );
-
-    // Generate email verification token
     const rawToken = randomHex(24);
-    await query(
-      `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at)
-       VALUES ($1, $2, 'email_verify', NOW() + INTERVAL '24 hours')`,
-      [userId, sha256(rawToken)]
-    );
+    await withTransaction(async client => {
+      // Insert user
+      await client.query(
+        `INSERT INTO users (
+          id, first_name, last_name, middle_initial, birthday,
+          password_hash, email, role, vet_id, owner_id, mobile_number,
+          email_verified_at, mobile_verified
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [
+          userId,
+          fn,
+          ln,
+          mi,
+          bd,
+          pwHash,
+          em,
+          'owner',
+          null,
+          ownerId,
+          mob,
+          null,
+          false,
+        ]
+      );
+
+      // Insert address
+      await client.query(
+        `INSERT INTO addresses (user_id, house_street, country, state, city, zip_code)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [userId, houseStreet, country, state, city, zipCode]
+      );
+
+      // Insert into owners table
+      const fullName = `${fn}${mi ? ' ' + mi + '.' : ''} ${ln}`.trim();
+      await client.query(
+        `INSERT INTO owners (id, user_id, name, email, phone, address)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO NOTHING`,
+        [ownerId, userId, fullName, em, mob, fullAddress]
+      );
+
+      // Generate email verification token
+      await client.query(
+        `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at)
+         VALUES ($1, $2, 'email_verify', NOW() + INTERVAL '24 hours')`,
+        [userId, sha256(rawToken)]
+      );
+
+    });
 
     // Send verification email
     const siteUrl = getAppUrl(req);
@@ -256,7 +240,7 @@ router.post('/register', async (req, res) => {
     });
   } catch (err) {
     console.error('Registration failed:', err);
-    res.status(500).json({ error: 'Registration failed. ' + err.message });
+    res.status(err.code === '23505' ? 409 : 500).json({ error: err.code === '23505' ? 'An account with these details already exists.' : 'Unable to complete registration. Please try again.' });
   }
 });
 

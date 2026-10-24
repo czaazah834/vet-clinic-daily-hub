@@ -50,7 +50,7 @@ test('registration sends an email link without signing in or sending SMS', async
     { sql: /INSERT INTO addresses/ }, { sql: /INSERT INTO owners/ },
     { sql: /INSERT INTO verification_tokens.*'email_verify'/ },
   ];
-  const { res, data } = await request('/register', { body: { firstName: 'Test', lastName: 'Owner', email: user.email, password: 'Synthetic123!', mobile: user.mobile_number } });
+  const { res, data } = await request('/register', { body: { firstName: 'Test', lastName: 'Owner', email: 'synthetic.signup@gmail.com', password: 'Synthetic123!', confirm_password:'Synthetic123!', birthday:'01/01/1990', country:'PH', state:'Metro Manila', city:'Quezon City', zip_code:'1100', house_street:'12 Synthetic St', mobile: user.mobile_number } });
   assert.equal(res.status, 200);
   assert.equal(data.token, undefined);
   assert.equal(res.headers.get('set-cookie'), null);

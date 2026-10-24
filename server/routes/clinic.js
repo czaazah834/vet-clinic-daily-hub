@@ -1,3 +1,4 @@
+import { assessWeight, assessTemp } from '../../src/roles/vitals.js';
 import { sendClinicState } from "../stateResponse.js";
 import { visibleStateVaccinations } from "../stateVaccinations.js";
 import { logReminderCall, reminderCallHistory } from "../reminderCalls.js";
@@ -1521,11 +1522,17 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
 
       if (intakeVitals !== undefined) {
         q += `, intake_vitals = $${pIdx++}`;
-        params.push(JSON.stringify(intakeVitals));
+        const pet = (await client.query("SELECT species, breed, weight FROM pets WHERE id = $1", [current.pet_id])).rows[0];
+        const canonicalVitals = {weight:intakeVitals.weight,temp:intakeVitals.temp,
+          triageLevel:intakeVitals.triageLevel ?? 'Routine',fasted:intakeVitals.fasted ?? false,notes:(intakeVitals.notes ?? '').trim(),
+          checkedInAt:clinicClock().time,checkedInBy:req.user.name,
+          weightAnalysis:assessWeight(intakeVitals.weight,pet?.species || '',pet?.breed || '',Number(pet?.weight) || null),
+          tempAnalysis:assessTemp(intakeVitals.temp,pet?.species || '')};
+        params.push(JSON.stringify(canonicalVitals));
       }
       if (cancelReason !== undefined) {
         q += `, cancel_reason = $${pIdx++}`;
-        params.push(cancelReason);
+        params.push(cancelReason.trim());
       }
       if (billingStatus !== undefined) {
         q += `, billing_status = $${pIdx++}`;
@@ -1533,7 +1540,7 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
       }
       if (reason !== undefined) {
         q += `, reason = $${pIdx++}`;
-        params.push(reason);
+        params.push(reason.trim());
       }
 
       q += ` WHERE id = $${pIdx} RETURNING *`;
@@ -2076,6 +2083,9 @@ clinicRouter.post("/consultations", async (req, res) => {
       if (!appt || appt.pet_id !== petId || !assignedTo(appt, req.user)) throw Object.assign(new Error("An assigned visit is required."), { status: 403 });
       if (req.body.expectedVisit !== undefined && !sameIntakeVisit(appt, req.body.expectedVisit)) throw bookingError("This visit has changed. Refresh clinic records and reopen the consultation.",409);
       if (appt.status !== "In consultation") throw Object.assign(new Error("Start the consultation before finalizing. This visit may already be complete."), { status: 409 });
+      const patient = (await client.query("SELECT birth, vaccination_card_id FROM pets WHERE id = $1 FOR SHARE", [petId])).rows[0];
+      if (!patient) throw bookingError("Patient record not found.",404);
+      if (patient.birth && date < toDateStr(patient.birth)) throw bookingError("The consultation date cannot be before the patient's birth.");
       const inserted = await client.query(
         `INSERT INTO consultations (id, pet_id, vet_id, appt_id, date, symptoms, objective, diagnosis, treatment, prescription)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
@@ -2087,7 +2097,7 @@ clinicRouter.post("/consultations", async (req, res) => {
       const savedConsultation = (await client.query("UPDATE consultations SET performed_services=$1 WHERE id=$2 RETURNING *", [JSON.stringify(services), consultId])).rows[0];
       let savedVaccination = null;
       if (vaccination) {
-        const pet = (await client.query("SELECT vaccination_card_id FROM pets WHERE id = $1", [petId])).rows[0];
+        const pet = patient;
         if (!pet?.vaccination_card_id) throw Object.assign(new Error("The patient needs a clinic-issued vaccination card."), { status: 409 });
         const saved = await client.query(
           `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, done, notes, vet_id, recorded_by, protocol_type, dose_no, dose_of)

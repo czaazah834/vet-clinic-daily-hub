@@ -85,7 +85,7 @@ const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.o
 after(() => new Promise(resolve => server.close(resolve)));
 beforeEach(() => {
   calls = []; failSql = null; rollbacks = 0;
-  db = { owners: [{ id: 'o1', name: 'Own owner' }, { id: 'o2', name: 'Other owner' }], pets: [{ id: 'p1', owner_id: 'o1', name: 'Own pet', weight: 5, vaccination_card_id: 'VACC-SYNTHETIC' }, { id: 'p2', owner_id: 'o2', name: 'Other pet', weight: 7 }], appts: [{ id: 'a1', pet_id: 'p1', vet_id: 'v1', date: clinicClock().date, time: '09:00', status: 'Scheduled', amount: 600, billing_status: 'Unbilled' }, { id: 'a2', pet_id: 'p2', vet_id: 'v2', date: clinicClock().date, time: '10:00', status: 'Scheduled' }], requests: [{ id: 'r1', owner_id: 'o1', name:'Request One', status: 'Pending',revision:0 }, { id: 'r2', owner_id: 'o2', name:'Request Two',status: 'Pending',revision:0 }], consults: [], vaccs: [], logs: [], tasks: [] };
+  db = { owners: [{ id: 'o1', name: 'Own owner' }, { id: 'o2', name: 'Other owner' }], pets: [{ id: 'p1', owner_id: 'o1', name: 'Own pet', weight: 5, vaccination_card_id: 'VACC-SYNTHETIC' }, { id: 'p2', owner_id: 'o2', name: 'Other pet', weight: 7 }], appts: [{ id: 'a1', pet_id: 'p1', vet_id: 'v1', date: clinicClock().date, time: '09:00', reason:'Examination', status: 'Scheduled', amount: 600, billing_status: 'Unbilled' }, { id: 'a2', pet_id: 'p2', vet_id: 'v2', date: clinicClock().date, time: '10:00', status: 'Scheduled' }], requests: [{ id: 'r1', owner_id: 'o1', name:'Request One', status: 'Pending',revision:0 }, { id: 'r2', owner_id: 'o2', name:'Request Two',status: 'Pending',revision:0 }], consults: [], vaccs: [], logs: [], tasks: [] };
 });
 const request = async (role, method, path, body) => {
   const res = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer session-${role}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -373,4 +373,15 @@ test('obsolete registration and vaccine writes are retired without mutations',as
   assert.equal((await request(role,'POST',path,body)).status,410);
   assert.deepEqual(db,before);assert.ok(!calls.some(c=>/^(INSERT|UPDATE|DELETE) /.test(c.sql)));
  }
+});
+
+test('no-show waits until the saved Manila time, accepts legacy times and fails closed on missing time', async t => {
+ t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-24T01:00:00Z')});
+ const {validateStatusChange}=await import('../clinicAccess.js');
+ const row={status:'Confirmed',date:'2026-10-24',time:'09:01'};
+ const body={status:'No-show'},user={role:'assistant'};
+ assert.match(validateStatusChange(row,body,user),/before/);
+ for(const time of ['09:00','9:00 AM','08:59'])assert.equal(validateStatusChange({...row,time},body,user),null);
+ for(const time of ['9:01 AM','12:00 PM'])assert.match(validateStatusChange({...row,time},body,user),/before/);
+ for(const time of ['',null,'25:00'])assert.match(validateStatusChange({...row,time},body,user),/Correct/);
 });

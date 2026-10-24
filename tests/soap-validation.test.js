@@ -30,3 +30,7 @@ test('follow-up requires supported status, real current/future target and bounde
   assert.ok(validateSoapFields({...follow,treatment:'x'.repeat(10000)},today).treatment,'appended instructions must fit the persisted plan limit');
   assert.deepEqual(validateSoapFields({...form,followUpDate:'bad',followUpReason:''},today),{},'disabled follow-up does not block routine care');
 });
+test('patient birth bounds consultation dates while allowing valid historical care',()=>{
+ assert.ok(validateSoapFields({...form,date:'2010-01-01'},today,'2020-01-01').date);
+ assert.equal(validateSoapFields({...form,date:'2024-02-29'},today,'2020-01-01').date,undefined);
+});

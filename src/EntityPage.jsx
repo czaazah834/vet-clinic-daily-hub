@@ -1,3 +1,5 @@
+import CancellationDialog from './components/CancellationDialog.jsx';
+import { useSubmissionReview } from './components/SubmissionReview.jsx';
 import { api } from "./api.js";
 import { useState } from "react";
 import {
@@ -114,6 +116,8 @@ function ViewOwnerModal({ owner, db, onClose }) {
 }
 
 export default function EntityPage({ ent, db, setDb, me, say }) {
+  const [cancelling,setCancelling] = useState(null), [actionError,setActionError] = useState('');
+  const statusReview = useSubmissionReview(db.appts);
   const c = E[ent], [q, setQ] = useState(""), [modal, setModal] = useState(null);
   let list = [...scope(db, me, ent)];
   if (c.sort) list.sort(c.sort);
@@ -146,6 +150,8 @@ export default function EntityPage({ ent, db, setDb, me, say }) {
 
   const move = async (a, s) => {
     if (s === "WRITE") return setModal({ consult: a });
+    if (s === 'Cancelled') {setActionError('');setCancelling(a);return;}
+    if (s === 'No-show' && !await statusReview.ask({title:'Review missed visit',confirmLabel:'Mark no-show',description:'Confirm that this patient did not arrive for the saved visit.',fields:[['Patient',petName(db,a.petId)],['Visit',`${a.date} ${a.time}`]]}))return;
     if (!await moveAppt(setDb, a.id, s, me, say, a)) return;
     say(s === "In consultation" ? "Consultation started" : `${LABEL[s]} done`);
     if (s === "In consultation") setModal({ consult: a });
@@ -164,6 +170,9 @@ export default function EntityPage({ ent, db, setDb, me, say }) {
 
   return (
     <>
+      {statusReview.card}
+      {cancelling && <CancellationDialog visit={cancelling} currentVisit={db.appts.find(a=>a.id===cancelling.id)} error={actionError} onClose={()=>setCancelling(null)}
+        onSubmit={async cancelReason=>{if(await moveAppt(setDb,cancelling.id,'Cancelled',me,setActionError,cancelling,{cancelReason})) {setCancelling(null);say('Appointment cancelled');}}} />}
       {/* Modernized Search & Action Toolbar */}
       <div style={{
         display: "flex",

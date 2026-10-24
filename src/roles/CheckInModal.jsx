@@ -22,7 +22,7 @@ import { addLog, ICON, petName, ownerName, I } from "../lib.jsx";
 import { assessWeight, assessTemp, SPECIES_DEFAULTS } from "./vitals.js";
 import { computeWeightBracket, normalizeSpecies } from "../preventiveSchedule.js";
 import { today, nowHM } from "../booking.js";
-import { checkInDateError, intakeVisitSnapshot, sameIntakeVisit, savedIntakeVisit } from "../intakeVisit.js";
+import { intakeFieldsError, checkInDateError, intakeVisitSnapshot, sameIntakeVisit, savedIntakeVisit } from "../intakeVisit.js";
 import { api } from "../api.js";
 
 export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn }) {
@@ -101,6 +101,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       setValErr("Please enter a valid body temperature between 33°C and 45°C.");
       return;
     }
+    const fieldError = intakeFieldsError({weight:w,temp:t,triageLevel:triage,fasted,notes}, serviceReason.trim() || appt.reason);
+    if (fieldError) { setValErr(fieldError); return; }
     setValErr("");
 
     if (!await review.ask({title:"Review measured intake",confirmLabel:"Save intake and send to vet",
