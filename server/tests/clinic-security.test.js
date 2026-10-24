@@ -109,6 +109,21 @@ for (const role of roles) test(`${role} cannot spoof actorRole to gain another r
   }
   assert.equal(calls.some(c => /^(INSERT|UPDATE|DELETE) /.test(c.sql)), false);
 });
+test('doctors cannot manage bookings even for assigned patients or by spoofing reception', async () => {
+  const before = structuredClone(db);
+  for (const [method, path] of [
+    ['GET', '/appointments/availability'], ['POST', '/appointments'],
+    ['PUT', '/appointments/a1'], ['DELETE', '/appointments/a1'], ['POST', '/walk-in'],
+  ]) {
+    const body = method === 'GET' ? undefined : { actorRole: 'assistant', petId: 'p1', vetId: 'v1', date: futureDate(), time: '11:00' };
+    assert.equal((await request('vet', method, path, body)).status, 403, `${method} ${path}`);
+  }
+  for (const status of ['Confirmed', 'Checked-in', 'Cancelled', 'No-show']) {
+    assert.equal((await request('vet', 'PATCH', '/appointments/a1/status', { actorRole: 'assistant', status })).status, 409, status);
+  }
+  assert.deepEqual(db, before);
+  assert.equal(calls.some(c => /^(INSERT|UPDATE|DELETE) /.test(c.sql)), false);
+});
 test('owner cannot read or mutate another owner through IDs, pet photos or requests', async () => {
   for (const [method, path, body] of [['POST', '/appointments', { petId: 'p2' }], ['PUT', '/appointments/a2', {}], ['PATCH', '/appointments/a2/status', { status: 'Cancelled' }], ['POST', '/pets/p2/photo', { photo: '' }], ['DELETE', '/pet-requests/r2', {}]]) assert.equal((await request('owner', method, path, body)).status, 404, path);
   assert.equal(calls.some(c => /^(INSERT|UPDATE|DELETE) /.test(c.sql)), false);

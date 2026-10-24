@@ -1,3 +1,4 @@
+import { canBookAppointments } from "../appointmentPermissions.js";
 import { useState } from "react";
 import {
   Search,
@@ -96,6 +97,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
   const vaccs = db.vacc || db.vaccs || [];
 
   // Front desk priority: patients who already hold an appointment today. Walk-ins are registered from the Front Desk dashboard instead.
+  const canBook = canBookAppointments(me?.role);
   const canCheckIn = me?.role === "assistant";
   const todayApptByPet = {};
   (db.appts || [])
@@ -407,7 +409,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                                 Check in
                               </button>
                             )}
-                            <button
+                            {canBook && <button
                               type="button"
                               className="btn sm ghost"
                               onClick={() => {
@@ -425,7 +427,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                               title="Schedule appointment in calendar"
                             >
                               Book
-                            </button>
+                            </button>}
                             <button
                               type="button"
                               className="btn sm ghost"
@@ -549,7 +551,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                             >
                               <Plus size={13} /> Add Pet
                             </button>}
-                            <button
+                            {canBook && <button
                               type="button"
                               className="btn sm ghost"
                               onClick={() => {
@@ -567,7 +569,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                               title="Schedule appointment in calendar"
                             >
                               Book Visit
-                            </button>
+                            </button>}
                           </div>
                         </td>
                       </tr>
