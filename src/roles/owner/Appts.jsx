@@ -48,6 +48,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   const f = useLive({ followUpId: editing?.followUpId || start?.followUpId || "", service: svc0, petId: editing ? editing.petId : (start && start.petId) || (pets.length === 1 ? pets[0].id : ""), vetId: editing ? editing.vetId : "", date: editing ? editing.date : (start && start.date) || "", time: editing ? editing.time : "", notes: editing ? editing.notes || "" : "" }, mkRules(db, me, editing));
   const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const { v } = f, S = SERVICES[v.service];
+  const followUp = db.records.find(r => r.id === v.followUpId && r.petId === v.petId);
   const availability = useAvailability({ ...v, excludeId: editing?.id });
   const times = availability.slots, vetName = (liveDoctors(db).find(x => x[0] === v.vetId) || [])[1];
   const ready = S && v.vetId && v.date;
@@ -130,6 +131,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
         <SlotPicker times={times} value={v.time} onChange={x => f.set("time", x)} error={f.show("time")} hint={timeHint} dur={S ? S.dur : 30} suggest={nextDay} onSuggest={() => f.patch({ date: nextDay, time: "" })} />
         {S && v.time && times.includes(v.time) && <p className="ow-note info">{S.label}: {fmt12(v.time)} to {fmt12(addMin(v.time, S.dur))} with {vetName}</p>}
         <label>Follow-up request (optional)<select value={v.followUpId} disabled={!!editing?.followUpId} onChange={e => f.set("followUpId", e.target.value)}><option value="">Regular visit</option>{db.records.filter(r => r.id === v.followUpId || openFollowUps(db,v.petId).some(x => x.id === r.id)).filter(r => r.petId === v.petId).map(r => <option key={r.id} value={r.id}>{r.followUpDate} · {r.followUpReason}</option>)}</select></label>
+        {followUp && <section className="ow-note" aria-label="Selected follow-up instructions"><b>{followUp.careStatus} · Target: {followUp.followUpDate}</b><p style={{whiteSpace:"pre-wrap"}}>{followUp.followUpReason}</p><small>The target is a recommended date. Select an available visit time above.</small></section>}
         <Field id="notes" label="Note for the clinic (optional)" type="textarea" rows={2} max={200} value={v.notes} onChange={x => f.set("notes", x)} onBlur={() => f.blur("notes")} error={f.show("notes")} hint="Symptoms, behavior or anything the clinic should know" />
         <Suggest items={NOTE_IDEAS} onPick={s => f.set("notes", addNote(v.notes, s, 200))} />
         <p className="ow-hint" style={{ marginTop: 10 }}>The clinic will reach you at {owner.phone || "your number on file"}. You can update it in My Profile.</p>

@@ -440,3 +440,13 @@
   .shell.th-owner .ow-price-list li{align-items:flex-start;flex-direction:column;gap:12px;padding:14px}
   .shell.th-owner .ow-price-amount{text-align:left}
 }
+
+/* Saved care instructions and explicit follow-up requests in owner history. */
+.shell.th-owner .vh-care-plan{background:var(--ow-soft);border:1px solid var(--ow-line);border-radius:16px;padding:16px;margin-bottom:18px}
+.shell.th-owner .vh-care-plan h4,.shell.th-owner .vh-rx h4{margin:0 0 10px;color:var(--navy)}
+.shell.th-owner .vh-care-details p{margin:8px 0;line-height:1.6}
+.shell.th-owner .vh-directions{white-space:pre-wrap;overflow-wrap:anywhere}
+.shell.th-owner .vh-rx{margin-bottom:18px}
+.shell.th-owner .vh-rx ul{list-style:none;margin:0;padding:0}
+.shell.th-owner .vh-rx li{border:1px solid var(--ow-line);border-radius:14px;padding:14px;margin-top:10px;overflow-wrap:anywhere}
+.shell.th-owner .vh-care-details dl{padding-top:12px;border-top:1px solid var(--ow-line)}
