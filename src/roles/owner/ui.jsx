@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import "./owner.css";
 
 /* Hand-off between pages (e.g. "Book a visit" on a pet card opens the form with that pet selected). */
@@ -61,9 +62,13 @@ export function Suggest({ items, onPick, label = "Suggestions:" }) {
   return <div className="ow-chips"><small>{label}</small>{items.map(s => <button type="button" key={s} className="ow-chip" onClick={() => onPick(s)}>{s}</button>)}</div>;
 }
 
-export function Modal({ title, onClose, children }) {
+export function Modal({ title, onClose, children, className = "", portalTo, closeButton = false }) {
   useEffect(() => { const k = e => e.key === "Escape" && onClose(); document.addEventListener("keydown", k); return () => document.removeEventListener("keydown", k); }, []);
-  return <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}><div className="modal" role="dialog" aria-modal="true" aria-label={title}><h3>{title}</h3>{children}</div></div>;
+  const dialog = <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}><div className={`modal ${className}`} role="dialog" aria-modal="true" aria-label={title}>
+    {closeButton ? <div className="ow-account-heading"><h3>{title}</h3><button type="button" className="ow-account-close" onClick={onClose} aria-label="Close dialog">×</button></div> : <h3>{title}</h3>}
+    {children}
+  </div></div>;
+  return portalTo ? createPortal(dialog, portalTo) : dialog;
 }
 
 /* Append a suggestion to a note without exceeding the limit or repeating it. */

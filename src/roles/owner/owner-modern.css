@@ -43,6 +43,7 @@
 .shell.th-owner .sidefoot{border-top:1px solid rgba(255,255,255,.22);padding-top:14px}
 .shell.th-owner .me b{font-weight:600;font-size:14px}
 .shell.th-owner .me small{color:var(--butter)}
+.shell.th-owner .sidefoot .av{width:46px;height:46px;font-size:20px}
 .shell.th-owner .sidefoot .btn.gold{background:rgba(255,255,255,.16);color:#fff;border:1.5px solid rgba(255,255,255,.45);box-shadow:none}
 .shell.th-owner .sidefoot .btn.gold:hover{background:#fff;color:var(--navy)}
 
@@ -55,15 +56,15 @@
 }
 .shell.th-owner .top h1{font-size:clamp(20px,2.2vw,26px);font-weight:700;letter-spacing:-.01em;line-height:1.2}
 .shell.th-owner .top p{font-size:13.5px;margin-top:2px}
-.shell.th-owner .content{max-width:1280px;width:100%;padding:8px clamp(16px,2.6vw,32px) 56px}
+.shell.th-owner .content{max-width:none;width:100%;padding:8px clamp(16px,2.6vw,32px) 56px}
 
 /* account button + menu */
 .shell.th-owner .ow-hdbtn{
   background:#fff;border:1px solid var(--ow-line);box-shadow:var(--ow-shadow);
-  padding:4px 14px 4px 4px;font-weight:600;transition:box-shadow .15s,border-color .15s;
+  padding:6px 16px 6px 6px;font-size:16px;font-weight:600;transition:box-shadow .15s,border-color .15s;
 }
 .shell.th-owner .ow-hdbtn:hover{border-color:#bfd0f5}
-.shell.th-owner .ow-hdbtn small{font-weight:400}
+.shell.th-owner .ow-hdbtn small{font-weight:400;font-size:13px;margin-top:3px}
 .shell.th-owner .ow-menu{border:1px solid var(--ow-line);border-radius:20px;box-shadow:0 22px 50px rgba(30,58,138,.22);padding:8px;min-width:220px}
 .shell.th-owner .ow-menu button{border-radius:12px;padding:11px 14px;font-size:14px;font-weight:500;color:var(--ink)}
 .shell.th-owner .ow-menu button:hover{background:var(--ow-soft);color:var(--navy)}
@@ -173,9 +174,9 @@
 .shell.th-owner .ow-banner.wa{background:#fff8dc;border-color:#f1dd8a;color:#6b5200;box-shadow:inset 4px 0 0 #e0a800}
 
 /* ---------- pet cards ---------- */
-.shell.th-owner .petgrid{grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:18px}
+.shell.th-owner .petgrid{grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:24px;container:pet-grid / inline-size}
 .shell.th-owner .petcard{
-  position:relative;overflow:hidden;cursor:pointer;padding:22px 20px 18px;
+  position:relative;overflow:hidden;cursor:pointer;padding:28px 26px 24px;
   background:#fff;border:1px solid var(--ow-line);border-radius:26px;box-shadow:var(--ow-shadow);
   transition:transform .2s,box-shadow .2s,border-color .2s;
 }
@@ -183,19 +184,29 @@
 .shell.th-owner .petcard:hover{transform:translateY(-3px);border-color:#bfd0f5;box-shadow:var(--ow-shadow-up)}
 .shell.th-owner .petcard:focus-visible{outline-offset:3px}
 .shell.th-owner .pc-top{display:flex;align-items:center;gap:14px}
-.shell.th-owner .petcard .big{flex:none;width:64px;height:64px;border-radius:20px;overflow:hidden;background:#fff4cc;color:var(--navy);display:grid;place-items:center;font-size:inherit}
+.shell.th-owner .petcard .big{flex:none;width:84px;height:84px;border-radius:24px;overflow:hidden;background:#fff4cc;color:var(--navy);display:grid;place-items:center;font-size:inherit}
 .shell.th-owner .petcard .big .ow-ava{width:100%!important;height:100%!important;border-radius:0!important}
 .shell.th-owner .pc-id{min-width:0}
-.shell.th-owner .petcard h3{margin:0;font-size:20px;font-weight:700;color:var(--navy);line-height:1.2;overflow-wrap:anywhere}
-.shell.th-owner .petcard p{margin:2px 0 0;font-size:13.5px;color:var(--mu)}
+.shell.th-owner .petcard h3{margin:0;font-size:24px;font-weight:700;color:var(--navy);line-height:1.2;overflow-wrap:anywhere}
+.shell.th-owner .petcard p{margin:4px 0 0;font-size:16px;color:var(--mu)}
 .shell.th-owner .pc-tags{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 8px}
-.shell.th-owner .pc-tags span{background:var(--ow-soft);color:#1d4ed8;border-radius:99px;padding:3px 12px;font-size:12.5px;font-weight:600}
+.shell.th-owner .pc-tags span{background:var(--ow-soft);color:#1d4ed8;border-radius:99px;padding:4px 12px;font-size:14px;font-weight:600}
 .shell.th-owner .petcard .kv{display:grid;gap:3px;border-top:1px solid #edf1fa;padding:11px 0}
-.shell.th-owner .petcard .kv span{font-size:12px}
-.shell.th-owner .petcard .kv b{font-weight:600;color:var(--navy);font-size:14px;line-height:1.5}
-.shell.th-owner .pc-more{display:flex;align-items:center;gap:4px;margin-top:6px;color:var(--blue);font-size:13px;font-weight:600}
+.shell.th-owner .petcard .kv>span{font-size:14px}
+.shell.th-owner .petcard .kv b{font-weight:600;color:var(--navy);font-size:16px;line-height:1.6}
+.shell.th-owner .pc-more{display:flex;align-items:center;gap:4px;margin-top:6px;color:var(--blue);font-size:15px;font-weight:600}
 .shell.th-owner .pc-more svg{transition:transform .15s}
 .shell.th-owner .petcard:hover .pc-more svg{transform:translateX(3px)}
+
+/* A single pet uses a readable summary row on wide screens. */
+@container pet-grid (min-width:900px){
+  .shell.th-owner .petcard:only-child{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 28px;align-items:start}
+  .shell.th-owner .petcard:only-child .pc-top{grid-column:1;grid-row:1}
+  .shell.th-owner .petcard:only-child .pc-tags{grid-column:1;grid-row:2;margin:0}
+  .shell.th-owner .petcard:only-child .kv{grid-column:2;grid-row:1 / span 2;padding:12px 0;border-top:0}
+  .shell.th-owner .petcard:only-child .kv+.kv{grid-column:3}
+  .shell.th-owner .petcard:only-child .pc-more{grid-column:1 / -1;border-top:1px solid var(--ow-line);padding-top:16px}
+}
 
 /* ---------- cards, tables, badges ---------- */
 .shell.th-owner .card,.shell.th-owner .stat,.shell.th-owner .ow-dayp,.shell.th-owner .ow-cal,.shell.th-owner .op-req,.shell.th-owner .op-start{

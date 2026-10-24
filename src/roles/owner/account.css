@@ -1,0 +1,40 @@
+/* Account dialogs are portalled into the shell to escape the sticky header's
+   backdrop-filter containing block while retaining the current portal theme. */
+.shell .scrim .modal.ow-account-dialog{
+  width:min(680px,100%);max-height:calc(100dvh - 32px);padding:28px;
+  font-size:16px;line-height:1.5;border-radius:28px;
+}
+.shell .scrim .modal.ow-account-profile{width:min(1080px,100%)}
+.shell .scrim .modal.ow-account-dialog::before{display:none}
+.ow-account-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:24px}
+.shell .modal.ow-account-dialog .ow-account-heading h3{font-size:26px;margin:0;line-height:1.25}
+.ow-account-close{display:grid;place-items:center;flex:none;width:44px;height:44px;padding:0;border:1px solid #dbe4f7;border-radius:50%;background:#eef3ff;color:var(--navy);font-size:28px;cursor:pointer}
+.ow-account-close:hover{background:#dbe7ff}
+.ow-profile-layout{display:grid;grid-template-columns:minmax(220px, .75fr) minmax(0,2fr);gap:28px;align-items:start}
+.shell .modal.ow-account-dialog .ow-card{min-width:0;margin-bottom:0;border:0;padding:0;border-radius:0}
+.shell .modal.ow-account-dialog .ow-profile-photo{padding:22px;border-radius:20px;background:#f4f7ff;border:1px solid #e3e9f7}
+.shell .modal.ow-account-dialog .ow-photo{flex-direction:column;align-items:flex-start;gap:18px}
+.shell .modal.ow-account-dialog .ow-photo>div{min-width:0;max-width:100%}
+.shell .modal.ow-account-dialog h3{font-size:20px}
+.shell .modal.ow-account-dialog .ow-card>p{font-size:15px;margin-bottom:20px}
+.ow-account-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.shell .modal.ow-account-dialog .fld{min-width:0;margin-bottom:16px}
+.shell .modal.ow-account-dialog .fld label{font-size:15px;margin-bottom:8px}
+.shell .modal.ow-account-dialog input{font-size:16px;min-height:48px;padding:11px 14px}
+.shell .modal.ow-account-dialog input[readonly]{background:#f1f4fa;color:#52617e}
+.shell .modal.ow-account-dialog .ow-hint,.shell .modal.ow-account-dialog .err{font-size:14px;overflow-wrap:anywhere}
+.shell .modal.ow-account-dialog .ow-req{font-size:15px;line-height:1.7;margin:0 0 20px;padding:16px 20px;border-radius:16px;background:#f4f7ff}
+.shell .modal.ow-account-dialog .chk{display:flex;align-items:center;gap:10px;margin:20px 0}
+.shell .modal.ow-account-dialog input[type=checkbox]{min-height:20px;width:20px;height:20px;padding:0;flex:none}
+.shell .modal.ow-account-dialog .row.end{margin-top:24px}
+.shell .modal.ow-account-dialog .btn{min-height:44px;font-size:15px;white-space:normal}
+@media(max-width:760px){
+  .ow-profile-layout{grid-template-columns:minmax(0,1fr);gap:24px}
+  .shell .modal.ow-account-dialog .ow-photo{flex-direction:row;align-items:center;flex-wrap:wrap}
+}
+@media(max-width:560px){
+  .ow-account-fields{grid-template-columns:minmax(0,1fr);gap:0}
+  .shell .scrim .modal.ow-account-dialog{padding:20px 18px calc(20px + env(safe-area-inset-bottom));max-height:92dvh;border-radius:28px 28px 0 0}
+  .shell .modal.ow-account-dialog .ow-account-heading h3{font-size:23px}
+  .shell .modal.ow-account-dialog .ow-profile-photo{padding:18px}
+}
