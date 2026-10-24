@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CheckCircle2 } from "lucide-react";
-import { TODAY, ICON, I, petName, ownerName } from "../lib.jsx";
+import { ICON, I } from "../lib.jsx";
 import PetApprovalModal from "./PetApprovalModal.jsx";
 
 export default function PetRequestsPage({ db, setDb, me, say }) {
@@ -30,7 +30,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
             Online Pet Registrations &amp; Digital Card Issuance
           </h2>
           <p style={{ margin: 0, color: "#64748b", fontSize: "13.5px" }}>
-            Owners register pets via the online portal. Approve registrations to automatically generate their official digital vaccination card and booster schedule.
+            Owners register pets via the online portal. Approve registrations to automatically generate their official digital vaccination card and suggested protocols for veterinarian review.
           </p>
         </div>
       </div>
@@ -38,7 +38,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
       {/* Filter and search bar */}
       <div className="card" style={{ padding: "14px", marginBottom: "16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div style={{ display: "flex", flexWrap:"wrap", gap: "8px" }}>
             {["Pending", "Approved", "Declined", "All"].map(status => {
               const count = status === "All" ? reqs.length : reqs.filter(x => x.status === status).length;
               return (
@@ -93,7 +93,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
                     cursor: "pointer",
                     transition: "all 0.15s ease"
                   }}
-                  title="Click to review registration and issue vaccination card"
+                  title={isPending ? "Review registration" : "View the recorded decision"}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                     <span style={{ fontSize: "28px", color: "var(--navy)" }}><I e={r.species || "paw"} size={28} /></span>
@@ -153,15 +153,15 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
                       </button>
                     ) : isApproved ? (
                       <span style={{ fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>
-                        Approved ({r.approvedAt || TODAY})
+                        Approved ({r.approvedAt || "date not recorded"})
                       </span>
                     ) : (
                       <button
                         className="btn ghost sm"
                         onClick={() => setActiveReq(r)}
-                        title="Re-review registration"
+                        title="View the recorded decision and correction instructions"
                       >
-                        Re-evaluate
+                        View decline details
                       </button>
                     )}
                   </div>

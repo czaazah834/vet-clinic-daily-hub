@@ -438,3 +438,21 @@ A target beyond the booking window requires selecting a visit date; it is not
 silently changed to today.
 
 Check: `node --test tests/assistant-workflow.test.js`; `npm run build`.
+
+### Assistant registration review
+
+The review screen identifies vaccine protocol dates as suggestions needing vet
+review. The official card number appears only after server approval; preview
+values do not create a card, certify a dose or reserve an appointment. Approval
+and decline retain the server-returned request revision and recorded metadata.
+The screen does not invent measurement history or claim email/SMS delivery.
+Owners can read decisions and correction instructions in their portal.
+
+Only the pending version the assistant opened can be reviewed. Live request
+changes or a server version conflict require closing and reopening the latest
+request. Duplicate approval/decline submissions are blocked while saving; other
+failures keep the form and decline reason available for retry. Declined request
+details remain read-only until the owner corrects and resubmits the request,
+following the existing registration contract. Review filters wrap on mobile.
+
+Check: `node --test tests/registration-review.test.js`; `npm run build`.
