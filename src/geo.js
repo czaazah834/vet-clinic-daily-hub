@@ -1,10 +1,12 @@
 // Location + contact validation APIs
-// Data: country-state-city (offline), libphonenumber-js (mobile).
-import { Country, State, City } from 'country-state-city';
+// Bundled lightweight countries list (18 KB) + PH locations, libphonenumber-js (mobile).
 import { parsePhoneNumberFromString, getCountryCallingCode } from 'libphonenumber-js/max';
 import { PUBLIC } from './domains.js';
 import { checkPhZip, zipsFor } from './zipmatch.js';
 import PHD from './ph-locations.json';
+import COUNTRIES from './countries-data.json';
+
+const countryByCode = new Map(COUNTRIES.map((c) => [c.isoCode, c]));
 
 // Postal-code formats for every country that has a postal system. The ~66 that have none fall back to a loose 3-10 char check.
 const ZIP = Object.fromEntries(Object.entries({
@@ -53,7 +55,7 @@ export const search = (list, q, get = (x) => x) => { q = fold(q); return !q ? li
 const cc = (c) => String(c ?? '').toUpperCase();
 
 export const countryInfo = (code) => {
-  const c = Country.getCountryByCode(cc(code)); if (!c) return null;
+  const c = countryByCode.get(cc(code)); if (!c) return null;
   let dial; try { dial = '+' + getCountryCallingCode(c.isoCode); } catch { dial = '+' + String(c.phonecode).split('-')[0].replace(/\D/g, ''); }
   return { code: c.isoCode, name: c.name, dial, flag: c.flag, zipFormat: (ZIP[c.isoCode] ?? LOOSE).source, zipFlags: (ZIP[c.isoCode] ?? LOOSE).flags };
 };
@@ -82,7 +84,14 @@ export const phCities = async (st) => {
   return [...new Set(names.map(phLabel))];
 };
 
-export const states = async (code) => cc(code) === 'PH' ? phStates() : State.getStatesOfCountry(cc(code));
+export const states = async (code) => {
+  if (cc(code) === 'PH') return phStates();
+  try {
+    const res = await fetch(`/api/geo/states?country=${encodeURIComponent(code)}`);
+    if (res.ok) return await res.json();
+  } catch (_) {}
+  return [];
+};
 
 export const findState = async (code, v) => {
   const all = await states(code), exact = all.find((s) => s.isoCode.toLowerCase() === String(v).toLowerCase() || norm(s.name) === norm(v));
@@ -122,32 +131,6 @@ export async function checkEmail(email, { mx = true } = {}) {
   return { ok: true, email: em, domain };
 }
 
-// ZIP lookup for non-PH via Zippopotam
-const ZIPPO = new Set('AD AR AS AT AU BD BE BG BR CA CH CZ DE DK DO ES FI FO FR GB GF GG GL GP GT GU HR HU IE IN IS IT JP LI LK LT LU LV MC MD MH MK MP MQ MT MX MY NL NO NZ PK PL PM PR PT RE RO RU SE SG SI SJ SK SM TH TR UA US UY VA VI WF YT ZA'.split(' '));
-const STRICT_STATE = new Set(['US', 'CA', 'AU']);
-const zmemo = new Map();
-const zippoKey = (code, z) => code === 'GB' ? z.toUpperCase().split(/\s+/)[0] : code === 'CA' ? z.toUpperCase().replace(/\s+/g, '').slice(0, 3) : code === 'NL' ? z.slice(0, 4) : z;
-const zippo = (code, z) => {
-  const key = `/${code.toLowerCase()}/${encodeURIComponent(zippoKey(code, z))}`;
-  const hit = zmemo.get(key); if (hit && Date.now() - hit.t < 864e5) return hit.p;
-  if (zmemo.size > 500) zmemo.clear();
-  const p = fetch('https://api.zippopotam.us' + key, { signal: AbortSignal.timeout(4000), headers: { Accept: 'application/json' } })
-    .then((r) => r.status === 404 ? { places: [] } : r.ok ? r.json() : Promise.reject(new Error(`Zippopotam ${r.status}`)))
-    .then((j) => j.places ?? []);
-  zmemo.set(key, { t: Date.now(), p }); p.catch(() => zmemo.delete(key)); return p;
-};
-
-async function checkZipPlace(c, st, city, z) {
-  if (!ZIPPO.has(c.code)) return {};
-  let pl; try { pl = await zippo(c.code, z); } catch { return {}; }
-  if (!pl.length) return c.code === 'US' ? { error: `${z} is not a valid US ZIP code.` } : {};
-  const stOk = pl.some((p) => String(p['state abbreviation'] ?? '').toUpperCase() === String(st.isoCode ?? '').toUpperCase() || norm(p.state) === norm(st.name));
-  if (!stOk && STRICT_STATE.has(c.code)) return { error: `ZIP ${z} is in ${[...new Set(pl.map((p) => p.state))].join(' / ')}, not ${st.name}.` };
-  if (!stOk || !pl.some((p) => same(p['place name'], city)))
-    return { warning: `ZIP ${z} is listed under ${[...new Set(pl.map((p) => p['place name']))].slice(0, 3).join(' / ')}. Double-check that it matches ${city}.` };
-  return {};
-}
-
 export async function checkAddress({ country, state, city, zip }) {
   const c = countryInfo(country), errors = {}; const out = { ok: false, errors };
   if (!c) return { ...out, errors: { country: 'Select a country.' } };
@@ -164,25 +147,28 @@ export async function checkAddress({ country, state, city, zip }) {
     if (!phName) errors.city = `"${city}" is not a city or municipality of ${st.name}. Pick one from the list.`;
   }
   if (city && !errors.state && c.code !== 'PH') {
-    const inState = City.getCitiesOfState(c.code, st?.isoCode ?? '') ?? [];
-    if (inState.length ? !inState.some((x) => same(x.name, city)) : false) {
-      const other = (City.getCitiesOfCountry(c.code) ?? []).find((x) => same(x.name, city));
-      const os = other && sl.find((x) => x.isoCode === other.stateCode);
-      if (other) errors.city = `"${city}" is in ${os?.name ?? 'another state/province'}, not ${st.name}.`;
-      else warnings.push(`"${city}" is not in our city list; double-check the spelling.`);
-    }
+    try {
+      const res = await fetch('/api/geo/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ country, state, city, zip })
+      });
+      if (res.ok) {
+        const val = await res.json();
+        return val;
+      }
+    } catch (_) {}
   }
   let zipWarning;
   if (!errors.zip_code && !errors.state && !errors.city && st && city) {
     if (c.code === 'PH') { const m = checkPhZip({ state: st.name, city: phName, zip: z }); if (!m.ok) errors.zip_code = m.error; }
-    else { const m = await checkZipPlace(c, st, city, z); if (m.error) errors.zip_code = m.error; else if (m.warning) { zipWarning = m.warning; warnings.push(m.warning); } }
   }
   out.warnings = warnings;
   return { ...out, ok: !Object.keys(errors).length, errors, zipWarning, state: st?.name ?? state, stateCode: st?.isoCode };
 }
 
 export function searchCountries(q) {
-  return search(Country.getAllCountries().map((c) => countryInfo(c.isoCode)).filter(Boolean), q, (c) => c.name);
+  return search(COUNTRIES.map((c) => countryInfo(c.isoCode)).filter(Boolean), q, (c) => c.name);
 }
 
 export async function searchStates(country, q) {
@@ -197,11 +183,11 @@ export async function searchCities(country, state, q) {
     const pv = state ? await findState('PH', state) : null;
     return pv ? phSearch(await phCities(pv), q) : [];
   }
-  const s = state ? await findState(country, state) : null;
-  let L = (s ? City.getCitiesOfState(cc(country), s.isoCode) : null) ?? [];
-  if (!L.length && !s) L = City.getCitiesOfCountry(cc(country)) ?? [];
-  const names = [...new Set(L.map((c) => c.name))].sort((a, b) => a.localeCompare(b));
-  return search(names, q).slice(0, 100);
+  try {
+    const res = await fetch(`/api/geo/cities?country=${encodeURIComponent(country)}&state=${encodeURIComponent(state || '')}&q=${encodeURIComponent(q || '')}`);
+    if (res.ok) return await res.json();
+  } catch (_) {}
+  return [];
 }
 
 export function getZips(country, state, city) {
