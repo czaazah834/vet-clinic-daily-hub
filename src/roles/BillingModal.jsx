@@ -1,3 +1,4 @@
+import { useCheckoutClaim } from "../useCheckoutClaim.js";
 import { useState, useEffect } from "react";
 import { petName, ownerName, addLog } from "../lib.jsx";
 import { api } from "../api.js";
@@ -31,6 +32,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   const [formErr, setFormErr] = useState("");
   const [paid, setPaid] = useState(appt.billingStatus === "Paid");
   const [loading, setLoading] = useState(false);
+  const claim = useCheckoutClaim(appt.id, paid, me.role === "assistant");
 
   // Load official clinic price catalog from backend
   useEffect(() => {
@@ -104,9 +106,11 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
       }
     }
 
+    if (!claim.ready) { setFormErr("Reclaim this checkout before recording payment. Your invoice entries are preserved."); return; }
     setLoading(true);
 
     const payload = {
+      claimToken: claim.claimToken,
       amount: total,
       discount: +discount,
       billingStatus: "Paid",
@@ -153,6 +157,10 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
       <div className="modal" style={{ width: "min(620px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "22px 26px" }}>
         
+        {!paid && me.role === "assistant" && !claim.ready && <div role="alert" style={{padding:12,background:"#fff7ed",marginBottom:12}}>
+          {claim.error || "Reserving this checkout for you…"}
+          {claim.error && <button className="btn ghost sm" onClick={claim.retry}>Retry checkout claim</button>}
+        </div>}
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #f1f5f9", paddingBottom: "12px" }}>
           <div>
@@ -482,7 +490,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             {/* Actions */}
             <div className="row end" style={{ gap: "10px" }}>
               <button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button>
-              <button type="submit" className="btn gold" disabled={loading} style={{ fontWeight: 700 }}>
+              <button type="submit" className="btn gold" disabled={loading || !claim.ready} style={{ fontWeight: 700 }}>
                 {loading ? "Processing..." : "Settle & Process Payment"}
               </button>
             </div>

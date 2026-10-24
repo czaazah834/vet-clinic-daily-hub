@@ -34,6 +34,8 @@ async function main() {
     await query(fs.readFileSync(path.join(__dirname, "../database/scheduling.sql"), "utf-8"));
     console.log("Tables and indexes successfully verified.");
 
+    await query(fs.readFileSync(path.join(__dirname, "../database/checkout-inbox.sql"), "utf-8"));
+
     // 2. Default Seed Passwords (satisfies 12-128 chars, uppercase, lowercase, number, symbol)
     const adminPassHash = await hashPassword("Admin1234567!");
     const vetPassHash = await hashPassword("Vet123456789!");

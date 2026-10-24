@@ -14,7 +14,7 @@ const fakeQuery = async (sql, params = []) => {
   const rows = value => ({ rows: structuredClone(value), rowCount: value.length });
   if (sql.includes('FROM sessions s')) return rows(users[params[0]] ? [users[params[0]]] : []);
   if (sql.startsWith('SELECT to_regclass')) return rows([]);
-  if (sql.startsWith('-- Idempotent migration') || sql.startsWith('SELECT pg_advisory_xact_lock')) return rows([]);
+  if (sql.startsWith('-- Durable reception') || sql.startsWith('-- Idempotent migration') || sql.startsWith('SELECT pg_advisory_xact_lock')) return rows([]);
   if (sql.startsWith('ALTER TABLE')) return rows([]);
   if (sql.startsWith('SELECT')) {
     if (sql.startsWith("SELECT id, vet_id FROM users")) return rows(['v1', 'u_vet'].includes(params[0]) ? [{ id: 'u_vet', vet_id: 'v1' }] : []);
@@ -28,6 +28,7 @@ const fakeQuery = async (sql, params = []) => {
     if (sql.includes('FROM appointments WHERE id = $1')) return rows(db.appts.filter(a => a.id === params[0]));
     if (sql.includes('FROM appointments WHERE date = $1')) return rows(db.appts.filter(a => a.date === params[0] && (a.vet_id === params[1] || a.pet_id === params[2])));
     if (sql.includes('FROM appointments WHERE pet_id = $1')) return rows(db.appts.filter(a => a.pet_id === params[0] && params[1].includes(a.vet_id) && ['Checked-in', 'In consultation'].includes(a.status)));
+    if (sql.includes('FROM checkout_tasks WHERE appointment_id')) return rows(db.tasks.filter(t=>t.appointment_id===params[0]));
     if (sql.includes('FROM consultations WHERE appt_id')) return rows(db.consults.filter(c => c.appt_id === params[0]));
     if (sql.includes('FROM vaccinations WHERE id')) return rows(db.vaccs.filter(v => v.id === params[0]));
     const scopedPet = id => !params.length || db.pets.some(p => p.id === id && (Array.isArray(params[0]) ? db.appts.some(a => a.pet_id === p.id && params[0].includes(a.vet_id)) : p.owner_id === params[0]));
@@ -39,6 +40,8 @@ const fakeQuery = async (sql, params = []) => {
     if (sql.startsWith('SELECT * FROM pet_requests')) return rows(db.requests.filter(r => !params.length || r.owner_id === params[0]));
     if (sql.startsWith('SELECT * FROM audit_logs')) return rows(db.logs);
   }
+  if (sql.startsWith('INSERT INTO checkout_tasks')) { if (!db.tasks.some(t=>t.appointment_id===params[0])) db.tasks.push({appointment_id:params[0],status:'pending'}); return rows([]); }
+  if (sql.startsWith('UPDATE checkout_tasks')) { const t=db.tasks.find(t=>t.appointment_id===params[0]);t.status='completed';t.completed_by=params[1];return rows([t]); }
   if (sql.startsWith('INSERT INTO audit_logs')) { const row = { user_name: params[0], user_role: params[1], action: params[2] }; db.logs.push(row); return rows([row]); }
   if (sql.startsWith('INSERT INTO appointments')) { const row = { id: params[0], pet_id: params[1], vet_id: params[2], date: params[3], time: params[4], reason: params[5], status: 'Scheduled', amount: params[6] }; db.appts.push(row); return rows([row]); }
   if (sql.startsWith('INSERT INTO consultations')) { const row = Object.fromEntries(['id', 'pet_id', 'vet_id', 'appt_id', 'date', 'symptoms', 'objective', 'diagnosis', 'treatment', 'prescription'].map((k, i) => [k, params[i]])); db.consults.push(row); return rows([row]); }
@@ -66,13 +69,13 @@ const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.o
 after(() => new Promise(resolve => server.close(resolve)));
 beforeEach(() => {
   calls = []; failSql = null; rollbacks = 0;
-  db = { owners: [{ id: 'o1', name: 'Own owner' }, { id: 'o2', name: 'Other owner' }], pets: [{ id: 'p1', owner_id: 'o1', name: 'Own pet', weight: 5, vaccination_card_id: 'VACC-SYNTHETIC' }, { id: 'p2', owner_id: 'o2', name: 'Other pet', weight: 7 }], appts: [{ id: 'a1', pet_id: 'p1', vet_id: 'v1', date: '2026-10-24', time: '09:00', status: 'Scheduled', amount: 600, billing_status: 'Unbilled' }, { id: 'a2', pet_id: 'p2', vet_id: 'v2', date: '2026-10-24', time: '10:00', status: 'Scheduled' }], requests: [{ id: 'r1', owner_id: 'o1', status: 'Pending' }, { id: 'r2', owner_id: 'o2', status: 'Pending' }], consults: [], vaccs: [], logs: [] };
+  db = { owners: [{ id: 'o1', name: 'Own owner' }, { id: 'o2', name: 'Other owner' }], pets: [{ id: 'p1', owner_id: 'o1', name: 'Own pet', weight: 5, vaccination_card_id: 'VACC-SYNTHETIC' }, { id: 'p2', owner_id: 'o2', name: 'Other pet', weight: 7 }], appts: [{ id: 'a1', pet_id: 'p1', vet_id: 'v1', date: '2026-10-24', time: '09:00', status: 'Scheduled', amount: 600, billing_status: 'Unbilled' }, { id: 'a2', pet_id: 'p2', vet_id: 'v2', date: '2026-10-24', time: '10:00', status: 'Scheduled' }], requests: [{ id: 'r1', owner_id: 'o1', status: 'Pending' }, { id: 'r2', owner_id: 'o2', status: 'Pending' }], consults: [], vaccs: [], logs: [], tasks: [] };
 });
 const request = async (role, method, path, body) => {
   const res = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer session-${role}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   return { status: res.status, data: await res.json() };
 };
-const endpoints = [['GET', '/appointments/availability'], ['GET', '/reminders/status'], ['GET', '/state'], ['GET', '/logs'], ['GET', '/services/prices'], ['POST', '/owners'], ['POST', '/pets'], ['POST', '/owner/contact'], ['POST', '/owner/pets'], ['POST', '/pets/p1/weights'], ['POST', '/pets/p1/photo'], ['POST', '/owner/pets/p1/photo'], ['POST', '/pet-requests'], ['DELETE', '/pet-requests/r1'], ['POST', '/pet-requests/r1/approve'], ['POST', '/pet-requests/r1/decline'], ['POST', '/appointments'], ['PUT', '/appointments/a1'], ['PATCH', '/appointments/a1/status'], ['DELETE', '/appointments/a1'], ['POST', '/appointments/a1/billing'], ['POST', '/walk-in'], ['POST', '/vaccinations'], ['DELETE', '/vaccinations/v1'], ['POST', '/consultations'], ['POST', '/logs'], ['POST', '/reminders/send'], ['POST', '/reminders/log-call']];
+const endpoints = [['GET', '/checkout-inbox'], ['POST', '/checkout-inbox/a1/claim'], ['POST', '/checkout-inbox/a1/renew'], ['POST', '/checkout-inbox/a1/release'], ['GET', '/appointments/availability'], ['GET', '/reminders/status'], ['GET', '/state'], ['GET', '/logs'], ['GET', '/services/prices'], ['POST', '/owners'], ['POST', '/pets'], ['POST', '/owner/contact'], ['POST', '/owner/pets'], ['POST', '/pets/p1/weights'], ['POST', '/pets/p1/photo'], ['POST', '/owner/pets/p1/photo'], ['POST', '/pet-requests'], ['DELETE', '/pet-requests/r1'], ['POST', '/pet-requests/r1/approve'], ['POST', '/pet-requests/r1/decline'], ['POST', '/appointments'], ['PUT', '/appointments/a1'], ['PATCH', '/appointments/a1/status'], ['DELETE', '/appointments/a1'], ['POST', '/appointments/a1/billing'], ['POST', '/walk-in'], ['POST', '/vaccinations'], ['DELETE', '/vaccinations/v1'], ['POST', '/consultations'], ['POST', '/logs'], ['POST', '/reminders/send'], ['POST', '/reminders/log-call']];
 test('all clinic endpoints reject anonymous access before any database query', async () => {
   for (const [method, path] of endpoints) assert.equal((await request(null, method, path, method === 'GET' ? undefined : {})).status, 401, path);
   assert.equal(calls.length, 0);
@@ -228,4 +231,12 @@ test('owners cannot bypass reservation validation by calling a booking a walk-in
 test('only reception and administrators can inspect automatic reminder status',async()=>{
   for (const role of ['owner','vet']) assert.equal((await request(role,'GET','/reminders/status')).status,403);
   for (const role of ['vet','admin']) assert.equal((await request(role,'GET',`/appointments/availability?vetId=v1&date=${futureDate()}&service=checkup`)).status,403);
+});
+
+
+test('checkout inbox and claims are reception-only, including spoofed role fields',async()=>{
+ for(const role of ['owner','vet','admin']) {
+  assert.equal((await request(role,'GET','/checkout-inbox')).status,403);
+  for(const action of ['claim','renew','release'])assert.equal((await request(role,'POST',`/checkout-inbox/a1/${action}`,{actorRole:'assistant'})).status,403);
+ }
 });

@@ -130,3 +130,69 @@ test('five explicit provider rejections stop retries and surface a failed job',a
  const jobs=(await query("SELECT * FROM vaccination_reminders WHERE vaccination_id='permanent-rejection' AND milestone=3")).rows;
  assert.equal(jobs.length,2);assert.ok(jobs.every(r=>r.status==='failed' && r.attempts===5));
 });
+
+// Reception handoff shares the same isolated database and real authenticated router.
+const payment = { amount:600, paymentMethod:'Cash',cashTendered:600,invoiceItems:[{name:'Synthetic consultation',price:600,qty:1}] };
+const consultation = id => ({ id:`note_${id}`,apptId:id,petId:'p7',date:clinicClock().date,symptoms:'Synthetic history',objective:'Synthetic findings',diagnosis:'Synthetic assessment',treatment:'Synthetic plan',prescription:'' });
+const prepareVisit = async (id,status='In consultation',visitDate=clinicClock().date)=>{
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,'p7','v1',$2,'09:00','Synthetic handoff',$3)",[id,visitDate,status]);
+ if(status==='Completed')await query("INSERT INTO consultations(id,pet_id,vet_id,appt_id,date,symptoms,objective,diagnosis,treatment,prescription) VALUES($1,'p7','v1',$2,$3,'Synthetic','Synthetic','Synthetic','Synthetic','')",[`note_${id}`,id,visitDate]);
+};
+let winningClaim,winningRole,losingRole;
+test('consultation and checkout task commit together, including rollback if task creation fails',async()=>{
+ await prepareVisit('handoff-rollback');
+ assert.equal((await req('assistant','GET','/checkout-inbox')).status,200);
+ await query(`CREATE FUNCTION reject_checkout_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.appointment_id='handoff-rollback' THEN RAISE EXCEPTION 'Synthetic task write failure'; END IF; RETURN NEW; END $$;
+ CREATE TRIGGER fail_checkout_fixture BEFORE INSERT ON checkout_tasks FOR EACH ROW EXECUTE FUNCTION reject_checkout_fixture()`);
+ const failed=await req('vet','POST','/consultations',consultation('handoff-rollback'));assert.equal(failed.status,500);
+ assert.equal((await query("SELECT status FROM appointments WHERE id='handoff-rollback'")).rows[0].status,'In consultation');
+ assert.equal((await query("SELECT COUNT(*)::int n FROM consultations WHERE appt_id='handoff-rollback'")).rows[0].n,0);
+ await query('DROP TRIGGER fail_checkout_fixture ON checkout_tasks');
+ const saved=await req('vet','POST','/consultations',consultation('handoff-rollback'));assert.equal(saved.status,200,JSON.stringify(saved));
+ assert.equal((await query("SELECT COUNT(*)::int n FROM checkout_tasks WHERE appointment_id='handoff-rollback'")).rows[0].n,1);
+});
+test('checkout inbox restores prior-day completions, excludes paid visits, and leaks no claim tokens',async()=>{
+ await prepareVisit('old-unpaid','Completed',shiftDate(clinicClock().date,-7));
+ await prepareVisit('old-paid','Completed',shiftDate(clinicClock().date,-7));await query("UPDATE appointments SET billing_status='Paid' WHERE id='old-paid'");
+ const inbox=await req('assistant','GET','/checkout-inbox');assert.equal(inbox.status,200,JSON.stringify(inbox));
+ assert.ok(inbox.data.tasks.some(t=>t.appointmentId==='old-unpaid'));
+ assert.ok(!inbox.data.tasks.some(t=>t.appointmentId==='old-paid'));
+ assert.ok(inbox.data.tasks.every(t=>!('claimToken'in t)&&!('claim_hash'in t)));
+ for(const role of ['owner','vet','admin'])assert.equal((await req(role,'GET','/checkout-inbox')).status,403);
+});
+test('two receptionists cannot claim or charge the same visit concurrently',async()=>{
+ await query("INSERT INTO users(id,first_name,last_name,birthday,password_hash,email,role,mobile_number,email_verified_at,mobile_verified) VALUES('u_assistant2','Other','Reception','1990-01-01','unused','assistant2@example.invalid','assistant','+639000000000',NOW(),true)");
+ await query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,'u_assistant2',NOW()+INTERVAL '1 day')",[sha256('test-assistant2')]);
+ const roles=['assistant','assistant2'];const results=await Promise.all(roles.map(r=>req(r,'POST','/checkout-inbox/handoff-rollback/claim',{})));
+ assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+ const index=results.findIndex(r=>r.status===200);winningRole=roles[index];losingRole=roles[1-index];winningClaim=results[index].data.claimToken;
+ assert.equal((await req(losingRole,'POST','/appointments/handoff-rollback/billing',payment)).status,409);
+ assert.equal((await req(losingRole,'POST','/appointments/handoff-rollback/billing',{...payment,claimToken:winningClaim})).status,409);
+ assert.equal((await req(winningRole,'POST','/appointments/handoff-rollback/billing',payment)).status,409);
+ assert.equal((await req(losingRole,'POST','/checkout-inbox/handoff-rollback/release',{claimToken:winningClaim})).status,409);
+ assert.equal((await req(winningRole,'POST','/checkout-inbox/handoff-rollback/renew',{claimToken:winningClaim})).status,200);
+});
+test('failed payment keeps the checkout claim; successful payment completes its task atomically',async()=>{
+ await query(`CREATE FUNCTION reject_payment_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE '%Processed payment%handoff-rollback%' THEN RAISE EXCEPTION 'Synthetic audit failure'; END IF; RETURN NEW; END $$;
+ CREATE TRIGGER fail_payment_fixture BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_payment_audit()`);
+ const body={...payment,claimToken:winningClaim};
+ assert.equal((await req(winningRole,'POST','/appointments/handoff-rollback/billing',body)).status,500);
+ assert.equal((await query("SELECT billing_status FROM appointments WHERE id='handoff-rollback'")).rows[0].billing_status,'Unbilled');
+ assert.equal((await query("SELECT status FROM checkout_tasks WHERE appointment_id='handoff-rollback'")).rows[0].status,'claimed');
+ await query('DROP TRIGGER fail_payment_fixture ON audit_logs');
+ assert.equal((await req(winningRole,'POST','/appointments/handoff-rollback/billing',body)).status,200);
+ assert.equal((await query("SELECT status FROM checkout_tasks WHERE appointment_id='handoff-rollback'")).rows[0].status,'completed');
+ assert.equal((await req(winningRole,'POST','/appointments/handoff-rollback/billing',body)).status,409);
+ assert.ok(!(await req('assistant','GET','/checkout-inbox')).data.tasks.some(t=>t.appointmentId==='handoff-rollback'));
+});
+test('closed/restarted workstation releases or expires claims, and stale tokens cannot pay',async()=>{
+ const first=await req('assistant','POST','/checkout-inbox/old-unpaid/claim',{});assert.equal(first.status,200);
+ assert.equal((await req('assistant','POST','/checkout-inbox/old-unpaid/release',{claimToken:first.data.claimToken})).status,200);
+ const second=await req('assistant2','POST','/checkout-inbox/old-unpaid/claim',{});assert.equal(second.status,200);
+ await query("UPDATE checkout_tasks SET lease_until=NOW()-INTERVAL '1 second' WHERE appointment_id='old-unpaid'");
+ assert.equal((await req('assistant2','POST','/appointments/old-unpaid/billing',{...payment,claimToken:second.data.claimToken})).status,409);
+ assert.equal((await req('assistant2','POST','/checkout-inbox/old-unpaid/renew',{claimToken:second.data.claimToken})).status,409);
+ const again=await req('assistant','POST','/checkout-inbox/old-unpaid/claim',{});assert.equal(again.status,200);
+ assert.notEqual(again.data.claimToken,first.data.claimToken);
+ assert.equal((await req('assistant','POST','/checkout-inbox/old-unpaid/renew',{claimToken:first.data.claimToken})).status,409);
+});

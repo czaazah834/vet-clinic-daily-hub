@@ -25,6 +25,7 @@ export async function clinicAccess(req, res, next) {
   };
   const appointment = async id => (await query('SELECT * FROM appointments WHERE id = $1', [id])).rows[0];
   try {
+    if (path === '/checkout-inbox' && req.method === 'GET' || /^\/checkout-inbox\/[^/]+\/(claim|renew|release)$/.test(path) && req.method === 'POST') return allow('assistant') ? next() : denied();
     if (key === 'GET /reminders/status') return allow('assistant', 'admin') ? next() : denied();
     if (key === 'GET /appointments/availability') return allow('owner', 'assistant') ? next() : denied();
     if (key === 'GET /state' || key === 'GET /services/prices') return next();

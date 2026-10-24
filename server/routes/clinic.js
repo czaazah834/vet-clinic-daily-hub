@@ -1,3 +1,5 @@
+import { checkoutRouter } from "./checkout.js";
+import { ensureCheckoutInboxSchema, createCheckoutTask, authorizeCheckoutPayment, finishCheckoutTask } from "../checkout.js";
 import { validateBoosterDate } from "../reminders.js";
 import { ensureSchedulingSchema } from "../database/schedulingSchema.js";
 import { availableSlots, assertAvailable, lockSchedule, clinicClock, inferBookingService, bookingError, minutes, validDate } from "../scheduling.js";
@@ -11,6 +13,7 @@ import { clinicAccess, assignedTo, validateStatusChange } from "../clinicAccess.
 
 export const clinicRouter = express.Router();
 clinicRouter.use(requireAuth, clinicAccess);
+clinicRouter.use("/checkout-inbox", checkoutRouter);
 
 /* Helper: log an action to audit_logs */
 async function recordAudit(userName, userRole, action) {
@@ -1666,17 +1669,20 @@ clinicRouter.post("/appointments/:id/billing", async (req, res) => {
   if (paymentMethod === "Cash" ? (typeof req.body.cashTendered !== "number" || !Number.isFinite(req.body.cashTendered) || req.body.cashTendered < total) : (typeof req.body.paymentReference !== "string" || req.body.paymentReference.trim().length < 4 || req.body.paymentReference.length > 100)) return res.status(400).json({ error: "Enter sufficient cash received or the confirmed payment reference." });
   try {
     await ensureCheckoutSchema();
+    await ensureCheckoutInboxSchema();
     const paymentDetails = { discount, reference: req.body.paymentReference || "", cashTendered: paymentMethod === "Cash" ? req.body.cashTendered : total, changeAmount: paymentMethod === "Cash" ? Math.round((req.body.cashTendered - total) * 100) / 100 : 0 };
     const result = await withTransaction(async client => {
       const current = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
       if (!current) throw Object.assign(new Error("Appointment not found."), { status: 404 });
       if (current.status !== "Completed" || current.billing_status === "Paid") throw Object.assign(new Error("Only a completed, unpaid consultation can be checked out."), { status: 409 });
       if (!(await client.query("SELECT id FROM consultations WHERE appt_id = $1", [apptId])).rows.length) throw Object.assign(new Error("A finalized consultation is required before payment."), { status: 409 });
+      await authorizeCheckoutPayment(client, apptId, req.user, req.body.claimToken);
       const updated = await client.query(
         `UPDATE appointments SET amount = $1, billing_status = 'Paid', payment_method = $2, invoice_items = $3, payment_details = $4, paid_at = NOW() WHERE id = $5 RETURNING *`,
         [total, paymentMethod, JSON.stringify(invoiceItems), JSON.stringify(paymentDetails), apptId]
       );
       await client.query("INSERT INTO audit_logs (user_name, user_role, action) VALUES ($1,$2,$3)", [req.user.name, req.user.role, `Processed payment ₱${total} (${paymentMethod}) for visit ${apptId}`]);
+      await finishCheckoutTask(client, apptId, req.user.id);
       return updated;
     });
 
@@ -2193,6 +2199,7 @@ clinicRouter.post("/consultations", async (req, res) => {
   if (vaccination?.nextDue && (!/^\d{4}-\d{2}-\d{2}$/.test(vaccination.nextDue) || vaccination.nextDue <= date)) return res.status(400).json({ error: "The booster date must follow the vaccination date." });
   if (weight !== undefined && (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0 || weight > 120)) return res.status(400).json({ error: "Enter a valid weight." });
   try {
+    await ensureCheckoutInboxSchema();
     if (vaccination) validateBoosterDate(date, vaccination.nextDue);
     const result = await withTransaction(async client => {
       const appt = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
@@ -2220,6 +2227,7 @@ clinicRouter.post("/consultations", async (req, res) => {
         await client.query("INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1,$2,$3,$4)", [petId, date, weight, req.user.name]);
       }
       await client.query("UPDATE appointments SET status = 'Completed', billing_status = 'Unbilled' WHERE id = $1", [apptId]);
+      await createCheckoutTask(client, apptId);
       await client.query("INSERT INTO audit_logs (user_name, user_role, action) VALUES ($1,$2,$3)", [req.user.name, req.user.role, `Finalized consultation ${consultId} for visit ${apptId}`]);
       return { consultation: inserted.rows[0], vaccination: savedVaccination };
     });
