@@ -578,3 +578,30 @@ Checks: `node --test tests/vet-handoff.test.js server/tests/care-workflow.test.j
 `npm run test:clinic`, `npm run test:scheduling`,
 `npm run test:scheduling:postgres` with a disposable local database, and
 `npm run build`.
+
+### Consultation completion acknowledgment
+
+SOAP keeps the visit snapshot from when it opened, even if a parent view later
+refreshes its appointment prop. Changed assignment, status, patient, slot, reason
+or intake blocks completion and leaves the entered notes visible. Current clients
+send `expectedVisit`; the server checks it under the appointment lock. Older
+callers without this optional snapshot retain the original finalization rules.
+
+While saving, form fields and close actions are disabled and repeated submissions
+share one pending guard. Failed requests retain the form and reuse its consultation
+and vaccination IDs. An uncertain response still requires refreshing clinic
+records to check whether completion committed; IDs do not bypass assignment or
+completed-visit guards.
+
+The successful response includes the persisted consultation, completed appointment,
+certified vaccination and saved weight author. The current UI verifies their
+identity before updating records, vaccine cards/recalls, care plans and checkout
+state. Both local collection aliases follow these saved values. A late response
+cannot restore a removed or reassigned patient. Care plan, vaccine, weight,
+completion, checkout task and audit remain one transaction.
+
+Default consultation/follow-up dates use Asia/Manila. Brand and lot remain actual
+entered values; the form no longer inserts an unconfirmed subcutaneous-route note.
+Checks: `node --test tests/consultation-save.test.js`, `npm run test:clinic`,
+`npm run test:scheduling:postgres` with a disposable local database, and
+`npm run build`.

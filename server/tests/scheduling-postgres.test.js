@@ -430,3 +430,29 @@ test('call notes and audit roll back together, and a failed save can reuse its o
  await query("UPDATE owners SET phone='' WHERE id='o1'");
  const unavailable=await req('assistant','POST','/reminders/log-call',{...body,requestId:crypto.randomUUID(),expectedPhone:'',outcome:'Contact unavailable'});assert.equal(unavailable.status,200);assert.equal(unavailable.data.call.phone,'');
 });
+
+test('SOAP finalization checks displayed visit, acknowledges persisted clinical data, and commits once',async()=>{
+ await prepareVisit('soap-safe');
+ const {intakeVisitSnapshot}=await import('../../src/intakeVisit.js');
+ const expectedVisit=intakeVisitSnapshot((await query("SELECT * FROM appointments WHERE id='soap-safe'")).rows[0]);
+ const body={...consultation('soap-safe'),expectedVisit,weight:5.6,careStatus:'Recheck required',followUpDate:shiftDate(clinicClock().date,7),followUpReason:'Reassess healing',performedServices:['srv_consult'],vaccination:{id:'soap-safe-dose',vaccine:'Anti-rabies',brand:'Synthetic actual brand',batch:'SYNTHETIC-ACTUAL-LOT',doseNo:1,doseOf:1,intervalDays:365,scheduleApproved:true,nextDue:shiftDate(clinicClock().date,365)}};
+ for(const patch of [{reason:'Old concern'},{time:'15:00'},{status:'Checked-in'},{vetId:'v2'},{intakeVitals:{weight:8,temp:39}}])assert.equal((await req('vet','POST','/consultations',{...body,expectedVisit:{...expectedVisit,...patch}})).status,409);
+ assert.equal((await query("SELECT COUNT(*)::int n FROM consultations WHERE appt_id='soap-safe'")).rows[0].n,0);
+ const weightsBefore=(await query("SELECT COUNT(*)::int n FROM pet_weights WHERE pet_id='p7'")).rows[0].n;
+ await query(`CREATE FUNCTION reject_soap_safe_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Finalized consultation note_soap-safe %' THEN RAISE EXCEPTION 'Synthetic finalization audit failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_soap_safe BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_soap_safe_audit()`);
+ assert.equal((await req('vet','POST','/consultations',body)).status,500);
+ assert.equal((await query("SELECT status FROM appointments WHERE id='soap-safe'")).rows[0].status,'In consultation');
+ assert.equal((await query("SELECT COUNT(*)::int n FROM vaccinations WHERE id='soap-safe-dose'")).rows[0].n,0);
+ assert.equal((await query("SELECT COUNT(*)::int n FROM pet_weights WHERE pet_id='p7'")).rows[0].n,weightsBefore);
+ assert.equal((await query("SELECT COUNT(*)::int n FROM checkout_tasks WHERE appointment_id='soap-safe'")).rows[0].n,0);
+ await query('DROP TRIGGER fail_soap_safe ON audit_logs');
+ const results=await Promise.all([req('vet','POST','/consultations',body),req('vet','POST','/consultations',body)]);
+ assert.equal(results.filter(r=>r.status===200).length,1);assert.ok(results.filter(r=>r.status!==200).every(r=>[403,409].includes(r.status)));
+ const saved=results.find(r=>r.status===200).data;
+ assert.equal(saved.consultation.care_status,body.careStatus);assert.equal(saved.consultation.follow_up_reason,body.followUpReason);assert.equal(saved.consultation.follow_up_date,body.followUpDate);assert.equal(saved.consultation.performed_services.length,2);assert.deepEqual(saved.consultation.prescription_items,[]);
+ assert.equal(saved.appointment.status,'Completed');assert.equal(saved.appointment.pet_id,'p7');assert.equal(saved.appointment.vet_id,'v1');assert.equal(saved.vaccination.recorded_by,'Test vet');assert.equal(saved.vaccination.card_id,'VACC-PROCESS');assert.equal(saved.vaccination.batch,body.vaccination.batch);assert.deepEqual(saved.weight,{petId:'p7',date:body.date,kg:5.6,by:'Test vet'});
+ const reloaded=(await req('vet','GET','/state')).data.data;
+ assert.equal(reloaded.consults.find(c=>c.id===body.id).followUpReason,saved.consultation.follow_up_reason);assert.equal(reloaded.vaccs.find(v=>v.id==='soap-safe-dose').vetId,'v1');
+ assert.equal((await query("SELECT COUNT(*)::int n FROM consultations WHERE appt_id='soap-safe'")).rows[0].n,1);assert.equal((await query("SELECT COUNT(*)::int n FROM audit_logs WHERE action LIKE 'Finalized consultation note_soap-safe %'")).rows[0].n,1);
+ assert.equal((await query("SELECT COUNT(*)::int n FROM pet_weights WHERE pet_id='p7'")).rows[0].n,weightsBefore+1);
+});

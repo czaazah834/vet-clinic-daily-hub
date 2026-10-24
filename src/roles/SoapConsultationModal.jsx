@@ -1,12 +1,20 @@
 import PrescriptionBuilder from "./PrescriptionBuilder.jsx";
 import { calculateSupply } from "../prescription.js";
 import { boosterDate, VACCINE_SERVICE } from "../clinicalWorkflow.js";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Stethoscope, Activity, AlertTriangle, X, Calendar, Pill } from "lucide-react";
-import { TODAY, plus, uid, petName, ownerName, addLog, ICON, I } from "../lib.jsx";
+import { uid, addLog, ICON, I } from "../lib.jsx";
 import { api } from "../api.js";
+import { today, plus } from "../booking.js";
+import { intakeVisitSnapshot, sameIntakeVisit } from "../intakeVisit.js";
+import { confirmedConsultation, applyConsultationSave } from "../consultationSave.js";
 
 export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClose, onSaved }) {
+  const TODAY=today();
+  const inFlight=useRef(false),consultationId=useRef(uid()),vaccinationId=useRef("v"+uid());
+  const expectedVisit=useRef(intakeVisitSnapshot(appt)).current;
+  const current=(db.appts || []).find(a=>a.id===expectedVisit?.id);
+  const stale=!current || !sameIntakeVisit(current,expectedVisit) || current.petId!==pet.id || !db.pets.some(p=>p.id===pet.id) || ![me.id,me.vetId].filter(Boolean).includes(current.vetId) || current.status!=="In consultation";
   const [tab, setTab] = useState("soap"); // 'soap' | 'emr'
   const owner = db.owners.find(o => o.id === pet.ownerId) || {};
   const followUpRequest = db.records.find(r => r.id === appt?.followUpId);
@@ -38,7 +46,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     scheduleApproved: false,
     brand: "",
     batch: "",
-    vaccineNotes: "Administered subcutaneously during consultation.",
+    vaccineNotes: "",
     // Clinical Follow-up Scheduling
     scheduleFollowUp: false,
     careStatus: "Follow-up required",
@@ -83,7 +91,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
 
   const handleSubmit = async (ev) => {
     ev.preventDefault();
-    if (loading) return;
+    if (inFlight.current) return;
+    if (stale) {setErrs(p=>({...p,save:"This visit has changed or is not in consultation. Refresh clinic records and reopen it. Your notes remain here for reference."}));return;}
     const e = {};
     if (!serviceCatalog.length || catalogError) e.save = "Load the official service catalog before finalizing.";
     let selectedItems;
@@ -113,9 +122,10 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       return;
     }
 
+    inFlight.current=true;
     setLoading(true);
-    const consultId = uid();
-    const effectiveVetId = me.vetId || me.id || "v1";
+    const consultId = consultationId.current;
+    const effectiveVetId = me.vetId || me.id;
 
     const newRecord = {
       id: consultId,
@@ -139,11 +149,11 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     if (f.giveVaccine) {
       const boosterDue = boosterDate(f.date, f.intervalDays);
       newVacc = {
-        id: "v" + uid(),
+        id: vaccinationId.current,
         petId: pet.id,
         vaccine: f.vaccine,
-        brand: f.brand.trim() || "Defensor 3",
-        batch: f.batch.trim() || `LOT-${new Date().getFullYear()}-01`,
+        brand: f.brand.trim(),
+        batch: f.batch.trim(),
         date: f.date,
         nextDue: boosterDue,
         doseNo: Number(f.doseNo),
@@ -159,74 +169,24 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     const followUpNote = f.scheduleFollowUp
       ? `\nFollow-up requested for ${f.followUpDate}: ${f.followUpReason.trim()}. Reception to confirm scheduling.` : "";
     newRecord.treatment += followUpNote;
+    const request={...newRecord,...(f.weight?{weight:Number(f.weight)}:{}),vaccination:newVacc,expectedVisit};
     let saved;
     try {
-      saved = await api.post("/api/consultations", {
-        ...newRecord,
-        ...(f.weight ? { weight: Number(f.weight) } : {}),
-        vaccination: newVacc,
-      });
+      saved=confirmedConsultation(await api.post("/api/consultations",request),request);
     } catch (err) {
-      setErrs(p => ({ ...p, save: err.message }));
-      setLoading(false);
-      return;
+      setErrs(p=>({...p,save:err.message}));
+      inFlight.current=false;setLoading(false);return;
     }
-
-    newRecord.performedServices = saved.invoiceItems.filter(i => i.source === "performed");
-    newRecord.prescription = saved.prescription;
-    newRecord.prescriptionItems = saved.prescriptionItems;
-
-    // 5. Update In-Memory / React State
-    setDb(p => {
-      const nextRecords = [newRecord, ...(p.records || [])];
-      let nextVacc = p.vacc || [];
-      if (newVacc) {
-        nextVacc = [
-          newVacc,
-          ...nextVacc.map(v => (v.petId === pet.id && v.vaccine === newVacc.vaccine ? { ...v, done: true } : v)),
-        ];
-      }
-
-      let nextPets = p.pets || [];
-      if (f.weight && !isNaN(+f.weight) && +f.weight > 0) {
-        const kg = +f.weight;
-        nextPets = nextPets.map(x =>
-          x.id === pet.id
-            ? {
-                ...x,
-                weight: kg,
-                weights: [...(x.weights || []), { date: f.date, kg, by: `Dr. ${me.name}` }],
-              }
-            : x
-        );
-      }
-
-      let nextAppts = (p.appts || []).map(a =>
-        appt && a.id === appt.id ? { ...a, status: "Completed", billingStatus: "Unbilled", invoiceItems: saved.invoiceItems } : a
-      );
-
-      return {
-        ...p,
-        records: nextRecords,
-        vacc: nextVacc,
-        pets: nextPets,
-        appts: nextAppts,
-        log: addLog(
-          p,
-          me,
-          `Veterinarian ${me.name} completed consultation for ${pet.name}. Diagnosis: ${newRecord.diagnosis}.${
-            newVacc ? ` Administered ${newVacc.vaccine} (${newVacc.brand}, batch ${newVacc.batch}), next booster due ${newVacc.nextDue}.` : ""
-          }${f.scheduleFollowUp ? ` Follow-up requested for ${f.followUpDate}; reception to confirm booking.` : ""} Sent to Front Desk for billing & checkout.`
-        ),
-      };
+    setDb(previous=>{
+      const next=applyConsultationSave(previous,saved,expectedVisit);
+      return next===previous?previous:{...next,log:addLog(previous,me,`Finalized consultation ${saved.record.id} for visit ${saved.record.apptId}`)};
     });
-
     setLoading(false);
-    onSaved && onSaved(newRecord);
+    onSaved && onSaved(saved.record);
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !inFlight.current && onClose()}>
       <div className="modal clinical-soap" style={{ width: "min(760px, 100%)", maxHeight: "94vh" }}>
         <style>{`.clinical-soap input[type=checkbox]{width:auto;flex:0 0 auto}.clinical-soap .service-check{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}.clinical-soap .tabs{flex-wrap:wrap}.clinical-soap .tabs button{white-space:normal;max-width:100%;min-width:0}`}</style>
         {followUpRequest && <div className="ow-note info"><b>Linked {followUpRequest.careStatus}</b><p>Target: {followUpRequest.followUpDate} · {followUpRequest.followUpReason}</p></div>}
@@ -245,7 +205,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               <b>Owner:</b> {owner.name} ({owner.phone}) &bull; <b>Breed:</b> {pet.breed || pet.species} &bull; <b>Sex:</b> {pet.sex}
             </p>
           </div>
-          <button className="btn ghost sm" onClick={onClose}><X size={16} /></button>
+          <button type="button" className="btn ghost sm" aria-label="Close consultation" disabled={loading} onClick={()=>{if(!inFlight.current)onClose();}}><X size={16} /></button>
         </div>
 
         {/* Allergy Alert Banner if any */}
@@ -315,6 +275,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
           </div>
         ) : (
           <form onSubmit={handleSubmit} noValidate>
+            <fieldset disabled={loading} style={{border:0,padding:0,margin:0,minWidth:0}}>
             {iv && (
               <div style={{
                 background: iv.tempAnalysis?.status === "high-fever" || iv.tempAnalysis?.status === "hypothermia" || iv.triageLevel === "Emergency"
@@ -572,13 +533,15 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
             </div>
 
+            {stale && <p className="err" role="alert">This visit has changed or is not in consultation. Refresh clinic records and reopen it. Your notes remain here for reference.</p>}
             {errs.save && <p className="err" role="alert">{errs.save}</p>}
             <div className="row end" style={{ marginTop: "20px", gap: "10px" }}>
               <button type="button" className="btn ghost" onClick={onClose} disabled={loading}>Cancel</button>
-              <button type="submit" className="btn gold" disabled={loading || !serviceCatalog.length || !!catalogError} style={{ fontWeight: 700 }}>
+              <button type="submit" className="btn gold" disabled={loading || stale || !serviceCatalog.length || !!catalogError} style={{ fontWeight: 700 }}>
                 {loading ? "Saving to EMR & Database..." : "Save SOAP Note & Complete Visit"}
               </button>
             </div>
+            </fieldset>
           </form>
         )}
       </div>

@@ -2246,6 +2246,7 @@ clinicRouter.post("/consultations", async (req, res) => {
     const result = await withTransaction(async client => {
       const appt = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
       if (!appt || appt.pet_id !== petId || !assignedTo(appt, req.user)) throw Object.assign(new Error("An assigned visit is required."), { status: 403 });
+      if (req.body.expectedVisit !== undefined && !sameIntakeVisit(appt, req.body.expectedVisit)) throw bookingError("This visit has changed. Refresh clinic records and reopen the consultation.",409);
       if (appt.status !== "In consultation") throw Object.assign(new Error("Start the consultation before finalizing. This visit may already be complete."), { status: 409 });
       const inserted = await client.query(
         `INSERT INTO consultations (id, pet_id, vet_id, appt_id, date, symptoms, objective, diagnosis, treatment, prescription)
@@ -2255,7 +2256,7 @@ clinicRouter.post("/consultations", async (req, res) => {
       await client.query("UPDATE consultations SET care_status=$1, follow_up_date=$2, follow_up_reason=$3 WHERE id=$4", [req.body.careStatus || "Routine care", req.body.careStatus && req.body.careStatus !== "Routine care" ? req.body.followUpDate : null, req.body.careStatus && req.body.careStatus !== "Routine care" ? req.body.followUpReason.trim() : "", consultId]);
       await client.query("UPDATE consultations SET prescription_items=$1 WHERE id=$2", [JSON.stringify(rx.items), consultId]);
       inserted.rows[0].prescription_items = rx.items;
-      await client.query("UPDATE consultations SET performed_services=$1 WHERE id=$2", [JSON.stringify(services), consultId]);
+      const savedConsultation = (await client.query("UPDATE consultations SET performed_services=$1 WHERE id=$2 RETURNING *", [JSON.stringify(services), consultId])).rows[0];
       let savedVaccination = null;
       if (vaccination) {
         const pet = (await client.query("SELECT vaccination_card_id FROM pets WHERE id = $1", [petId])).rows[0];
@@ -2273,10 +2274,10 @@ clinicRouter.post("/consultations", async (req, res) => {
         await client.query("INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1,$2,$3,$4)", [petId, date, weight, req.user.name]);
       }
       const invoice = [...services, ...prescriptionInvoice(rx.items)];
-      await client.query("UPDATE appointments SET status = 'Completed', billing_status = 'Unbilled', invoice_items=$2 WHERE id = $1", [apptId, JSON.stringify(invoice)]);
+      const savedAppointment = (await client.query("UPDATE appointments SET status = 'Completed', billing_status = 'Unbilled', invoice_items=$2 WHERE id = $1 RETURNING *", [apptId, JSON.stringify(invoice)])).rows[0];
       await createCheckoutTask(client, apptId);
       await client.query("INSERT INTO audit_logs (user_name, user_role, action) VALUES ($1,$2,$3)", [req.user.name, req.user.role, `Finalized consultation ${consultId} for visit ${apptId}`]);
-      return { consultation: inserted.rows[0], vaccination: savedVaccination, prescriptionItems: rx.items, prescription: rx.text, invoiceItems: invoice };
+      return { consultation: savedConsultation, appointment: savedAppointment, vaccination: savedVaccination, weight: weight === undefined ? null : {petId,date,kg:weight,by:req.user.name}, prescriptionItems: rx.items, prescription: rx.text, invoiceItems: invoice };
     });
     res.json({ success: true, ...result });
   } catch (err) {
