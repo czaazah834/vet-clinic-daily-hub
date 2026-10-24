@@ -1,9 +1,10 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Logo, I, ROLES } from "../lib.jsx";
 import { validateLogin } from "../validate.js";
 import { useLive } from "../roles/owner/ui.jsx";
 import { auth, OFFLINE_MSG } from "../authApi.js";
 import "./auth.css";
+import "./brand.css";
 
 const Eye = ({ off }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -70,16 +71,15 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
   const title = role ? `Log in · ${ROLES[role][0]}` : "Log in";
 
   return (
-    <div className="lg auth">
-      <aside className="lgl">
-        <Logo size={72} />
-        <h1>Welcome back to PawCare</h1>
-        <p>Sign in to open your portal. Each role sees its own tools.</p>
-        <div className="lart sm" aria-hidden="true">
-          <span><I e="🐶" size={40} /></span>
-          <span><I e="🐱" size={40} /></span>
-          <span><I e="🐰" size={40} /></span>
+    <div className="lg auth cardl">
+      <aside className="lgl photo">
+        <div className="brandrow"><Logo size={30} /><span>PawCare</span></div>
+        <div className="cap">
+          <h1>Welcome back to <em>PawCare</em></h1>
+          <p>Sign in to open your portal. Each role sees its own tools.</p>
+          <div className="pills" aria-hidden="true"><span>Appointments</span><span>Vaccine cards</span><span>Consultations</span></div>
         </div>
+        <img className="pic" src="/images/login-pets.jpg" alt="" />
       </aside>
       <form className="lgr" onSubmit={submit} noValidate>
         <button type="button" className="lnk" onClick={onBack}>
@@ -183,3 +183,4 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
     </div>
   );
 }
+

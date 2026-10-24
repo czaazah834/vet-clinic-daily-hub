@@ -81,6 +81,14 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     const e = {};
     if (!f.diagnosis.trim()) e.diagnosis = "Assessment / Diagnosis is required";
     if (!f.treatment.trim()) e.treatment = "Plan / Treatment is required";
+    if (f.giveVaccine) {
+      if (!f.vaccine) e.vaccine = "Please select the administered biological / vaccine.";
+      if (!f.brand.trim()) e.brand = "Vaccine manufacturer brand name is required.";
+      if (!f.batch.trim()) e.batch = "Lot / Batch number is required for official certification.";
+    }
+    if (f.scheduleFollowUp) {
+      if (!f.followUpDate || f.followUpDate < TODAY) e.followUpDate = "Follow-up date must be today or in the future.";
+    }
 
     if (Object.keys(e).length) {
       setErrs(e);

@@ -209,9 +209,13 @@ function Dash({ db, setDb, me, go, say }) {
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [logSearch, setLogSearch] = useState("");
 
-  const logs = (db.log || []).filter(l =>
-    !logSearch || l.msg.toLowerCase().includes(logSearch.toLowerCase()) || l.by.toLowerCase().includes(logSearch.toLowerCase())
-  );
+  const logs = (db.log || []).filter(l => {
+    const text = (l.msg || l.action || "").toLowerCase();
+    const actor = (l.by || (l.user ? l.user.name : "") || "").toLowerCase();
+    const role = (l.role || (l.user ? l.user.role : "") || "").toLowerCase();
+    const q = (logSearch || "").trim().toLowerCase();
+    return !q || text.includes(q) || actor.includes(q) || role.includes(q);
+  });
 
   return (
     <>
@@ -287,13 +291,18 @@ function Dash({ db, setDb, me, go, say }) {
                 }}
               >
                 <div>
-                  <span style={{ fontWeight: "600", color: "#1e293b" }}>{l.msg}</span>
-                  <small style={{ display: "block", color: "#64748b", marginTop: "2px" }}>
-                    Actor: <b>{l.by}</b>
+                  <span style={{ fontWeight: "600", color: "#1e293b" }}>{l.msg || l.action}</span>
+                  <small style={{ display: "flex", alignItems: "center", gap: "6px", color: "#64748b", marginTop: "3px" }}>
+                    <span>Actor: <b>{l.by || (l.user ? l.user.name : "System")}</b></span>
+                    {(l.role || l.user?.role) && (
+                      <span style={{ background: "#e2e8f0", color: "#334155", padding: "1px 6px", borderRadius: "4px", fontSize: "11px", fontWeight: 600 }}>
+                        {l.role || l.user?.role}
+                      </span>
+                    )}
                   </small>
                 </div>
                 <span style={{ fontSize: "12px", color: "#64748b", whiteSpace: "nowrap" }}>
-                  {l.at}
+                  {l.at || l.ts || ""}
                 </span>
               </div>
             ))}

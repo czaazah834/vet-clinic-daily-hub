@@ -206,12 +206,19 @@ clinicRouter.get("/state", async (req, res) => {
       approvedBy: r.approved_by || ""
     }));
 
-    const log = logsRes.rows.map(l => ({
-      id: l.id,
-      ts: l.created_at ? new Date(l.created_at).toLocaleString() : "",
-      user: { name: l.user_name, role: l.user_role },
-      action: l.action
-    }));
+    const log = logsRes.rows.map(l => {
+      const formattedDate = l.created_at ? new Date(l.created_at).toLocaleString("en-PH") : "";
+      return {
+        id: l.id,
+        ts: formattedDate,
+        at: formattedDate,
+        by: l.user_name || "System",
+        role: l.user_role || "staff",
+        user: { name: l.user_name || "System", role: l.user_role || "staff" },
+        action: l.action,
+        msg: l.action
+      };
+    });
 
     res.json({
       success: true,

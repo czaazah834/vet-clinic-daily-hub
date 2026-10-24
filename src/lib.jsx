@@ -272,9 +272,55 @@ export const FLOW = { Scheduled: ["Confirmed", "Cancelled", "No-show"], Confirme
 export const ACT = { Confirmed: ["assistant", "admin"], "Checked-in": ["assistant", "admin"], "In consultation": ["vet"], Completed: ["vet", "assistant", "admin"], Cancelled: ["assistant", "admin", "owner"], "No-show": ["assistant", "admin"] };
 export const LABEL = { Confirmed: "Confirm", "Checked-in": "Check in", "In consultation": "Start consultation", Completed: "Complete visit", Cancelled: "Cancel", "No-show": "No-show" };
 export const nextSteps = (a, me) => (FLOW[a.status] || []).filter(s => (ACT[s] || []).includes(me.role) && !(me.role === "owner" && !["Scheduled", "Confirmed"].includes(a.status)));
-export const addLog = (p, me, msg) => [{ id: uid(), at: new Date().toLocaleString(), by: me.name, msg }, ...(p.log || [])].slice(0, 40);
-export const moveAppt = (setDb, id, status, me) => setDb(p => {
-  const a = p.appts.find(x => x.id === id); if (!a || !nextSteps(a, me).includes(status)) return p;
-  if (me.role === "owner" && (p.pets.find(x => x.id === a.petId) || {}).ownerId !== me.ownerId) return p;
-  return { ...p, appts: p.appts.map(x => x.id === id ? { ...x, status } : x), log: addLog(p, me, `${petName(p, a.petId)}: ${a.status} → ${status}`) };
-});
+export const addLog = (p, me, msg) => {
+  const at = new Date().toLocaleString("en-PH");
+  const newEntry = {
+    id: "log_" + uid(),
+    at,
+    ts: at,
+    by: me?.name || "System",
+    role: me?.role || "staff",
+    user: { name: me?.name || "System", role: me?.role || "staff" },
+    msg,
+    action: msg
+  };
+
+  try {
+    fetch("/api/logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userName: me?.name || "System",
+        userRole: me?.role || "staff",
+        action: msg
+      })
+    }).catch(() => {});
+  } catch (_) {}
+
+  return [newEntry, ...(p.log || [])].slice(0, 100);
+};
+
+export const moveAppt = (setDb, id, status, me) => {
+  try {
+    fetch(`/api/appointments/${id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status,
+        actorName: me?.name || "Staff",
+        actorRole: me?.role || "staff"
+      })
+    }).catch(err => console.warn("moveAppt backend sync:", err));
+  } catch (_) {}
+
+  setDb(p => {
+    const a = p.appts.find(x => x.id === id);
+    if (!a || !nextSteps(a, me).includes(status)) return p;
+    if (me.role === "owner" && (p.pets.find(x => x.id === a.petId) || {}).ownerId !== me.ownerId) return p;
+    return {
+      ...p,
+      appts: p.appts.map(x => x.id === id ? { ...x, status } : x),
+      log: addLog(p, me, `${petName(p, a.petId)}: ${a.status} → ${status}`)
+    };
+  });
+};

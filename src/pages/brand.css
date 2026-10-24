@@ -1,0 +1,116 @@
+/* PawCare landing + login photo redesign. Blue (#1e3a8a / #2563eb) and butter yellow (#ffe28a). Loaded after styles.css. */
+
+/* ---------- landing: hero ---------- */
+.w .whero{position:relative;overflow:hidden;background:linear-gradient(135deg,#fffbea 0%,#fff3c4 45%,#dbeafe 100%);padding-top:56px;padding-bottom:72px;gap:48px;grid-template-columns:1.05fr 1fr}
+.w .whero::before{content:"";position:absolute;width:520px;height:520px;right:-140px;top:-180px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,.18),transparent 70%);pointer-events:none}
+.w .whero::after{content:"";position:absolute;width:380px;height:380px;left:-120px;bottom:-200px;border-radius:50%;background:radial-gradient(circle,rgba(255,226,138,.7),transparent 70%);pointer-events:none}
+.w .whero>*{position:relative;z-index:1}
+.w .whero h1{font-size:clamp(34px,4.8vw,58px);letter-spacing:-.02em}
+.w .whero h1 em{font-style:normal;background:linear-gradient(transparent 62%,var(--butter) 62%);padding:0 4px}
+.w .whero p{font-size:18px;max-width:520px}
+.w .wimg{background:none;min-height:0;padding:0;display:block;border-radius:0}
+.w .wimg .ph{position:relative;border-radius:36px;overflow:hidden;aspect-ratio:4/3.3;border:8px solid #fff;box-shadow:0 24px 60px rgba(30,58,138,.28)}
+.w .wimg .ph img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .8s ease}
+.w .wimg:hover .ph img{transform:scale(1.04)}
+.w .wimg .ph::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 60%,rgba(30,58,138,.35))}
+.w .wimg .tag{position:absolute;z-index:2;background:#fff;color:var(--navy);padding:9px 15px;border-radius:16px;font-size:13px;font-weight:700;box-shadow:0 10px 26px rgba(30,58,138,.22);display:flex;align-items:center;gap:8px}
+.w .wimg .tag i{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--butter);color:var(--navy);font-style:normal}
+.w .wimg .t1{left:-22px;bottom:42px}
+.w .wimg .t2{right:-16px;top:34px}
+.w .wimg .t3{right:26px;bottom:-18px;background:var(--navy);color:#fff}
+.w .wimg .t3 i{background:var(--butter)}
+.w .wimg .dots{position:absolute;z-index:0;left:-26px;top:-26px;width:120px;height:120px;background-image:radial-gradient(var(--butter) 3px,transparent 3px);background-size:18px 18px}
+
+/* ---------- landing: trust numbers ---------- */
+.wstats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:-34px;position:relative;z-index:3}
+.wstats>div{background:#fff;border-radius:22px;padding:18px 20px;border:2px solid var(--ln);box-shadow:0 10px 26px rgba(30,58,138,.1);text-align:center}
+.wstats b{display:block;font-size:30px;color:var(--navy);line-height:1.1}
+.wstats span{font-size:13px;color:var(--mu);font-weight:600}
+.wstats>div:nth-child(odd){border-bottom:5px solid var(--butter)}
+.wstats>div:nth-child(even){border-bottom:5px solid var(--blue)}
+
+/* ---------- landing: care split section with photo ---------- */
+.wsplit{display:grid;grid-template-columns:1fr 1.1fr;gap:48px;align-items:center;padding-top:64px;padding-bottom:24px}
+.wsplit .ph{position:relative;border-radius:32px;overflow:hidden;aspect-ratio:4/3.4;box-shadow:0 20px 50px rgba(30,58,138,.22);border:8px solid #fff;outline:3px solid var(--butter)}
+.wsplit .ph img{width:100%;height:100%;object-fit:cover;display:block}
+.wsplit h2{margin:0 0 12px;color:var(--navy);font-size:clamp(26px,3vw,36px);line-height:1.15}
+.wsplit>div>p{color:var(--mu);font-size:16px;margin:0 0 20px;max-width:520px}
+.wsplit ul{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.wsplit li{display:flex;gap:12px;align-items:flex-start;background:#fff;border:2px solid var(--ln);border-radius:18px;padding:12px 16px}
+.wsplit li .ck{flex:none;width:30px;height:30px;border-radius:50%;background:var(--butter);color:var(--navy);display:grid;place-items:center}
+.wsplit li b{display:block;color:var(--navy);font-size:15px}
+.wsplit li small{color:var(--mu);font-size:13px}
+
+/* ---------- landing: pet chips ---------- */
+.w .wpart span{background:#fff;border:2px solid var(--butter);transition:transform .2s,background .2s}
+.w .wpart span:hover{transform:translateY(-3px);background:var(--sky)}
+
+/* ---------- landing: portals + cta ---------- */
+.w .fc{transition:transform .25s ease,box-shadow .25s ease}
+.w .fc:hover{transform:translateY(-4px);box-shadow:0 16px 36px rgba(30,58,138,.18)}
+.w .wcta{background:linear-gradient(105deg,rgba(30,58,138,.94) 0%,rgba(30,58,138,.82) 55%,rgba(37,99,235,.55) 100%),url("/images/hero-pets.jpg") center/cover;padding-top:56px;padding-bottom:56px}
+.w .wcta h2{font-size:clamp(26px,3vw,36px)}
+
+@media(max-width:860px){
+  .w .whero{grid-template-columns:1fr;padding-top:36px;padding-bottom:60px}
+  .w .wimg .t1{left:8px}.w .wimg .t2{right:8px}.w .wimg .t3{right:14px}
+  .wstats{grid-template-columns:1fr 1fr;margin-top:-24px}
+  .wsplit{grid-template-columns:1fr;gap:28px}
+}
+
+
+/* ---------- login + create account: blue hero panel with pets, white floating form card ---------- */
+.lg.auth.cardl{--cardw:460px;--pad:clamp(10px,2.2vw,28px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,var(--cardw));align-items:center;min-height:100vh;padding:var(--pad);box-sizing:border-box;background:linear-gradient(160deg,#fff3c4 0%,#ffe28a 100%)}
+.lg.auth.cardl.reg{--cardw:640px;grid-template-columns:minmax(0,1fr) minmax(0,var(--cardw))}
+
+/* blue panel spans the whole row, card floats over its right side */
+.lg.auth.cardl .lgl.photo{grid-column:1/-1;grid-row:1;align-self:stretch;position:relative;top:auto;height:auto;min-height:calc(100vh - 2*var(--pad));display:block;overflow:hidden;
+  border-radius:clamp(22px,3vw,36px);padding:clamp(24px,4vw,56px);padding-right:calc(var(--cardw) + clamp(24px,5vw,72px));
+  background:radial-gradient(circle at 12% 8%,rgba(255,226,138,.28),transparent 38%),linear-gradient(135deg,#2563eb 0%,#1e3a8a 100%);box-shadow:0 18px 50px rgba(30,58,138,.28)}
+.lg.auth.cardl .lgl.photo>*{max-width:none}
+.lg.auth.cardl .brandrow{display:inline-flex;align-items:center;gap:10px;background:#fff;padding:7px 16px 7px 9px;border-radius:99px;color:var(--navy);font-weight:800;font-size:17px;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+.lg.auth.cardl .cap{position:relative;z-index:2;margin-top:clamp(22px,6vh,64px);max-width:520px}
+.lg.auth.cardl .lgl.photo h1{color:#fff;font-size:clamp(30px,3.6vw,50px);line-height:1.1;margin:0 0 14px;letter-spacing:-.02em;max-width:none}
+.lg.auth.cardl .lgl.photo h1 em{font-style:normal;color:var(--butter)}
+.lg.auth.cardl .lgl.photo p{color:#dbe7ff;font-size:clamp(14px,1.3vw,17px);line-height:1.6;max-width:440px}
+.lg.auth.cardl .pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.lg.auth.cardl .pills span{display:inline-flex;align-items:center;gap:6px;background:var(--butter);color:var(--navy);font-weight:700;font-size:12.5px;padding:6px 13px;border-radius:99px}
+/* pets photo anchored bottom-left of the panel, faded into the blue */
+.lg.auth.cardl .pic{position:absolute;left:0;bottom:0;z-index:1;width:calc(100% - var(--cardw) - clamp(8px,2vw,32px));height:clamp(220px,52%,520px);object-fit:cover;object-position:center 35%;display:block;
+  -webkit-mask-image:linear-gradient(to top,#000 62%,transparent);mask-image:linear-gradient(to top,#000 62%,transparent);pointer-events:none}
+
+/* the form card */
+.lg.auth.cardl form.lgr{grid-column:2;grid-row:1;z-index:3;position:relative;align-self:center;width:auto;max-width:none;margin:clamp(14px,3vh,32px) clamp(14px,3.2vw,44px) clamp(14px,3vh,32px) 0;padding:clamp(22px,3vw,38px);background:#fff;border-radius:clamp(20px,2.4vw,30px);box-shadow:0 26px 60px rgba(15,23,42,.28);box-sizing:border-box}
+.lg.auth.cardl form.lgr::before{display:none}
+.lg.auth.cardl form.lgr>*{max-width:none}
+.lg.auth.cardl form.lgr>button.lnk:first-child{color:var(--mu);margin-bottom:2px;padding:0}
+.lg.auth.cardl form.lgr h2{font-size:clamp(22px,2.2vw,28px);color:var(--navy);margin:6px 0 16px;padding-bottom:12px;position:relative}
+.lg.auth.cardl form.lgr h2::after{content:"";position:absolute;left:0;bottom:0;width:54px;height:5px;border-radius:99px;background:var(--butter)}
+.lg.auth.cardl .fld input,.lg.auth.cardl .fld select{background:#f6f9ff;border:2px solid #dbe4f7;transition:border-color .2s,box-shadow .2s,background .2s}
+.lg.auth.cardl .fld input:focus,.lg.auth.cardl .fld select:focus{outline:none;background:#fff;border-color:var(--blue);box-shadow:0 0 0 4px rgba(37,99,235,.14)}
+.lg.auth.cardl .fld input.bad{border-color:var(--er)}
+.lg.auth.cardl .btn.gold.wide,.lg.auth.cardl form.lgr>.btn.wide{background:linear-gradient(135deg,#ffe28a,#ffd24d);color:var(--navy);font-weight:800;border-radius:99px;box-shadow:0 8px 20px rgba(255,200,60,.5);transition:transform .15s,box-shadow .15s}
+.lg.auth.cardl .btn.gold.wide:hover,.lg.auth.cardl form.lgr>.btn.wide:hover{transform:translateY(-1px);box-shadow:0 12px 26px rgba(255,200,60,.6)}
+.lg.auth.cardl .demo{background:#f4f8ff;border:1px dashed #b7c8ec;border-radius:16px}
+
+/* ---------- responsive ---------- */
+@media(max-width:1100px){
+  .lg.auth.cardl{--cardw:420px}
+  .lg.auth.cardl.reg{--cardw:560px}
+}
+@media(max-width:900px){
+  /* stacked: blue banner with pets on top, form card overlaps its lower edge */
+  .lg.auth.cardl,.lg.auth.cardl.reg{grid-template-columns:minmax(0,1fr);align-items:start;padding:var(--pad);gap:0}
+  .lg.auth.cardl .lgl.photo{grid-column:1;grid-row:1;min-height:0;padding:22px 22px 190px;border-radius:26px}
+  .lg.auth.cardl .cap{margin-top:16px;max-width:none}
+  .lg.auth.cardl .pills{display:none}
+  .lg.auth.cardl .pic{width:100%;height:170px;object-position:center 30%}
+  .lg.auth.cardl form.lgr{grid-column:1;grid-row:2;margin:-56px clamp(8px,3vw,24px) 12px;align-self:start}
+}
+@media(max-width:480px){
+  .lg.auth.cardl .lgl.photo{padding:16px 16px 150px}
+  .lg.auth.cardl .pic{height:140px}
+  .lg.auth.cardl .brandrow{font-size:15px}
+  .lg.auth.cardl form.lgr{margin:-48px 4px 10px;padding:20px 16px}
+  .lg.auth.cardl .auth-grid{grid-template-columns:1fr}
+}

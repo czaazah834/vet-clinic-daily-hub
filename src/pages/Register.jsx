@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { Logo, I } from "../lib.jsx";
 import { tc, TCF, pn, pwOk, emOk } from "../validate.js";
 import { api } from "../api.js";
 import "./auth.css";
+import "./brand.css";
 
 const fold = (x) => String(x).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
@@ -629,16 +630,15 @@ export default function Register({ onDone, onBack, go, limited }) {
   };
 
   return (
-    <div className="lg auth reg">
-      <aside className="lgl">
-        <Logo size={72} />
-        <h1>Join PawCare</h1>
-        <p>Create your pet owner account with verified contact details to view medical records and book appointments.</p>
-        <div className="lart sm" aria-hidden="true">
-          <span><I e="🐶" size={40} /></span>
-          <span><I e="🐱" size={40} /></span>
-          <span><I e="🐰" size={40} /></span>
+    <div className="lg auth cardl reg">
+      <aside className="lgl photo">
+        <div className="brandrow"><Logo size={30} /><span>PawCare</span></div>
+        <div className="cap">
+          <h1>Join <em>PawCare</em> today</h1>
+          <p>Create your pet owner account with verified contact details to view medical records and book appointments.</p>
+          <div className="pills" aria-hidden="true"><span>Appointments</span><span>Vaccine cards</span><span>Consultations</span></div>
         </div>
+        <img className="pic" src="/images/login-pets.jpg" alt="" />
       </aside>
       <form className="lgr" onSubmit={submit} noValidate>
         <button type="button" className="lnk" onClick={onBack}>

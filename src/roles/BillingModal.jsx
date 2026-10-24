@@ -26,6 +26,9 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
   const [method, setMethod] = useState(appt.paymentMethod || "Cash");
   const [discount, setDiscount] = useState("0");
+  const [cashTendered, setCashTendered] = useState(String(appt.amount || 600));
+  const [refNo, setRefNo] = useState("");
+  const [formErr, setFormErr] = useState("");
   const [paid, setPaid] = useState(appt.billingStatus === "Paid");
   const [loading, setLoading] = useState(false);
 
@@ -62,6 +65,14 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
   const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const total = Math.max(0, subtotal - (+discount || 0));
+  const change = method === "Cash" ? Math.max(0, (+cashTendered || 0) - total) : 0;
+
+  // Keep cash tendered in sync when total changes if untouched
+  useEffect(() => {
+    if (method === "Cash" && (+cashTendered < total || +cashTendered === 600)) {
+      setCashTendered(String(total));
+    }
+  }, [total, method]);
 
   const filteredCatalog = search.trim()
     ? catalog.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.category.toLowerCase().includes(search.toLowerCase()))
@@ -69,12 +80,38 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
   const handlePay = async (ev) => {
     ev.preventDefault();
+    setFormErr("");
+
+    if (!items.length) {
+      setFormErr("At least one billable procedure or product is required.");
+      return;
+    }
+    if ((+discount || 0) > subtotal) {
+      setFormErr("Discount cannot exceed the billable subtotal.");
+      return;
+    }
+    if (method === "Cash") {
+      const tendered = +cashTendered || 0;
+      if (tendered < total) {
+        setFormErr(`Cash received (₱${tendered.toLocaleString()}) must be equal to or greater than the total amount due (₱${total.toLocaleString()}).`);
+        return;
+      }
+    } else {
+      if (!refNo.trim() || refNo.trim().length < 4) {
+        setFormErr(`Please enter a valid verified transaction or POS reference code for ${method}.`);
+        return;
+      }
+    }
+
     setLoading(true);
 
     const payload = {
       amount: total,
       billingStatus: "Paid",
       paymentMethod: method,
+      paymentReference: method !== "Cash" ? refNo.trim() : `CASH-${Date.now().toString().slice(-6)}`,
+      cashTendered: method === "Cash" ? (+cashTendered || total) : total,
+      changeAmount: change,
       invoiceItems: items,
       actorName: me.name,
       actorRole: me.role
@@ -93,10 +130,11 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
         billingStatus: "Paid",
         amount: total,
         paymentMethod: method,
+        paymentReference: payload.paymentReference,
         paidAt: new Date().toLocaleTimeString("en-PH"),
         invoiceItems: items
       } : a),
-      log: addLog(p, me, `Processed billing payment ₱${total.toLocaleString()} (${method}) for ${pet.name} (${owner.name}). Issued official receipt.`)
+      log: addLog(p, me, `Processed billing payment ₱${total.toLocaleString()} via ${method} (Ref: ${payload.paymentReference}) for ${pet.name} (${owner.name}). Issued official receipt.`)
     }));
 
     setLoading(false);
@@ -382,6 +420,41 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
               </div>
             </div>
 
+            {/* Payment Method Details (Cash Tendered or Reference Code) */}
+            {method === "Cash" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px", background: "#f8fafc", padding: "10px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                <div className="fld" style={{ margin: 0 }}>
+                  <label style={{ fontSize: "12px", fontWeight: 600 }}>Cash Received (₱) *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={cashTendered}
+                    onChange={e => setCashTendered(e.target.value)}
+                    style={{ padding: "6px 10px", fontSize: "13px", fontWeight: 700 }}
+                    required
+                  />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                  <span style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 600 }}>Change Due</span>
+                  <b style={{ fontSize: "18px", color: change >= 0 && (+cashTendered || 0) >= total ? "#15803d" : "#dc2626" }}>
+                    ₱{change.toLocaleString()}
+                  </b>
+                </div>
+              </div>
+            ) : (
+              <div className="fld" style={{ marginBottom: "16px", background: "#f8fafc", padding: "10px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                <label style={{ fontSize: "12px", fontWeight: 600 }}>{method} Reference / Approval No. *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. GCASH-98213894 or POS-4412"
+                  value={refNo}
+                  onChange={e => setRefNo(e.target.value)}
+                  style={{ padding: "6px 10px", fontSize: "13px" }}
+                  required
+                />
+              </div>
+            )}
+
             {/* Total Due Banner */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 18px", background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "10px", marginBottom: "16px" }}>
               <div>
@@ -392,6 +465,12 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                 ₱{total.toLocaleString()}
               </div>
             </div>
+
+            {formErr && (
+              <div style={{ background: "#fef2f2", border: "1px solid #f87171", color: "#b91c1c", padding: "8px 12px", borderRadius: "8px", fontSize: "12.5px", marginBottom: "14px", fontWeight: 600 }}>
+                {formErr}
+              </div>
+            )}
 
             {/* Actions */}
             <div className="row end" style={{ gap: "10px" }}>
