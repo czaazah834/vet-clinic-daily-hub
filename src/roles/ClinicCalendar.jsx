@@ -81,6 +81,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const [activeSoap, setActiveSoap] = useState(null);
   const [billingAppt, setBillingAppt] = useState(null);
   const [cardPetId, setCardPetId] = useState(null);
+  const [cardAppt, setCardAppt] = useState(null);
 
   const appts = db.appts.filter(a => (!vetFilter || a.vetId === vetFilter) && a.status !== "Cancelled");
 
@@ -705,126 +706,114 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
             }
 
             return (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ textAlign: "left", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc" }}>
-                      <th style={{ padding: "10px 8px" }}>Date &amp; Time</th>
-                      <th style={{ padding: "10px 8px" }}>Patient</th>
-                      <th style={{ padding: "10px 8px" }}>Owner &amp; Contact</th>
-                      <th style={{ padding: "10px 8px" }}>Veterinarian</th>
-                      <th style={{ padding: "10px 8px" }}>Service / Reason</th>
-                      <th style={{ padding: "10px 8px" }}>Status</th>
-                      <th style={{ padding: "10px 8px" }}>Billing</th>
-                      <th style={{ padding: "10px 8px", textAlign: "right" }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map(a => {
-                      const pet = db.pets.find(p => p.id === a.petId) || {};
-                      const owner = db.owners.find(o => o.id === pet.ownerId || o.userId === pet.ownerId) || {};
-                      const isPaid = a.billingStatus === "Paid";
-                      const vetName = (VETS.find(v => v[0] === a.vetId) || [])[1] || "Dr. Cruz";
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", padding: "8px 14px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12.5px", color: "#475569" }}>
+                  <span>💡 <b>Tip:</b> Click any appointment row to open the pet&rsquo;s official Digital Vaccination Card and manage visit actions.</span>
+                  <span style={{ fontWeight: 600 }}>{filtered.length} appointment(s)</span>
+                </div>
 
-                      return (
-                        <tr key={a.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                          <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>
-                            <b>{a.date}</b>
-                            <small style={{ display: "block", color: "#64748b" }}>{a.time}</small>
-                          </td>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ textAlign: "left", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc" }}>
+                        <th style={{ padding: "10px 10px" }}>Date &amp; Time</th>
+                        <th style={{ padding: "10px 10px" }}>Patient</th>
+                        <th style={{ padding: "10px 10px" }}>Owner &amp; Contact</th>
+                        <th style={{ padding: "10px 10px" }}>Veterinarian</th>
+                        <th style={{ padding: "10px 10px" }}>Service / Reason</th>
+                        <th style={{ padding: "10px 10px" }}>Status</th>
+                        <th style={{ padding: "10px 10px" }}>Billing</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(a => {
+                        const pet = db.pets.find(p => p.id === a.petId) || {};
+                        const owner = db.owners.find(o => o.id === pet.ownerId || o.userId === pet.ownerId) || {};
+                        const isPaid = a.billingStatus === "Paid";
+                        const vetName = (VETS.find(v => v[0] === a.vetId) || [])[1] || "Dr. Cruz";
 
-                          <td style={{ padding: "10px 8px" }}>
-                            <span
-                              onClick={() => setCardPetId(pet.id || a.petId)}
-                              style={{ fontWeight: 700, color: "var(--navy)", cursor: "pointer", textDecoration: "underline" }}
-                              title="Click to open official Digital Vaccination Card"
-                            >
-                              {pet.name || "Patient"}
-                            </span>
-                            <small style={{ display: "block", color: "#64748b" }}>
-                              {pet.species ? formatSpeciesLabel(pet.species) : "Pet"} {pet.breed ? `(${pet.breed})` : ""}
-                            </small>
-                          </td>
+                        return (
+                          <tr
+                            key={a.id}
+                            onClick={() => {
+                              setCardAppt(a);
+                              setCardPetId(a.petId);
+                            }}
+                            style={{
+                              borderBottom: "1px solid #f1f5f9",
+                              cursor: "pointer",
+                              transition: "background 0.15s ease",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f9ff")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                            title="Click row to open Digital Vaccination Card and manage actions"
+                          >
+                            <td style={{ padding: "11px 10px", whiteSpace: "nowrap" }}>
+                              <b style={{ color: "var(--navy)" }}>{a.date}</b>
+                              <small style={{ display: "block", color: "#64748b" }}>{a.time}</small>
+                            </td>
 
-                          <td style={{ padding: "10px 8px" }}>
-                            <b>{owner.name || "Walk-in Owner"}</b>
-                            <small style={{ display: "block", color: "#64748b" }}>{owner.phone || "No phone"}</small>
-                          </td>
+                            <td style={{ padding: "11px 10px" }}>
+                              <span style={{ fontWeight: 700, color: "var(--navy)", textDecoration: "underline" }}>
+                                {pet.name || "Patient"}
+                              </span>
+                              <small style={{ display: "block", color: "#64748b" }}>
+                                {pet.species ? formatSpeciesLabel(pet.species) : "Pet"} {pet.breed ? `(${pet.breed})` : ""}
+                              </small>
+                            </td>
 
-                          <td style={{ padding: "10px 8px", color: "#334155" }}>
-                            {vetName}
-                          </td>
+                            <td style={{ padding: "11px 10px" }}>
+                              <b>{owner.name || "Walk-in Owner"}</b>
+                              <small style={{ display: "block", color: "#64748b" }}>{owner.phone || "No phone"}</small>
+                            </td>
 
-                          <td style={{ padding: "10px 8px", maxWidth: "220px" }}>
-                            <div style={{ color: "#1e293b", fontWeight: 500 }}>{a.reason}</div>
-                          </td>
+                            <td style={{ padding: "11px 10px", color: "#334155" }}>
+                              {vetName}
+                            </td>
 
-                          <td style={{ padding: "10px 8px" }}>
-                            <Badge v={a.status} />
-                          </td>
+                            <td style={{ padding: "11px 10px", maxWidth: "260px" }}>
+                              <div style={{ color: "#1e293b", fontWeight: 500 }}>{a.reason}</div>
+                            </td>
 
-                          <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>
-                            <span style={{
-                              fontSize: "11.5px",
-                              fontWeight: 700,
-                              padding: "2px 8px",
-                              borderRadius: "6px",
-                              background: isPaid ? "#dcfce7" : "#fef3c7",
-                              color: isPaid ? "#166534" : "#92400e"
-                            }}>
-                              {isPaid ? `✓ Paid (₱${a.amount})` : `Unbilled (₱${a.amount || 600})`}
-                            </span>
-                          </td>
+                            <td style={{ padding: "11px 10px" }}>
+                              <Badge v={a.status} />
+                            </td>
 
-                          <td style={{ padding: "10px 8px", textAlign: "right" }}>
-                            <div style={{ display: "inline-flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                              <button
-                                type="button"
-                                className="btn sm ghost"
-                                onClick={() => setCardPetId(pet.id || a.petId)}
-                                title="Open Digital Vaccination Card"
-                                style={{ padding: "3px 8px", fontSize: "11.5px" }}
-                              >
-                                💳 Card
-                              </button>
-
-                              {a.status === "Scheduled" && me.role === "assistant" && (
-                                <button
-                                  type="button"
-                                  className="btn sm"
-                                  onClick={() => handleAction(a, "Confirmed")}
-                                  style={{ padding: "3px 8px", fontSize: "11.5px" }}
-                                >
-                                  Confirm
-                                </button>
+                            <td style={{ padding: "11px 10px", whiteSpace: "nowrap" }}>
+                              {isPaid ? (
+                                <span style={{
+                                  fontSize: "11.5px",
+                                  fontWeight: 700,
+                                  padding: "2px 8px",
+                                  borderRadius: "6px",
+                                  background: "#dcfce7",
+                                  color: "#166534"
+                                }}>
+                                  ✓ Paid (₱{a.amount})
+                                </span>
+                              ) : a.status === "Completed" ? (
+                                <span style={{
+                                  fontSize: "11.5px",
+                                  fontWeight: 700,
+                                  padding: "2px 8px",
+                                  borderRadius: "6px",
+                                  background: "#fef3c7",
+                                  color: "#92400e"
+                                }}>
+                                  Ready for Billing (₱{a.amount || 600})
+                                </span>
+                              ) : (
+                                <span style={{ color: "#94a3b8", fontSize: "12px" }}>
+                                  —
+                                </span>
                               )}
-
-                              {["Scheduled", "Confirmed"].includes(a.status) && me.role === "assistant" && (
-                                <button
-                                  type="button"
-                                  className="btn sm gold"
-                                  onClick={() => setCheckInAppt(a)}
-                                  style={{ padding: "3px 8px", fontSize: "11.5px", fontWeight: 700 }}
-                                >
-                                  Check in
-                                </button>
-                              )}
-
-                              <button
-                                type="button"
-                                className={`btn sm ${isPaid ? "ghost" : "gold"}`}
-                                onClick={() => setBillingAppt(a)}
-                                style={{ padding: "3px 8px", fontSize: "11.5px", fontWeight: isPaid ? 500 : 700 }}
-                              >
-                                {isPaid ? "Receipt" : "🧾 Bill / Pay"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             );
           })()}
@@ -890,13 +879,28 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
       {cardPetId && (
         <PetCardModal
           petId={cardPetId}
+          appt={cardAppt}
           db={db}
           setDb={setDb}
           me={me}
-          onClose={() => setCardPetId(null)}
+          onClose={() => {
+            setCardPetId(null);
+            setCardAppt(null);
+          }}
           onBook={() => {
             setCardPetId(null);
+            setCardAppt(null);
             setBookingSlot({ date: TODAY, time: "10:00", vetId: vetFilter || "v1" });
+          }}
+          onCheckIn={(a) => {
+            setCardPetId(null);
+            setCardAppt(null);
+            setCheckInAppt(a);
+          }}
+          onBill={(a) => {
+            setCardPetId(null);
+            setCardAppt(null);
+            setBillingAppt(a);
           }}
         />
       )}

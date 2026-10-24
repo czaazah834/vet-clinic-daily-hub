@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Badge, VETS, TODAY, ICON, I } from "../lib.jsx";
+import { Badge, VETS, TODAY, ICON, I, moveAppt, uid } from "../lib.jsx";
 import { Avatar, Icon, toSquare } from "./owner/ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails } from "../preventiveSchedule.js";
 import { auth, OFFLINE_MSG } from "../authApi.js";
@@ -33,7 +33,7 @@ function stateOf(v) {
   return "On track";
 }
 
-export default function PetCardModal({ petId, db, setDb, me, onClose, onBook }) {
+export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBook, onCheckIn, onBill }) {
   const p = (db.pets || []).find(x => x.id === petId) || (db.pets || [])[0] || {};
   const o = (db.owners || []).find(x => x.id === p.ownerId) || {};
   const [isFlipped, setIsFlipped] = useState(false);
@@ -41,6 +41,7 @@ export default function PetCardModal({ petId, db, setDb, me, onClose, onBook }) 
 
   if (!p.id) return null;
 
+  const activeAppt = appt || (db.appts || []).find(a => a.petId === p.id && a.date === TODAY && a.status !== "Cancelled");
   const ageDetails = p.birth ? computeAgeDetails(p.birth) : null;
   const vaccs = (db.vacc || db.vaccs || []).filter(v => v.petId === p.id).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const count = s => vaccs.filter(v => stateOf(v) === s).length;
@@ -112,6 +113,199 @@ export default function PetCardModal({ petId, db, setDb, me, onClose, onBook }) 
             </button>
           </div>
         </div>
+
+        {/* Appointment & Clinical Visit Actions Bar (shows when opened for an appointment) */}
+        {activeAppt && (
+          <div style={{
+            background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+            border: "1.5px solid #cbd5e1",
+            borderRadius: "14px",
+            padding: "12px 18px",
+            marginBottom: "16px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px"
+          }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "13.5px", fontWeight: 700, color: "var(--navy)" }}>
+                  📅 Visit: {activeAppt.date} at {activeAppt.time}
+                </span>
+                <Badge v={activeAppt.status} />
+                {activeAppt.billingStatus === "Paid" ? (
+                  <span style={{ background: "#dcfce7", color: "#166534", fontSize: "11.5px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px" }}>
+                    ✓ Paid (₱{activeAppt.amount})
+                  </span>
+                ) : activeAppt.status === "Completed" ? (
+                  <span style={{ background: "#fef3c7", color: "#92400e", fontSize: "11.5px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px" }}>
+                    Ready for Checkout (₱{activeAppt.amount || 600})
+                  </span>
+                ) : null}
+              </div>
+              <div style={{ fontSize: "12.5px", color: "#475569", marginTop: "3px" }}>
+                <b>Reason:</b> {activeAppt.reason || "General Consultation"} &bull; <b>Veterinarian:</b> {(VETS.find(v => v[0] === activeAppt.vetId) || [])[1] || "Dr. Cruz"}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              {/* If booked for TODAY */}
+              {activeAppt.date === TODAY && (
+                <>
+                  {activeAppt.status === "Scheduled" && me?.role === "assistant" && (
+                    <button
+                      type="button"
+                      className="btn sm"
+                      onClick={() => {
+                        moveAppt(setDb, activeAppt.id, "Confirmed", me);
+                      }}
+                      style={{ fontWeight: 600 }}
+                    >
+                      Confirm Appointment
+                    </button>
+                  )}
+
+                  {["Scheduled", "Confirmed"].includes(activeAppt.status) && me?.role === "assistant" && (
+                    <button
+                      type="button"
+                      className="btn sm gold"
+                      onClick={() => {
+                        onClose();
+                        onCheckIn && onCheckIn(activeAppt);
+                      }}
+                      style={{ fontWeight: 700 }}
+                      title="Record patient intake vitals and triage"
+                    >
+                      Check in &amp; Record Vitals
+                    </button>
+                  )}
+
+                  {activeAppt.status === "Checked-in" && me?.role === "assistant" && (
+                    <button
+                      type="button"
+                      className="btn sm ghost"
+                      onClick={() => {
+                        onClose();
+                        onCheckIn && onCheckIn(activeAppt);
+                      }}
+                      title="Adjust recorded intake vitals"
+                    >
+                      Edit Vitals
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* If booked for a FUTURE date */}
+              {activeAppt.date !== TODAY && (
+                <>
+                  {activeAppt.status === "Scheduled" && me?.role === "assistant" && (
+                    <button
+                      type="button"
+                      className="btn sm"
+                      onClick={() => {
+                        moveAppt(setDb, activeAppt.id, "Confirmed", me);
+                      }}
+                      style={{ fontWeight: 600 }}
+                    >
+                      Confirm Booking ({activeAppt.date})
+                    </button>
+                  )}
+
+                  {["Scheduled", "Confirmed"].includes(activeAppt.status) && me?.role === "assistant" && (
+                    <button
+                      type="button"
+                      className="btn sm gold"
+                      onClick={() => {
+                        onClose();
+                        onCheckIn && onCheckIn(activeAppt);
+                      }}
+                      style={{ fontWeight: 700 }}
+                      title="Client showed up early today! Move visit to today and check in"
+                    >
+                      ⚡ Arrived Early Today? Check in Now
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* Bill / Pay: strictly ONLY when appointment is Completed, or if Paid show Receipt */}
+              {activeAppt.status === "Completed" && (
+                <button
+                  type="button"
+                  className={`btn sm ${activeAppt.billingStatus === "Paid" ? "ghost" : "gold"}`}
+                  onClick={() => {
+                    onClose();
+                    onBill && onBill(activeAppt);
+                  }}
+                  style={{ fontWeight: 700 }}
+                  title="Search clinic prices, invoice items, and record payment"
+                >
+                  {activeAppt.billingStatus === "Paid" ? "🧾 View Paid Receipt" : "🧾 Settle Bill / Checkout"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* If no appointment exists for this pet */}
+        {!activeAppt && me?.role === "assistant" && (
+          <div style={{
+            background: "#f8fafc",
+            border: "1px dashed #cbd5e1",
+            borderRadius: "14px",
+            padding: "10px 16px",
+            marginBottom: "16px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "10px"
+          }}>
+            <span style={{ fontSize: "12.5px", color: "#64748b" }}>
+              Patient has no active appointment on record today.
+            </span>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={() => {
+                  onClose();
+                  onBook && onBook();
+                }}
+              >
+                + Schedule Future Visit
+              </button>
+              <button
+                type="button"
+                className="btn sm gold"
+                onClick={() => {
+                  const newAppt = {
+                    id: "a_" + uid(),
+                    petId: p.id,
+                    vetId: "v1",
+                    date: TODAY,
+                    time: new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" }),
+                    reason: "Walk-in Consultation & Routine Exam",
+                    status: "Scheduled",
+                    billingStatus: "Unbilled",
+                    amount: 600
+                  };
+                  setDb(prev => ({
+                    ...prev,
+                    appts: [newAppt, ...(prev.appts || [])]
+                  }));
+                  onClose();
+                  onCheckIn && onCheckIn(newAppt);
+                }}
+                style={{ fontWeight: 700 }}
+              >
+                ⚡ Check-in as Today&rsquo;s Walk-in
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 3D Flip Card Container */}
         <div style={{ perspective: "1500px", minHeight: "440px" }}>

@@ -1563,7 +1563,7 @@ clinicRouter.put("/appointments/:id", async (req, res) => {
 
 clinicRouter.patch("/appointments/:id/status", async (req, res) => {
   const apptId = req.params.id;
-  const { status, intakeVitals, cancelReason, billingStatus, actorName, actorRole } = req.body;
+  const { status, intakeVitals, cancelReason, billingStatus, date, time, actorName, actorRole } = req.body;
 
   try {
     const result = await withTransaction(async (client) => {
@@ -1571,6 +1571,14 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
       const params = [status];
       let pIdx = 2;
 
+      if (date !== undefined) {
+        q += `, date = $${pIdx++}`;
+        params.push(date);
+      }
+      if (time !== undefined) {
+        q += `, time = $${pIdx++}`;
+        params.push(time);
+      }
       if (intakeVitals !== undefined) {
         q += `, intake_vitals = $${pIdx++}`;
         params.push(JSON.stringify(intakeVitals));

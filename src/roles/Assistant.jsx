@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Calendar,
   Clock,
@@ -12,7 +12,8 @@ import {
   Scale,
   Sparkles,
 } from "lucide-react";
-import { M, Stats, Hero, TODAY, plus, moveAppt, petName, ownerName, Badge, dueState, ICON, I } from "../lib.jsx";
+import { M, Stats, Hero, TODAY, plus, moveAppt, petName, ownerName, Badge, dueState, ICON, I, uid } from "../lib.jsx";
+import { api } from "../api.js";
 import InClinicRegistration from "./InClinicRegistration.jsx";
 import BillingModal from "./BillingModal.jsx";
 import ClinicCalendar from "./ClinicCalendar.jsx";
@@ -25,10 +26,12 @@ import { formatSpeciesLabel } from "../preventiveSchedule.js";
 
 function Dash({ db, setDb, me, go, say }) {
   const [showWalkIn, setShowWalkIn] = useState(false);
+  const [showExistingWalkIn, setShowExistingWalkIn] = useState(false);
   const [billingAppt, setBillingAppt] = useState(null);
   const [checkInAppt, setCheckInAppt] = useState(null);
   const [reviewReq, setReviewReq] = useState(null);
   const [cardPetId, setCardPetId] = useState(null);
+  const [cardAppt, setCardAppt] = useState(null);
 
   const pendingReqs = (db.petRequests || []).filter(r => r.status === "Pending");
   const q = db.appts.filter(a => a.date === TODAY && a.status !== "Cancelled").sort((a, b) => a.time.localeCompare(b.time));
@@ -36,6 +39,25 @@ function Dash({ db, setDb, me, go, say }) {
   const inConsult = q.filter(a => a.status === "In consultation");
   const completed = q.filter(a => a.status === "Completed");
   const calls = db.vacc.filter(v => v.nextDue && !v.done && v.nextDue <= plus(14));
+
+  // Auto-detect when doctor completes consultation and automatically launch billing
+  const prevCompletedRef = useRef(null);
+  useEffect(() => {
+    const unbilledCompleted = q.filter(a => a.status === "Completed" && a.billingStatus !== "Paid");
+    if (prevCompletedRef.current === null) {
+      prevCompletedRef.current = unbilledCompleted.map(a => a.id);
+      return;
+    }
+    const newlyCompleted = unbilledCompleted.find(a => !prevCompletedRef.current.includes(a.id));
+    if (newlyCompleted && !billingAppt) {
+      const pet = db.pets?.find(p => p.id === newlyCompleted.petId) || {};
+      if (typeof say === "function") {
+        say(`🔔 Doctor finished consultation for ${pet.name || "Patient"}! Proceeding directly to billing checkout...`);
+      }
+      setBillingAppt(newlyCompleted);
+    }
+    prevCompletedRef.current = unbilledCompleted.map(a => a.id);
+  }, [q, billingAppt, db.pets, say]);
 
   return (
     <>
@@ -50,7 +72,15 @@ function Dash({ db, setDb, me, go, say }) {
             onClick={() => setShowWalkIn(true)}
             style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}
           >
-            <ConciergeBell size={16} /> + Register Walk-in (Owner &amp; Pet)
+            <ConciergeBell size={16} /> + Register New Walk-in
+          </button>
+          <button
+            className="btn"
+            onClick={() => setShowExistingWalkIn(true)}
+            style={{ display: "flex", alignItems: "center", gap: "6px", background: "#f0fdf4", color: "#166534", border: "1.5px solid #86efac", fontWeight: 700 }}
+            title="Express check-in for existing online or registered patients"
+          >
+            <Sparkles size={16} /> ⚡ Check-in Existing Patient
           </button>
           <button
             className="btn"
@@ -188,9 +218,12 @@ function Dash({ db, setDb, me, go, say }) {
                           <button
                             type="button"
                             className="btn-link"
-                            onClick={() => setCardPetId(pet.id || a.petId)}
+                            onClick={() => {
+                              setCardPetId(pet.id || a.petId);
+                              setCardAppt(a);
+                            }}
                             style={{ fontWeight: 700, fontSize: "14px", color: "var(--navy)", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}
-                            title="Click to view Digital Vaccination Card"
+                            title="Click to view Digital Vaccination Card and manage visit"
                           >
                             {petDisplayName}
                           </button>
@@ -259,8 +292,11 @@ function Dash({ db, setDb, me, go, say }) {
 
                       <button
                         className="btn sm ghost"
-                        onClick={() => setCardPetId(pet.id || a.petId)}
-                        title="View Official Digital Vaccination Card"
+                        onClick={() => {
+                          setCardPetId(pet.id || a.petId);
+                          setCardAppt(a);
+                        }}
+                        title="View Official Digital Vaccination Card and manage visit"
                         style={{ display: "flex", alignItems: "center", gap: "4px" }}
                       >
                         💳 Card
@@ -298,7 +334,7 @@ function Dash({ db, setDb, me, go, say }) {
                         </button>
                       )}
 
-                      {(a.status === "Completed" || a.status === "Checked-in") && (
+                      {a.status === "Completed" && (
                         <button
                           className={`btn sm ${isPaid ? "ghost" : "gold"}`}
                           onClick={() => setBillingAppt(a)}
@@ -434,17 +470,177 @@ function Dash({ db, setDb, me, go, say }) {
       {cardPetId && (
         <PetCardModal
           petId={cardPetId}
+          appt={cardAppt}
           db={db}
           setDb={setDb}
           me={me}
-          onClose={() => setCardPetId(null)}
+          onClose={() => {
+            setCardPetId(null);
+            setCardAppt(null);
+          }}
           onBook={() => {
             setCardPetId(null);
+            setCardAppt(null);
             go("cal");
+          }}
+          onCheckIn={(a) => {
+            setCardPetId(null);
+            setCardAppt(null);
+            setCheckInAppt(a);
+          }}
+          onBill={(a) => {
+            setCardPetId(null);
+            setCardAppt(null);
+            setBillingAppt(a);
           }}
         />
       )}
+
+      {showExistingWalkIn && (
+        <ExistingPatientCheckInModal
+          db={db}
+          setDb={setDb}
+          me={me}
+          onClose={() => setShowExistingWalkIn(false)}
+          onCheckIn={(newAppt) => {
+            setShowExistingWalkIn(false);
+            setCheckInAppt(newAppt);
+          }}
+          say={say}
+        />
+      )}
     </>
+  );
+}
+
+function ExistingPatientCheckInModal({ db, setDb, me, onClose, onCheckIn, say }) {
+  const [search, setSearch] = useState("");
+  const [selectedPetId, setSelectedPetId] = useState("");
+  const [reason, setReason] = useState("Walk-in Consultation & Routine Exam");
+  const [vetId, setVetId] = useState("v1");
+
+  const filteredPets = (db.pets || []).filter(p => {
+    if (!search.trim()) return true;
+    const term = search.toLowerCase();
+    const owner = (db.owners || []).find(o => o.id === p.ownerId) || {};
+    return (
+      (p.name || "").toLowerCase().includes(term) ||
+      (p.species || "").toLowerCase().includes(term) ||
+      (p.breed || "").toLowerCase().includes(term) ||
+      (owner.name || "").toLowerCase().includes(term) ||
+      (owner.phone || "").includes(term)
+    );
+  });
+
+  const selectedPet = (db.pets || []).find(p => p.id === selectedPetId);
+  const selectedOwner = selectedPet ? (db.owners || []).find(o => o.id === selectedPet.ownerId) : null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedPetId) return;
+
+    const timeStr = new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" });
+    const payload = {
+      petId: selectedPetId,
+      vetId: vetId || "v1",
+      date: TODAY,
+      time: timeStr,
+      reason: reason.trim() || "Walk-in Consultation",
+      status: "Scheduled",
+      billingStatus: "Unbilled",
+      amount: 600,
+      actorName: me?.name || "Assistant",
+      actorRole: me?.role || "assistant"
+    };
+
+    let newAppt = null;
+    try {
+      const res = await api.post("/api/appointments", payload);
+      newAppt = res?.appointment || { id: "a_" + uid(), ...payload };
+    } catch (_) {
+      newAppt = { id: "a_" + uid(), ...payload };
+    }
+
+    setDb(prev => ({
+      ...prev,
+      appts: [newAppt, ...(prev.appts || [])],
+      log: addLog(prev, me, `Registered walk-in check-in for existing pet ${selectedPet.name} (Owner: ${selectedOwner?.name || "Client"}).`)
+    }));
+
+    say(`Checked in ${selectedPet.name} for today's walk-in visit!`);
+    onClose();
+    onCheckIn(newAppt);
+  };
+
+  return (
+    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
+      <div className="modal" style={{ width: "min(540px, 100%)", maxHeight: "90vh", overflowY: "auto", padding: "22px 24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px" }}>
+          <h3 style={{ margin: 0, fontSize: "18px", color: "var(--navy)", display: "flex", alignItems: "center", gap: "8px" }}>
+            <Sparkles size={20} color="#059669" /> Fast Walk-in Check-in (Existing Patient)
+          </h3>
+          <button type="button" className="btn sm ghost" onClick={onClose}>✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: "12px" }}>
+            <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Search Registered Patient or Owner</label>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by pet name, breed, or owner mobile..."
+              style={{ width: "100%", padding: "7px 10px", fontSize: "13px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+            />
+          </div>
+
+          <div style={{ marginBottom: "14px" }}>
+            <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Select Patient *</label>
+            <select
+              value={selectedPetId}
+              onChange={e => setSelectedPetId(e.target.value)}
+              required
+              style={{ width: "100%", padding: "8px 10px", fontSize: "13px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+            >
+              <option value="">Choose patient...</option>
+              {filteredPets.map(p => {
+                const o = (db.owners || []).find(x => x.id === p.ownerId) || {};
+                return (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {p.species} ({p.breed || "Mixed"}) — Owner: {o.name || "Client"} {o.phone ? `(${o.phone})` : ""}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {selectedPet && (
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "10px 14px", borderRadius: "8px", marginBottom: "14px", fontSize: "12.5px" }}>
+              <b>Selected:</b> {selectedPet.name} ({selectedPet.breed || selectedPet.species}, {selectedPet.weight} kg) &bull; Owner: <b>{selectedOwner?.name || "Client"}</b> ({selectedOwner?.phone || "No phone"})
+            </div>
+          )}
+
+          <div style={{ marginBottom: "14px" }}>
+            <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Visit Reason *</label>
+            <input
+              type="text"
+              required
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="e.g. Walk-in Vaccination, Sickness / Cough, Routine Check-up"
+              style={{ width: "100%", padding: "7px 10px", fontSize: "13px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+            />
+          </div>
+
+          <div className="row end" style={{ gap: "8px" }}>
+            <button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn gold sm" disabled={!selectedPetId} style={{ fontWeight: 700 }}>
+              Queue &amp; Measure Vitals →
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

@@ -82,14 +82,23 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       checkedInBy: me?.name || "Assistant",
     };
 
+    const isEarlyArrival = appt.date !== TODAY;
+    const arrivalTime = new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" });
+
+    const patchPayload = {
+      status: "Checked-in",
+      intakeVitals,
+      actorName: me?.name || "Assistant",
+      actorRole: me?.role || "assistant"
+    };
+    if (isEarlyArrival) {
+      patchPayload.date = TODAY;
+      patchPayload.time = arrivalTime;
+    }
+
     // 1. Persist directly to PostgreSQL Neon DB
     try {
-      await api.patch(`/api/appointments/${appt.id}/status`, {
-        status: "Checked-in",
-        intakeVitals,
-        actorName: me?.name || "Assistant",
-        actorRole: me?.role || "assistant"
-      });
+      await api.patch(`/api/appointments/${appt.id}/status`, patchPayload);
     } catch (err) {
       console.warn("Backend check-in update:", err.message);
     }
@@ -100,6 +109,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
         a.id === appt.id
           ? {
               ...a,
+              date: isEarlyArrival ? TODAY : a.date,
+              time: isEarlyArrival ? arrivalTime : a.time,
               status: "Checked-in",
               intakeVitals,
             }
@@ -166,6 +177,16 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
             <AlertTriangle size={18} color="#dc2626" />
             <b style={{ color: "#991b1b", fontSize: "13px" }}>Known Allergies:</b>
             <span style={{ color: "#dc2626", fontSize: "13px" }}>{pet.allergies.join(", ")}</span>
+          </div>
+        )}
+
+        {/* Early Arrival Notice if booked for a different date */}
+        {appt.date !== TODAY && (
+          <div style={{ background: "#eff6ff", border: "1.5px solid #93c5fd", padding: "10px 14px", borderRadius: "10px", marginBottom: "14px", fontSize: "12.5px", color: "#1e40af", display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "18px" }}>⚡</span>
+            <div>
+              <b>Early Walk-in Arrival:</b> Patient was booked for <b>{appt.date}</b>. Checking in now will move their visit to <b>Today ({TODAY})</b> and queue them directly for the doctor.
+            </div>
           </div>
         )}
 

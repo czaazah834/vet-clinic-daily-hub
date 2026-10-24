@@ -84,44 +84,57 @@ export default function App() {
       .finally(() => { if (active) setRestoring(false); });
     return () => { active = false; };
   }, []);
-   // lets the sign-in "server" (api.js) read and update the same data
+   // Live synchronization with PostgreSQL Neon DB across staff tabs & sessions
   useEffect(() => {
-    fetch("/api/state")
-      .then(r => r.json())
-      .then(res => {
-        if (res.success && res.data) {
-          setDb(p => {
-            const remotePets = res.data.pets || [];
-            const mergedPets = [
-              ...remotePets,
-              ...(p.pets || []).filter(localP => !remotePets.some(r => r.id === localP.id))
-            ];
-            const remoteVaccs = res.data.vaccs || [];
-            const mergedVaccs = [
-              ...remoteVaccs,
-              ...(p.vacc || p.vaccs || []).filter(localV => !remoteVaccs.some(r => r.id === localV.id))
-            ];
-            const remoteAppts = res.data.appts || [];
-            const mergedAppts = [
-              ...remoteAppts,
-              ...(p.appts || []).filter(localA => !remoteAppts.some(r => r.id === localA.id))
-            ];
-            return {
-              ...p,
-              owners: res.data.owners?.length ? res.data.owners : p.owners,
-              pets: mergedPets.length ? mergedPets : p.pets,
-              appts: mergedAppts.length ? mergedAppts : p.appts,
-              vacc: mergedVaccs.length ? mergedVaccs : (p.vacc || []),
-              vaccs: mergedVaccs.length ? mergedVaccs : (p.vaccs || []),
-              records: res.data.consults?.length ? res.data.consults : (p.records || []),
-              consults: res.data.consults?.length ? res.data.consults : (p.consults || []),
-              petRequests: res.data.petRequests !== undefined ? res.data.petRequests : (p.petRequests || []),
-              log: res.data.log?.length ? res.data.log : p.log
-            };
-          });
-        }
-      })
-      .catch(() => {});
+    let active = true;
+    const syncState = () => {
+      fetch("/api/state")
+        .then(r => r.json())
+        .then(res => {
+          if (!active) return;
+          if (res.success && res.data) {
+            setDb(p => {
+              const remotePets = res.data.pets || [];
+              const mergedPets = [
+                ...remotePets,
+                ...(p.pets || []).filter(localP => !remotePets.some(r => r.id === localP.id))
+              ];
+              const remoteVaccs = res.data.vaccs || [];
+              const mergedVaccs = [
+                ...remoteVaccs,
+                ...(p.vacc || p.vaccs || []).filter(localV => !remoteVaccs.some(r => r.id === localV.id))
+              ];
+              const remoteAppts = res.data.appts || [];
+              const mergedAppts = [
+                ...remoteAppts,
+                ...(p.appts || []).filter(localA => !remoteAppts.some(r => r.id === localA.id))
+              ];
+              return {
+                ...p,
+                owners: res.data.owners?.length ? res.data.owners : p.owners,
+                pets: mergedPets.length ? mergedPets : p.pets,
+                appts: remoteAppts.length ? remoteAppts : mergedAppts,
+                vacc: mergedVaccs.length ? mergedVaccs : (p.vacc || []),
+                vaccs: mergedVaccs.length ? mergedVaccs : (p.vaccs || []),
+                records: res.data.consults?.length ? res.data.consults : (p.records || []),
+                consults: res.data.consults?.length ? res.data.consults : (p.consults || []),
+                petRequests: res.data.petRequests !== undefined ? res.data.petRequests : (p.petRequests || []),
+                log: res.data.log?.length ? res.data.log : p.log
+              };
+            });
+          }
+        })
+        .catch(() => {});
+    };
+
+    syncState();
+    const interval = setInterval(syncState, 3000);
+    window.addEventListener("focus", syncState);
+    return () => {
+      active = false;
+      clearInterval(interval);
+      window.removeEventListener("focus", syncState);
+    };
   }, []);
   useEffect(() => { setDb(p => { const late = p.appts.filter(a => ["Scheduled", "Confirmed"].includes(a.status) && a.date < TODAY); if (!late.length) return p; return { ...p, appts: p.appts.map(a => late.includes(a) ? { ...a, status: "No-show" } : a), log: addLog(p, { name: "System" }, `${late.length} past appointment(s) marked No-show`) }; }); }, []);
   /* Log out here and on the server. A message (e.g. idle timeout) sends the person to Log in with that notice. */

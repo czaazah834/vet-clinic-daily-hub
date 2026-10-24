@@ -19,13 +19,25 @@ import ClinicCalendar from "./ClinicCalendar.jsx";
 
 function Dash({ db, setDb, me, go, say }) {
   const [activeSoap, setActiveSoap] = useState(null); // { appt, pet }
+  const [scope, setScope] = useState("all"); // 'all' (all clinic checked-in) | 'my' (assigned to this doctor)
 
-  const vid = me.vetId || "v1";
-  const queue = db.appts.filter(a => a.vetId === vid && a.date === TODAY && a.status !== "Cancelled").sort((a, b) => a.time.localeCompare(b.time));
+  const isMyVet = (a) => {
+    if (!a.vetId || a.vetId === "all") return true;
+    if (a.vetId === me.id || a.vetId === me.vetId) return true;
+    if ((me.name?.toLowerCase().includes("ana") || me.id === "u_vet_1") && (a.vetId === "v1" || a.vetId === "u_vet_1")) return true;
+    if ((me.name?.toLowerCase().includes("ben") || me.id === "u_vet_2") && (a.vetId === "v2" || a.vetId === "u_vet_2")) return true;
+    return false;
+  };
+
+  const todayAppts = (db.appts || []).filter(a => a.date === TODAY && a.status !== "Cancelled");
+  const queue = (scope === "all" ? todayAppts : todayAppts.filter(isMyVet)).sort((a, b) => a.time.localeCompare(b.time));
   const waiting = queue.filter(a => a.status === "Checked-in");
   const inConsult = queue.filter(a => a.status === "In consultation");
   const completed = queue.filter(a => a.status === "Completed");
-  const due = db.vacc.filter(v => v.nextDue && !v.done && v.nextDue <= plus(14));
+  const due = (db.vacc || []).filter(v => v.nextDue && !v.done && v.nextDue <= plus(14));
+
+  const allWaiting = todayAppts.filter(a => a.status === "Checked-in");
+  const myWaiting = todayAppts.filter(a => isMyVet(a) && a.status === "Checked-in");
 
   const startConsult = (a) => {
     const pet = db.pets.find(p => p.id === a.petId);
@@ -75,16 +87,54 @@ function Dash({ db, setDb, me, go, say }) {
 
       {/* Real-time Clinical Queue */}
       <section className="card" style={{ marginTop: "16px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
           <div>
             <h3 style={{ margin: "0 0 4px" }}>Today&apos;s Clinical Patient Queue</h3>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-              Patients checked in by Front Desk appear here ready for examination and SOAP consultation notes.
+              Patients checked in by Front Desk appear here live for clinical examination and SOAP consultation notes.
             </p>
           </div>
-          <span style={{ fontSize: "12.5px", background: "#f1f5f9", padding: "6px 10px", borderRadius: "8px", fontWeight: "600" }}>
-            Doctor: {me.name}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ display: "inline-flex", background: "#f1f5f9", padding: "3px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+              <button
+                type="button"
+                onClick={() => setScope("all")}
+                style={{
+                  padding: "5px 12px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  borderRadius: "6px",
+                  border: "none",
+                  cursor: "pointer",
+                  background: scope === "all" ? "var(--navy)" : "transparent",
+                  color: scope === "all" ? "#fff" : "#475569",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                All Clinic Waiting ({allWaiting.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setScope("my")}
+                style={{
+                  padding: "5px 12px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  borderRadius: "6px",
+                  border: "none",
+                  cursor: "pointer",
+                  background: scope === "my" ? "var(--navy)" : "transparent",
+                  color: scope === "my" ? "#fff" : "#475569",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                My Assigned ({myWaiting.length})
+              </button>
+            </div>
+            <span style={{ fontSize: "12px", background: "#e0f2fe", color: "#0369a1", padding: "6px 10px", borderRadius: "8px", fontWeight: "600" }}>
+              Dr. {me.name}
+            </span>
+          </div>
         </div>
 
         {queue.length ? (
