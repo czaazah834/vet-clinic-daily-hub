@@ -4,7 +4,8 @@
   "outputDirectory": "dist",
   "functions": {
     "api/index.js": {
-      "includeFiles": "server/**"
+      "includeFiles": "{server/**,src/booking.js}",
+      "maxDuration": 300
     }
   },
   "rewrites": [
@@ -15,6 +16,12 @@
     {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/jobs/vaccination-reminders",
+      "schedule": "0 1 * * *"
     }
   ]
 }

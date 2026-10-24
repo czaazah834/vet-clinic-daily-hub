@@ -69,3 +69,74 @@ The application no longer uses demo/in-memory saves when the API fails. A failed
 For existing databases, apply the idempotent checkout `ALTER TABLE appointments` block at the end of `server/database/schema.sql` before deployment (do not rerun demo seeding on a live database). Checkout also initializes these missing columns on first use and therefore requires `ALTER` permission if the migration was not applied. Checkout stores the discount, payment reference, cash received and change in `payment_details`; entering a reference records staff confirmation and does not independently verify a provider transfer.
 
 Run clinic regressions with `npm run test:clinic`.
+
+### Booking availability and vaccination automation
+
+Apply `server/database/scheduling.sql` once to existing databases (after
+`schema.sql`), using the database migration role. `npm run db:init` includes it
+for new local databases. Booking/reminder endpoints also attempt the same
+idempotent migration; a runtime role without DDL permissions requires the
+migration to be applied first. It adds service, duration, arrival type and notes,
+plus the persisted reminder queue and worker health table. No appointments or
+vaccination dates are rewritten by this migration.
+
+Bookings use **Asia/Manila**, 08:00–17:00, 30-minute start intervals, the existing
+Philippine holiday closure calendar, and a rolling **90-day** window. Service
+lengths are in `src/booking.js`: vaccination/deworming 30 minutes, consultation
+and grooming 60, surgery/dental assessment 120. Reception confirms procedural
+preparation and suitability. Both booking forms request the server's open times;
+owners receive slot strings only. Server transactions serialize reservation
+checks and writes, including edits, to reject overlapping visits and duplicate
+pet/day bookings. Legacy AM/PM times remain supported and legacy visits without
+service metadata occupy 30 minutes. Unknown legacy time formats close availability
+for that day until reception corrects them. Walk-ins are reception arrivals with
+measured intake afterward; they enter the queue without reserving a future slot.
+Pet approval no longer silently reserves a fixed doctor/time. Annual one-off
+holiday dates still need maintenance in the shared holiday table.
+
+The reminder worker uses the **latest administered, veterinarian-certified dose**
+for each pet/vaccine family. Uncertified protocol suggestions do not trigger
+messages. A newer dose replaces the older recall schedule, including when the
+new dose has no next date. Milestones are **30, 14 and 3 days** before the approved
+booster date, at **09:00 Manila**, by email and TextBee SMS. Future jobs are stored
+in PostgreSQL with unique milestone/channel keys. Missed runs catch up within
+the current milestone window; a milestone before the record existed is not sent
+retroactively. Old pending jobs expire at the next milestone or due date.
+
+For a persistent Node deployment, supervise `npm run reminders:worker` separately
+from the web process. It checks every five minutes; `npm run reminders:once`
+performs one bounded batch. For Vercel, the included daily 01:00 UTC cron calls
+`GET /api/jobs/vaccination-reminders`; set a long random **CRON_SECRET** in Vercel
+so its `Authorization: Bearer ...` header can be verified. Calls without it are
+rejected. For faster retry recovery or larger queues, use an authenticated
+external scheduler every five minutes (or increase the Vercel cron frequency on
+a plan that supports it). Each invocation handles up to 500 messages within a
+four-minute processing budget; monitor backlog and invoke again when needed.
+The Vercel API function permits a 300-second duration.
+
+Configure email with `BREVO_API_KEY` + `BREVO_SENDER_EMAIL`, or `SMTP_HOST`,
+`SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (port465 uses TLS). Configure SMS with
+`TEXTBEE_API_KEY` (or `TEXTBEE_KEY`) + `TEXTBEE_DEVICE_ID`. Reminder sends never
+count the development outbox as success. Known rejections retry with exponential
+backoff (15, 30, 60, 120 minutes; maximum five attempts) on subsequent worker
+runs. Timeouts, server errors and interrupted sends are marked **uncertain** and
+require checking provider history before further contact; the providers do not
+supply a shared idempotency guarantee. **Accepted** means the provider accepted
+the request, not confirmed handset/inbox delivery. The front desk's automatic
+reminder panel shows missing setup, stale workers, backlog, failures and uncertain
+submissions. Contact the owner after checking the provider when manual follow-up
+is needed. Owner contact edits are picked up at dispatch time.
+
+Validation (no live provider messages):
+
+```bash
+npm run test:clinic
+npm run test:scheduling
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/pawcare npm run test:scheduling:postgres
+npm run build
+```
+
+The PostgreSQL integration test requires a disposable local database and permission
+to create/drop an isolated test schema. It checks concurrent reservations,
+reminder claims, milestone creation, retries, supersession and crash recovery;
+provider delivery is replaced with synthetic adapters.

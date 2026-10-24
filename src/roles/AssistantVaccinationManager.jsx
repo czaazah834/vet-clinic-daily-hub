@@ -1,3 +1,5 @@
+import ReminderStatus from "./ReminderStatus.jsx";
+import { currentVaccinationDue } from "../vaccinationDue.js";
 import { useState } from "react";
 import {
   Syringe,
@@ -72,7 +74,7 @@ export default function AssistantVaccinationManager({ db, setDb, me, say }) {
   const overdueCount = petVaccs.filter(v => !v.done && v.nextDue && v.nextDue < TODAY).length;
 
   // Reminders list for all pets
-  const allReminders = (db.vacc || []).filter(v => v.nextDue && !v.done && v.nextDue <= plus(14));
+  const allReminders = currentVaccinationDue(db.vacc).filter(v => v.nextDue <= plus(30));
 
   const filteredPets = pets.filter(p => {
     if (!search.trim()) return true;
@@ -169,6 +171,7 @@ export default function AssistantVaccinationManager({ db, setDb, me, say }) {
 
   return (
     <div style={{ padding: "0 0 24px" }}>
+      <ReminderStatus />
       {/* Top Header Card */}
       <div className="card" style={{ marginBottom: "16px", padding: "16px 20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>

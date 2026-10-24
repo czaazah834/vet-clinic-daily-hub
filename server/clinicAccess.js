@@ -25,6 +25,8 @@ export async function clinicAccess(req, res, next) {
   };
   const appointment = async id => (await query('SELECT * FROM appointments WHERE id = $1', [id])).rows[0];
   try {
+    if (key === 'GET /reminders/status') return allow('assistant', 'admin') ? next() : denied();
+    if (key === 'GET /appointments/availability') return allow('owner', 'assistant') ? next() : denied();
     if (key === 'GET /state' || key === 'GET /services/prices') return next();
     if (key === 'GET /logs') return allow('admin') ? next() : denied();
     // Account edits use the validated, session-scoped account router.
@@ -81,7 +83,7 @@ export async function clinicAccess(req, res, next) {
       if (!action) {
         if (!['Scheduled', 'Confirmed'].includes(row.status)) return fail(res, 409, 'Only upcoming appointments can be edited.');
         if (req.body.petId && !await petAccess(req.body.petId)) return fail(res, 404, 'Pet not found.');
-        if (req.body.status && req.body.status !== 'Scheduled') return fail(res, 403, 'Use the authorized visit workflow to change status.');
+        if (req.body.status && !['Scheduled', 'Confirmed'].includes(req.body.status)) return fail(res, 403, 'Use the authorized visit workflow to change status.');
         if (req.body.vetId !== undefined) {
           req.body.vetId = await selectDoctor(req.body.vetId);
           if (!req.body.vetId) return fail(res, 400, 'Choose a current veterinarian.');

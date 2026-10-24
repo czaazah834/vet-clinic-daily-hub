@@ -1,3 +1,5 @@
+import ReminderStatus from "./ReminderStatus.jsx";
+import { currentVaccinationDue } from "../vaccinationDue.js";
 import { useState, useEffect, useRef } from "react";
 import {
   CalendarDays, AlertTriangle, PawPrint, ConciergeBell, Thermometer, Scale, UserCheck, Receipt, ArrowRight, X, Phone, Syringe,
@@ -35,7 +37,7 @@ function Dash({ db, setDb, me, go, say }) {
   const q = db.appts.filter(a => a.date === TODAY && a.status !== "Cancelled").sort((a, b) => a.time.localeCompare(b.time));
   const waiting = q.filter(a => a.status === "Checked-in");
   const inConsult = q.filter(a => a.status === "In consultation");
-  const calls = db.vacc.filter(v => v.nextDue && !v.done && v.nextDue <= plus(14));
+  const calls = currentVaccinationDue(db.vacc).filter(v => v.nextDue <= plus(30));
   const todayPaid = q.filter(a => a.billingStatus === "Paid");
   const todayRevenue = todayPaid.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
   const unbilledCompleted = q.filter(a => a.status === "Completed" && a.billingStatus !== "Paid");
@@ -203,10 +205,11 @@ function Dash({ db, setDb, me, go, say }) {
           )}
         </section>
 
+        <ReminderStatus />
         <section className="card">
           <div className="sf-section-hd">
             <h3>Vaccine reminders ({calls.length})</h3>
-            <span className="sf-sub">Due within 14 days</span>
+            <span className="sf-sub">Due within 30 days</span>
           </div>
 
           {calls.length ? (
@@ -348,7 +351,7 @@ function ExistingPatientCheckInModal({ db, setDb, me, onClose, onCheckIn, say })
     if (!selectedPetId || busy) return;
     setBusy(true);
     const payload = {
-      petId: selectedPetId, vetId, date: TODAY,
+      petId: selectedPetId, vetId, date: TODAY, bookingKind: "walk-in",
       time: new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" }),
       reason: reason.trim() || "Walk-in consultation",
       status: "Scheduled", billingStatus: "Unbilled", amount: 600,

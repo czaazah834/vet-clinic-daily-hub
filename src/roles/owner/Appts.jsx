@@ -1,8 +1,11 @@
+import { api } from "../../api.js";
+import { today as bookingToday, lastDay } from "../../booking.js";
+import { useAvailability } from "../../useAvailability.js";
 import { useState, useEffect } from "react";
 import { Badge, I, ICON, TODAY, scope, petName, uid, addLog, dueState } from "../../lib.jsx";
 import ApptDetails from "./ApptDetails.jsx";
 import { useLive, Field, Suggest, Modal, addNote, prefill, fmt12, ymdLocal } from "./ui.jsx";
-import { SERVICES, MAX_DAYS, LAST, ServicePicker, SlotPicker, allowedTimes, nextOpenDay, inferService, serviceOf, holidayName, durOf, durText, addMin, makeReason, splitReason } from "./services.jsx";
+import { SERVICES, MAX_DAYS, ServicePicker, SlotPicker, inferService, serviceOf, holidayName, durOf, durText, addMin, makeReason, splitReason } from "./services.jsx";
 
 const liveDoctors = db => (db.vets || []).map(v => [v.id, v.name]);
 const isTouch = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
@@ -11,6 +14,7 @@ const NOTE_IDEAS = ["My pet is nervous around other animals.", "Please call me b
 const CANCEL_WHY = ["Schedule conflict", "My pet is feeling better", "Booked by mistake", "Need a different date", "Other"];
 const STATUS_NOTE = { Scheduled: "Waiting for the clinic to confirm", Confirmed: "Confirmed. Please arrive 10 minutes early", "Checked-in": "You’re checked in. The vet will call you in", "In consultation": "The vet is seeing your pet now", Completed: "Done. See Visit History for notes", Cancelled: "This visit was cancelled", "No-show": "Marked as missed" };
 const mkRules = (db, me, editing) => v => {
+  const TODAY = bookingToday(), LAST = lastDay();
   const e = {}, mine = scope(db, me, "pets").map(p => p.id), S = SERVICES[v.service];
   if (!v.service) e.service = "Choose a service"; else if (!S) e.service = "Pick a service from the list";
   if (!v.petId) e.petId = "Choose which pet is visiting"; else if (!mine.includes(v.petId)) e.petId = "Pick one of your own pets";
@@ -28,7 +32,7 @@ const mkRules = (db, me, editing) => v => {
   else if (holidayName(v.date) && !sameDay) e.date = `The clinic is closed on ${holidayName(v.date)} (holiday). Please pick another day`;
   const others = db.appts.filter(a => (!editing || a.id !== editing.id) && !BUSY.includes(a.status));
   if (!v.time) e.time = !v.service ? "Choose a service first" : v.date && v.vetId ? "Choose a time" : "Choose a veterinarian and date first";
-  else if (S && !allowedTimes(db, v, editing).includes(v.time)) e.time = `That time isn’t open for ${S.label.toLowerCase()} (${durText(S.dur)}). Pick one of the open times`;
+
   if (!e.petId && v.date && !e.date) { const x = others.find(a => a.petId === v.petId && a.date === v.date); if (x) e.date = `${petName(db, v.petId)} already has a visit that day at ${fmt12(x.time)}`; }
   if (S) {
     if (!v.reasonSel) e.reasonSel = "Choose one";
@@ -40,18 +44,23 @@ const mkRules = (db, me, editing) => v => {
 };
 
 function BookForm({ db, setDb, me, say, editing, start, onClose }) {
+  const TODAY = bookingToday(), LAST = lastDay();
   const pets = scope(db, me, "pets"), owner = db.owners.find(o => o.id === me.ownerId) || {};
   const prev = editing ? serviceOf(editing) : "", svc0 = editing ? prev : start && start.reason ? inferService(start.reason) : "";
   const [rs, ro] = editing ? splitReason(prev, editing.reason) : start && start.reason ? splitReason(svc0, start.reason) : ["", ""];
   const f = useLive({ service: svc0, petId: editing ? editing.petId : (start && start.petId) || (pets.length === 1 ? pets[0].id : ""), vetId: editing ? editing.vetId : "", date: editing ? editing.date : (start && start.date) || "", time: editing ? editing.time : "", reasonSel: rs, reasonOther: ro, notes: editing ? editing.notes || "" : "" }, mkRules(db, me, editing));
+  const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const { v } = f, S = SERVICES[v.service];
-  const times = allowedTimes(db, v, editing), vetName = (liveDoctors(db).find(x => x[0] === v.vetId) || [])[1];
+  const availability = useAvailability({ ...v, excludeId: editing?.id });
+  const times = availability.slots, vetName = (liveDoctors(db).find(x => x[0] === v.vetId) || [])[1];
   const ready = S && v.vetId && v.date;
-  const nextDay = ready && !times.length ? nextOpenDay(db, v, editing) : null;
-  const timeHint = !S ? "Choose a service first" : !ready ? "Choose a veterinarian and date to see open times" : times.length ? `${times.length} open time${times.length > 1 ? "s" : ""} for ${S.label.toLowerCase()} (${durText(S.dur)}) with ${vetName}` : holidayName(v.date) ? `Closed for ${holidayName(v.date)}.` : `No open times for ${S.label.toLowerCase()} (${durText(S.dur)}) that day.`;
+  const nextDay = null;
+  const timeHint = availability.error || (availability.loading && !times.length ? "Checking available times…" : "") || (!S ? "Choose a service first" : !ready ? "Choose a veterinarian and date to see open times" : times.length ? `${times.length} open time${times.length > 1 ? "s" : ""} for ${S.label.toLowerCase()} (${durText(S.dur)}) with ${vetName}` : holidayName(v.date) ? `Closed for ${holidayName(v.date)}.` : `No open times for ${S.label.toLowerCase()} (${durText(S.dur)}) that day.`);
   const moved = editing && editing.status === "Confirmed" && (editing.date !== v.date || editing.time !== v.time || editing.vetId !== v.vetId || prev !== v.service);
   const submit = async e => {
-    e.preventDefault(); f.submit(); if (!f.valid) return;
+    e.preventDefault(); if (saving) return; f.submit(); if (!f.valid) return;
+    setSaveError("");
+    if (!times.includes(v.time)) { say("Choose an available time from the refreshed list."); availability.refresh(); return; }
     if (!scope(db, me, "pets").some(p => p.id === v.petId)) { say("You can only book for your own pets"); return onClose(); }
     if (editing) { const cur = db.appts.find(a => a.id === editing.id); if (!cur || !OPEN.includes(cur.status)) { say("This visit can no longer be changed"); return onClose(); } }
     const reason = makeReason(v.service, v.reasonSel, v.reasonOther.trim()), notes = (v.notes || "").trim();
@@ -64,6 +73,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
       date: v.date,
       time: v.time,
       reason,
+      service: v.service,
       status: moved ? "Scheduled" : (editing ? editing.status : "Scheduled"),
       notes,
       actorName: me.name,
@@ -71,6 +81,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
     };
 
     let finalApptId = apptId;
+    setSaving(true);
     try {
       if (editing) {
         const res = await api.put(`/api/appointments/${editing.id}`, payload);
@@ -80,7 +91,10 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
         if (res?.appointment?.id) finalApptId = res.appointment.id;
       }
     } catch (err) {
+      setSaveError(err.message);
+      setSaving(false);
       say(err.message);
+      availability.refresh();
       return;
     }
 
@@ -114,6 +128,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
         <Field id="petId" label="Pet" req type="select" value={v.petId} onChange={x => f.set("petId", x)} onBlur={() => f.blur("petId")} options={pets.map(p => [p.id, `${p.name} (${p.species})`])} error={f.show("petId")} valid={f.ok("petId")} hint="Which pet is coming in?" />
         <Field id="vetId" label="Veterinarian" req type="select" value={v.vetId} onChange={x => f.patch({ vetId: x, time: "" })} onBlur={() => f.blur("vetId")} options={liveDoctors(db)} error={f.show("vetId")} valid={f.ok("vetId")} hint="Times below update for the vet you pick" />
         <Field id="date" label="Date" req type="date" min={TODAY} maxDate={LAST} value={v.date} onChange={x => f.patch({ date: x, time: "" })} onBlur={() => f.blur("date")} error={f.show("date")} valid={f.ok("date")} hint={holidayName(v.date) ? `${holidayName(v.date)} is a holiday. The clinic is closed` : `Pick a day within the next ${MAX_DAYS} days (closed on Philippine holidays)`} />
+        {availability.error && <button type="button" className="btn ghost" onClick={availability.refresh}>Retry availability</button>}
         <SlotPicker times={times} value={v.time} onChange={x => f.set("time", x)} error={f.show("time")} hint={timeHint} dur={S ? S.dur : 30} suggest={nextDay} onSuggest={() => f.patch({ date: nextDay, time: "" })} />
         {S && v.time && times.includes(v.time) && <p className="ow-note info">{S.label}: {fmt12(v.time)} to {fmt12(addMin(v.time, S.dur))} with {vetName}</p>}
         {S && <Field id="reasonSel" label={S.pick} req type="select" value={v.reasonSel} onChange={x => f.set("reasonSel", x)} onBlur={() => f.blur("reasonSel")} options={S.options.map(r => [r, r])} error={f.show("reasonSel")} valid={f.ok("reasonSel")} hint={S.hint} />}
@@ -121,8 +136,9 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
         <Field id="notes" label="Note for the clinic (optional)" type="textarea" rows={2} max={200} value={v.notes} onChange={x => f.set("notes", x)} onBlur={() => f.blur("notes")} error={f.show("notes")} hint="Symptoms, behavior or anything the clinic should know" />
         <Suggest items={NOTE_IDEAS} onPick={s => f.set("notes", addNote(v.notes, s, 200))} />
         <p className="ow-hint" style={{ marginTop: 10 }}>The clinic will reach you at {owner.phone || "your number on file"}. You can update it in My Profile.</p>
+        {saveError && <p className="err" role="alert">{saveError}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
-        <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Close</button><button className="btn" disabled={!pets.length}>{editing ? "Save changes" : "Book visit"}</button></div>
+        <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Close</button><button className="btn" disabled={!pets.length || saving}>{saving ? "Saving…" : editing ? "Save changes" : "Book visit"}</button></div>
       </form>
     </Modal>
   );
@@ -244,13 +260,13 @@ export default function OwnerAppts({ db, setDb, me, say }) {
       <button className="btn" onClick={() => setModal({ book: true })} disabled={!pets.length} title={pets.length ? "" : "Add your pet first from My Pets"}>+ Book a visit</button>
     </div>
     {waiting > 0 && <div className="ow-banner wa"><span>{waiting} visit(s) waiting for the clinic to confirm. You can still edit or cancel them.</span></div>}
-    
+
     <style>{`.ap-split{display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);gap:16px;align-items:start}
 @media(max-width:980px){.ap-split{grid-template-columns:1fr}}
 .ap-split .ow-cal{padding:12px}.ap-split .ow-day{min-height:50px;align-items:center;padding:4px}
 .ap-split .ow-day .ow-hol,.ap-split .ow-ev span,.ap-split .ow-more{display:none}
 .ap-split .ow-evs{display:flex;flex-wrap:wrap;gap:2px;justify-content:center}`}</style>
-    
+
     <div className="ap-split">
       <MiniCalendar ev={ev} day={day} setDay={setDay} />
       <div style={{ minWidth: 0 }}>

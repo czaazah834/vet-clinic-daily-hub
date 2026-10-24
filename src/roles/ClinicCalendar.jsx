@@ -1,3 +1,5 @@
+import { useAvailability } from "../useAvailability.js";
+import { lastDay, today as bookingToday, SERVICES, openSlots, reservationCovers, addMin, durOf } from "../booking.js";
 import { useState } from "react";
 import {
   Calendar,
@@ -39,7 +41,7 @@ import { formatSpeciesLabel } from "../preventiveSchedule.js";
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const TIME_SLOTS = [
   "08:00", "08:30", "09:00", "09:30", "10:00", "10:30",
-  "11:00", "11:30", "13:00", "13:30", "14:00", "14:30",
+  "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
   "15:00", "15:30", "16:00", "16:30", "17:00",
 ];
 
@@ -96,6 +98,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const [cardPetId, setCardPetId] = useState(null);
   const [cardAppt, setCardAppt] = useState(null);
 
+  const slotsByVet = Object.fromEntries(visibleDoctors.map(([id]) => [id, openSlots(db, { vetId: id, date: sel, service: "vaccination" })]));
   const appts = db.appts.filter(a => (!vetFilter || a.vetId === vetFilter) && a.status !== "Cancelled");
 
   const ev = {};
@@ -149,13 +152,14 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   // Quick booking submit saved to PostgreSQL backend
   const handleQuickBook = async (petId, serviceName, reasonText, targetVetId, targetDate, targetTime) => {
     const newApptId = "a_" + uid();
-    const reason = serviceName ? `${serviceName}: ${reasonText}` : reasonText;
+    const reason = serviceName ? `${SERVICES[serviceName]?.label || serviceName}: ${reasonText}` : reasonText;
     const newAppt = {
       id: newApptId,
       petId,
       vetId: targetVetId,
       date: targetDate,
       time: targetTime,
+      service: serviceName, durationMinutes: SERVICES[serviceName]?.dur,
       reason,
       status: "Scheduled",
       billingStatus: "Unbilled",
@@ -169,6 +173,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
         vetId: targetVetId,
         date: targetDate,
         time: targetTime,
+        service: serviceName,
         reason,
         amount: 600,
         actorName: me.name,
@@ -594,10 +599,13 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                           );
                         }
 
+                        const continuing = dayEvents.find(e => e.vetId === vetId && reservationCovers(e.appt, time));
+                        if (continuing) return <td key={vetId} style={{ padding: "8px 12px", background: "#f1f5f9" }}>Reserved until {addMin(continuing.time, durOf(continuing.appt))}</td>;
+
                         // Empty slot
                         return (
                           <td key={vetId} style={{ padding: "6px 12px", borderRight: "1px solid #e2e8f0" }}>
-                            {canBook && sel >= TODAY ? (
+                            {canBook && slotsByVet[vetId]?.includes(time) ? (
                               <button
                                 type="button"
                                 className="btn ghost sm cc-open-slot"
@@ -634,7 +642,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                   background: "#f8fafc"
                                 }}
                               >
-                                {sel < TODAY ? "Past" : "Available"}
+                                {sel < bookingToday() ? "Past" : slotsByVet[vetId]?.includes(time) ? "Available" : "Unavailable"}
                               </div>
                             )}
                           </td>
@@ -996,22 +1004,25 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 }
 
 function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
+  const TODAY = bookingToday();
   const [petId, setPetId] = useState(db.pets[0] ? db.pets[0].id : "");
   const [vetId, setVetId] = useState(slot.vetId || "v1");
   const [date, setDate] = useState(slot.date && slot.date >= TODAY ? slot.date : TODAY);
   const [time, setTime] = useState(slot.time || "09:00");
-  const [service, setService] = useState("Consultation");
+  const [service, setService] = useState("checkup");
   const [reason, setReason] = useState("");
   const [dateErr, setDateErr] = useState("");
 
   const curYear = new Date().getFullYear();
-  const maxBookingDate = `${curYear + 1}-12-31`;
+  const maxBookingDate = lastDay();
+  const availability = useAvailability({ vetId, date, service });
 
   const selectedPet = db.pets.find(p => p.id === petId) || {};
   const owner = db.owners.find(o => o.id === selectedPet.ownerId) || {};
 
   const validateDate = (val) => {
     if (!val) return "Please choose an appointment date.";
+    if (val > maxBookingDate) return "Choose a date within the next 90 days.";
     if (val < TODAY) return "Appointments cannot be booked for past dates. Please select today or a future date.";
     const yr = parseInt(val.slice(0, 4), 10);
     if (isNaN(yr) || yr < curYear || yr > curYear + 1) {
@@ -1028,6 +1039,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!petId) return;
+    if (!availability.slots.includes(time)) { setDateErr("Choose an available time from the list."); availability.refresh(); return; }
     const err = validateDate(date);
     if (err) {
       setDateErr(err);
@@ -1083,12 +1095,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
               <div className="fld">
                 <label>Service Category</label>
                 <select value={service} onChange={e => setService(e.target.value)}>
-                  <option value="General Consultation">General Consultation</option>
-                  <option value="Vaccination & Prophylaxis">Vaccination &amp; Booster</option>
-                  <option value="Deworming Routine">Deworming Routine</option>
-                  <option value="Diagnostic Bloodwork & Lab">Diagnostic Lab / X-Ray</option>
-                  <option value="Surgery / Dental">Minor Surgery / Dental</option>
-                  <option value="Health Certificate">Health Certificate</option>
+                  {Object.entries(SERVICES).map(([key, item]) => <option key={key} value={key}>{item.label} ({item.dur} min)</option>)}
                 </select>
               </div>
             </div>
@@ -1114,8 +1121,11 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
 
               <div className="fld">
                 <label>Time Slot</label>
-                <select value={time} onChange={e => setTime(e.target.value)}>
-                  {TIME_SLOTS.map(t => (
+                {availability.error && <p role="alert">{availability.error} <button type="button" onClick={availability.refresh}>Retry</button></p>}
+                {availability.loading && <small>Checking availability…</small>}
+                <select value={availability.slots.includes(time) ? time : ""} onChange={e => setTime(e.target.value)}>
+                  <option value="">Choose an available time</option>
+                  {availability.slots.map(t => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
