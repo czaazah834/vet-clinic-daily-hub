@@ -1,6 +1,6 @@
 // ZIP <-> province/city matching for the Philippines, fully offline (uses the bundled ph-zip.json).
 // ph-zip.json rows: { z: ZIP, a: postal area (municipality, or a district for Metro Manila), p: province, r: region }
-import DATA from './ph-zip.json' with { type: 'json' };
+import DATA from './ph-zip.json';
 
 const BY_ZIP = new Map();
 for (const r of DATA) (BY_ZIP.get(r.z) ?? BY_ZIP.set(r.z, []).get(r.z)).push(r);

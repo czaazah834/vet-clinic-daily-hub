@@ -4,7 +4,7 @@ import { Country, State, City } from 'country-state-city';
 import { parsePhoneNumberFromString, getCountryCallingCode } from 'libphonenumber-js/max';
 import { PUBLIC } from './domains.js';
 import { checkPhZip, zipsFor } from './zipmatch.js';
-import PHD from './ph-locations.json' with { type: 'json' };
+import PHD from './ph-locations.json';
 
 // Postal-code formats for every country that has a postal system. The ~66 that have none fall back to a loose 3-10 char check.
 const ZIP = Object.fromEntries(Object.entries({
