@@ -62,6 +62,11 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const weightAnalysis = assessWeight(weight, species, pet.breed || "", lastWeight);
   const tempAnalysis = assessTemp(temp, species);
 
+  const weightNum = parseFloat(weight);
+  const weightErr = weight !== "" && (isNaN(weightNum) || weightNum < 0.05 || weightNum > 120) ? "Weight must be between 0.05 kg and 120 kg." : "";
+  const tempNum = parseFloat(temp);
+  const tempErr = temp !== "" && (isNaN(tempNum) || tempNum < 33 || tempNum > 45) ? "Temperature must be between 33°C and 45°C." : "";
+
   const handleStepWeight = (delta) => {
     const cur = parseFloat(weight);
     if (!Number.isFinite(cur)) return;
@@ -262,7 +267,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       max="120"
                       aria-label="Measured weight (kg)"
                       value={weight}
-                      onChange={e => setWeight(e.target.value)}
+                      className={weightErr ? "bad" : weight !== "" ? "ok" : ""}
+                      onChange={e => { setWeight(e.target.value); setValErr(""); }}
                       style={{ fontSize: "18px", fontWeight: "700", padding: "8px 12px", width: "120px" }}
                     />
                     <span style={{ fontWeight: "700", color: "#475569" }}>kg</span>
@@ -271,6 +277,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                     <button type="button" className="btn ghost sm" disabled={!Number.isFinite(parseFloat(weight))} onClick={() => handleStepWeight(+0.1)}>+0.1</button>
                     <button type="button" className="btn ghost sm" disabled={!Number.isFinite(parseFloat(weight))} onClick={() => handleStepWeight(+0.5)}>+0.5</button>
                   </div>
+                  {weightErr && <span className="err" style={{ fontSize: "11.5px", display: "block", marginTop: "4px" }}>{weightErr}</span>}
                 </div>
 
                 {weightAnalysis && (
@@ -380,7 +387,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       max="45"
                       aria-label="Measured temperature (°C)"
                       value={temp}
-                      onChange={e => setTemp(e.target.value)}
+                      className={tempErr ? "bad" : temp !== "" ? "ok" : ""}
+                      onChange={e => { setTemp(e.target.value); setValErr(""); }}
                       style={{ fontSize: "18px", fontWeight: "700", padding: "8px 12px", width: "120px" }}
                     />
                     <span style={{ fontWeight: "700", color: "#475569" }}>°C</span>
@@ -396,6 +404,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       Use measured normal ({speciesConfig.normalTempPreset}°C)
                     </button>
                   </div>
+                  {tempErr && <span className="err" style={{ fontSize: "11.5px", display: "block", marginTop: "4px" }}>{tempErr}</span>}
                 </div>
 
                 {tempAnalysis && (

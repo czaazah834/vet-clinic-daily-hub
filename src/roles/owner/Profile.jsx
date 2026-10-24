@@ -56,6 +56,12 @@ function Contact({ o, me, setDb, say }) {
   const [country, setCountry] = useState(o.country ?? "Philippines");
   const [zipCode, setZipCode] = useState(o.zipCode || "");
 
+  const [touched, setTouched] = useState({});
+  const touch = k => setTouched(p => ({ ...p, [k]: true }));
+
+  const emailErr = !email.trim() ? "Email is required." : !emOk(email.trim()) ? "Enter a valid email (user@domain.com)." : "";
+  const phoneErr = !phone.trim() ? "Mobile number is required." : phone.replace(/\D/g, "").length < 10 ? "Enter a valid mobile number (e.g. +63 917 123 4567)." : "";
+
   const submitting = useRef(false);
   const [pending, setPending] = useState(null);
   const [emailCode, setEmailCode] = useState("");
@@ -78,8 +84,8 @@ function Contact({ o, me, setDb, say }) {
     if (submitting.current) return;
     setTop("");
     setSrv({});
-    if (!email) return setTop("Email is required.");
-    if (!phone) return setTop("Mobile number is required.");
+    if (!email || emailErr) { touch("email"); return setTop(emailErr || "Email is required."); }
+    if (!phone || phoneErr) { touch("phone"); return setTop(phoneErr || "Mobile number is required."); }
     submitting.current = true;
     setBusy(true);
 
@@ -144,8 +150,8 @@ function Contact({ o, me, setDb, say }) {
 
       <h4 style={{ marginTop: 20, marginBottom: 8, fontSize: "1rem", color: "#0b3a5b" }}>Contact Information</h4>
       <div className="ow-account-fields">
-        <Field id="pemail" label="Email address" req type="email" value={email} filter={noSpaces} filterMsg="Spaces aren’t allowed in an email" maxLen={100} onChange={setEmail} error={srv.email} hint="Used for appointment confirmations & notifications" autoComplete="email" />
-        <Field id="pphone" label="Mobile number" req type="tel" value={phone} onChange={setPhone} filter={onlyDigitsPlus} filterMsg="Numbers only" inputMode="tel" maxLen={13} error={srv.phone} hint="SMS notifications and verification number" autoComplete="tel" />
+        <Field id="pemail" label="Email address" req type="email" value={email} filter={noSpaces} filterMsg="Spaces aren’t allowed in an email" maxLen={100} onChange={v => { setEmail(v); setSrv(s => ({ ...s, email: "" })); }} onBlur={() => touch("email")} error={srv.email || (touched.email ? emailErr : "")} valid={touched.email && !emailErr && !srv.email} hint="Used for appointment confirmations & notifications" autoComplete="email" />
+        <Field id="pphone" label="Mobile number" req type="tel" value={phone} onChange={v => { setPhone(v); setSrv(s => ({ ...s, phone: "" })); }} onBlur={() => touch("phone")} filter={onlyDigitsPlus} filterMsg="Numbers only" inputMode="tel" maxLen={13} error={srv.phone || (touched.phone ? phoneErr : "")} valid={touched.phone && !phoneErr && !srv.phone} hint="SMS notifications and verification number" autoComplete="tel" />
       </div>
 
       <h4 style={{ marginTop: 20, marginBottom: 8, fontSize: "1rem", color: "#0b3a5b" }}>Registered Address</h4>

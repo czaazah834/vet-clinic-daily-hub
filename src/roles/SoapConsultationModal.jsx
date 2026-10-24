@@ -69,13 +69,19 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     return () => { active = false; };
   }, [catalogAttempt]);
   const [errs, setErrs] = useState({});
+  const [touched, setTouched] = useState({});
+
+  const touch = (k) => {
+    setTouched(p => ({ ...p, [k]: true }));
+    const message = validateSoapFields(f, TODAY, pet.birth)[k] || "";
+    setErrs(p => ({ ...p, [k]: message }));
+  };
 
   const set = (k, v) => {
-    setF(p => ({ ...p, [k]: v, ...(["date","vaccine","intervalDays","brand","batch","doseNo","doseOf"].includes(k) ? {scheduleApproved:false} : {}) }));
-    if (["diagnosis", "treatment"].includes(k) || errs[k]) {
-      const message = validateSoapFields({...f, [k]: v}, TODAY, pet.birth)[k] || "";
-      setErrs(p => ({...p, [k]: message}));
-    }
+    const nextForm = { ...f, [k]: v, ...(["date","vaccine","intervalDays","brand","batch","doseNo","doseOf"].includes(k) ? {scheduleApproved:false} : {}) };
+    setF(nextForm);
+    const message = validateSoapFields(nextForm, TODAY, pet.birth)[k] || "";
+    setErrs(p => ({ ...p, [k]: message }));
   };
 
   const handleFollowUpDaysChange = (days) => {
@@ -343,7 +349,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     aria-invalid={!!errs.symptoms}
                     aria-describedby={errs.symptoms ? "soap-symptoms-error" : undefined}
                     value={f.symptoms}
+                    className={errs.symptoms ? "bad" : f.symptoms.trim() ? "ok" : ""}
                     onChange={e => set("symptoms", e.target.value)}
+                    onBlur={() => touch("symptoms")}
                     placeholder="Patient symptoms, onset, behavioral observations, owner complaint..."
                   />
                 </label>
@@ -358,7 +366,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     aria-invalid={!!errs.objective}
                     aria-describedby={errs.objective ? "soap-objective-error" : undefined}
                     value={f.objective}
+                    className={errs.objective ? "bad" : f.objective.trim() ? "ok" : ""}
                     onChange={e => set("objective", e.target.value)}
+                    onBlur={() => touch("objective")}
                     placeholder="Body temperature, heart rate, hydration, mucous membranes, lymph nodes..."
                   />
                 </label>
@@ -404,8 +414,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     aria-describedby={errs.diagnosis ? "soap-diagnosis-error" : undefined}
                     value={f.diagnosis}
                     onChange={e => set("diagnosis", e.target.value)}
+                    onBlur={() => touch("diagnosis")}
                     placeholder="Clinical diagnosis, differential diagnosis, condition assessment..."
-                    className={errs.diagnosis ? "bad" : ""}
+                    className={errs.diagnosis ? "bad" : f.diagnosis.trim() ? "ok" : ""}
                   />
                 </label>
                 {errs.diagnosis && <span id="soap-diagnosis-error" className="err" role="alert">{errs.diagnosis}</span>}
@@ -420,8 +431,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     aria-describedby={errs.treatment ? "soap-treatment-error" : undefined}
                     value={f.treatment}
                     onChange={e => set("treatment", e.target.value)}
+                    onBlur={() => touch("treatment")}
                     placeholder="Procedures performed, fluids administered, wound treatment, instructions..."
-                    className={errs.treatment ? "bad" : ""}
+                    className={errs.treatment ? "bad" : f.treatment.trim() ? "ok" : ""}
                   />
                 </label>
                 {errs.treatment && <span id="soap-treatment-error" className="err" role="alert">{errs.treatment}</span>}

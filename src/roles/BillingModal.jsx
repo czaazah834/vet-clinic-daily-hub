@@ -426,15 +426,17 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                   id="billing-discount"
                   step="0.01"
                   value={discount}
-                  onChange={e => setDiscount(e.target.value)}
+                  onChange={e => { setDiscount(e.target.value); setFormErr(""); }}
                   placeholder="0"
+                  className={+discount > subtotal ? "bad" : discount > 0 ? "ok" : ""}
                   style={{ padding: "6px 10px", fontSize: "13px" }}
                 />
+                {+discount > subtotal && <span className="err" style={{ fontSize: "11px" }}>Discount cannot exceed subtotal (₱{subtotal.toLocaleString()}).</span>}
               </div>
 
               <div className="fld" style={{ margin: 0 }}>
                 <label style={{ fontSize: "12px" }}>Payment Method</label>
-                <select value={method} onChange={e => setMethod(e.target.value)} style={{ padding: "6px 10px", fontSize: "13px" }}>
+                <select value={method} onChange={e => { setMethod(e.target.value); setFormErr(""); }} style={{ padding: "6px 10px", fontSize: "13px" }}>
                   <option value="Cash">Cash (Over the counter)</option>
                   <option value="GCash">GCash QR / Mobile</option>
                   <option value="Maya">Maya QR / Wallet</option>
@@ -455,10 +457,16 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                     step="0.01"
                     placeholder="Enter actual cash received"
                     value={cashTendered}
-                    onChange={e => setCashTendered(e.target.value)}
+                    onChange={e => { setCashTendered(e.target.value); setFormErr(""); }}
+                    className={cashTendered.trim() && (+cashTendered || 0) < total ? "bad" : (+cashTendered || 0) >= total ? "ok" : ""}
                     style={{ padding: "6px 10px", fontSize: "13px", fontWeight: 700 }}
                     required
                   />
+                  {cashTendered.trim() && (+cashTendered || 0) < total && (
+                    <span className="err" style={{ fontSize: "11px" }}>
+                      Cash is short by ₱{(total - (+cashTendered || 0)).toLocaleString()}.
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
                   <span style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 600 }}>Change Due</span>
@@ -475,10 +483,16 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                   placeholder="e.g. GCASH-98213894 or POS-4412"
                   maxLength={100}
                   value={refNo}
-                  onChange={e => setRefNo(e.target.value)}
+                  onChange={e => { setRefNo(e.target.value); setFormErr(""); }}
+                  className={refNo.trim() && refNo.trim().length < 4 ? "bad" : refNo.trim().length >= 4 ? "ok" : ""}
                   style={{ padding: "6px 10px", fontSize: "13px" }}
                   required
                 />
+                {refNo.trim() && refNo.trim().length < 4 && (
+                  <span className="err" style={{ fontSize: "11px" }}>
+                    Reference code must be at least 4 characters.
+                  </span>
+                )}
               </div>
             )}
 

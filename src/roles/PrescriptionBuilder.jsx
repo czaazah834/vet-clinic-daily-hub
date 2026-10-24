@@ -35,7 +35,30 @@ export default function PrescriptionBuilder({items, onChange, notes, onNotes, er
           <label>Doses per day<input type="number" min="1" max="24" step="1" value={p.dose.timesPerDay} onChange={e => update(p.catalogId, {dose:{...p.dose,timesPerDay:e.target.value === '' ? '' : Number(e.target.value)}})} /></label>
           <label>Days of treatment<input type="number" min="1" max="365" step="1" value={p.dose.days} onChange={e => update(p.catalogId, {dose:{...p.dose,days:e.target.value === '' ? '' : Number(e.target.value)}})} /></label>
           <label>{p.dose.unit} per billed item/package<input type="number" min="0.0001" step="any" value={p.dose.unitsPerItem} onChange={e => update(p.catalogId, {dose:{...p.dose,unitsPerItem:e.target.value === '' ? '' : Number(e.target.value)}})} /></label>
-        </div>{calculationError ? <p className="err" role="status">{calculationError}</p> : <p><b>{supply.directions}</b><br />Course supply: {supply.totalUnits} {p.dose.unit}. Bill {supply.quantity} item(s)/package(s), rounded up.</p>}</> : <div className="rx-grid"><label>Directions / clinical instructions<textarea maxLength={1000} value={p.instructions} onChange={e => update(p.catalogId,{instructions:e.target.value})} /></label><label>Items / packages to dispense<input type="number" min="1" max="1000" step="1" value={p.quantity} onChange={e => update(p.catalogId,{quantity:e.target.value === '' ? '' : Number(e.target.value)})} /></label></div>}
+        </div>{calculationError ? <p className="err" role="status">{calculationError}</p> : <p><b>{supply.directions}</b><br />Course supply: {supply.totalUnits} {p.dose.unit}. Bill {supply.quantity} item(s)/package(s), rounded up.</p>}</> : <div className="rx-grid">
+          <label>Directions / clinical instructions *
+            <textarea
+              maxLength={1000}
+              value={p.instructions}
+              placeholder="e.g. Give 1 tablet twice daily with meals for 7 days"
+              className={!p.instructions?.trim() ? "bad" : "ok"}
+              onChange={e => update(p.catalogId,{instructions:e.target.value})}
+            />
+            {!p.instructions?.trim() && <span className="err" style={{fontSize:11.5,marginTop:2,display:'block'}}>Directions / administration instructions are required.</span>}
+          </label>
+          <label>Items / packages to dispense *
+            <input
+              type="number"
+              min="1"
+              max="1000"
+              step="1"
+              value={p.quantity}
+              className={!p.quantity || p.quantity < 1 ? "bad" : "ok"}
+              onChange={e => update(p.catalogId,{quantity:e.target.value === '' ? '' : Number(e.target.value)})}
+            />
+            {(!p.quantity || p.quantity < 1) && <span className="err" style={{fontSize:11.5,marginTop:2,display:'block'}}>Quantity must be at least 1.</span>}
+          </label>
+        </div>}
         <div className="row end"><b>Product total: ₱{(Number(quantity || 0) * p.price).toLocaleString()}</b><button className="btn sm ghost" type="button" onClick={() => onChange(items.filter(x => x.catalogId !== p.catalogId))}>Remove {p.name}</button></div>
       </fieldset>;
     })}
