@@ -1,3 +1,5 @@
+import { ownerBill } from "../ownerBilling.js";
+import { money, paymentDate, paymentTime } from "../assistantWorkflow.js";
 import { useCheckoutClaim } from "../useCheckoutClaim.js";
 import { useState, useEffect, useRef } from "react";
 import { petName, ownerName, addLog } from "../lib.jsx";
@@ -9,6 +11,8 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   const owner = db.owners.find(o => o.id === pet.ownerId) || {};
   const record = (db.records || []).find(r => r.apptId === appt.id) || {};
 
+  const [paymentRecord, setPaymentRecord] = useState(appt);
+  const savedBill = ownerBill(paymentRecord);
   const [catalog, setCatalog] = useState([]);
   const [catalogError, setCatalogError] = useState("");
   const [catalogAttempt, setCatalogAttempt] = useState(0);
@@ -20,7 +24,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
     return [];
   });
 
-  const [method, setMethod] = useState(appt.paymentMethod || "Cash");
+  const [method, setMethod] = useState(appt.paymentMethod?.trim() || (appt.billingStatus === "Paid" ? "Not recorded" : "Cash"));
   const [discount, setDiscount] = useState(String(appt.discount || 0));
   const [cashTendered, setCashTendered] = useState(String(appt.cashTendered ?? appt.amount ?? 600));
   const [refNo, setRefNo] = useState(appt.paymentReference || "");
@@ -123,8 +127,10 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
       actorRole: me.role
     };
 
+    let payment;
     try {
-      await api.post(`/api/appointments/${appt.id}/billing`, payload);
+      const response = await api.post(`/api/appointments/${appt.id}/billing`, payload);
+      payment = response.appointment;
     } catch (err) {
       setFormErr(err.message);
       setLoading(false);
@@ -133,24 +139,14 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
     setDb(p => ({
       ...p,
-      appts: p.appts.map(a => a.id === appt.id ? {
-        ...a,
-        billingStatus: "Paid",
-        amount: total,
-        paymentMethod: method,
-        paymentReference: payload.paymentReference,
-        discount: payload.discount,
-        cashTendered: payload.cashTendered,
-        changeAmount: payload.changeAmount,
-        paidAt: new Date().toLocaleTimeString("en-PH"),
-        invoiceItems: items
-      } : a),
-      log: addLog(p, me, `Processed billing payment ₱${total.toLocaleString()} via ${method} (Ref: ${payload.paymentReference}) for ${pet.name} (${owner.name}). Issued official receipt.`)
+      appts: p.appts.map(a => a.id === appt.id ? { ...a, ...payment } : a),
+      log: addLog(p, me, `Processed billing payment ${money(payment.amount)} via ${payment.paymentMethod} (Ref: ${payment.paymentReference}) for ${pet.name} (${owner.name}). Issued official receipt.`)
     }));
 
+    setPaymentRecord(payment);
     setLoading(false);
     setPaid(true);
-    onPaid && onPaid(total);
+    onPaid && onPaid(payment.amount);
   };
 
   return (
@@ -181,7 +177,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             </div>
             <h4 style={{ margin: "0 0 6px", fontSize: "19px", color: "var(--navy)" }}>Payment Recorded Successfully!</h4>
             <p style={{ margin: 0, fontSize: "14px", color: "#475569" }}>
-              Receipt issued for <b style={{ color: "#166534", fontSize: "18px" }}>₱{total.toLocaleString()}</b> paid via <b>{method}</b>.
+              Recorded payment: <b style={{ color: "#166534", fontSize: "18px" }}>{money(savedBill.amount)}</b>. Payment method: <b>{paymentRecord.paymentMethod?.trim() || "Not recorded"}</b>.
             </p>
 
             <div style={{ margin: "16px 0", padding: "14px", background: "#f8fafc", borderRadius: "12px", border: "1.5px dashed #cbd5e1", fontSize: "13px", textAlign: "left" }}>
@@ -193,25 +189,28 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
               </div>
               <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px", marginTop: "8px" }}>
                 <b>Itemized Services &amp; Products:</b>
-                {items.map((it, idx) => (
+                {savedBill.items.length === 0 && <p>Itemized charges not recorded.</p>}
+                {savedBill.items.map((it, idx) => (
                   <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#475569", marginTop: "3px" }}>
                     <span>{it.qty}x {it.name}</span>
                     <b>₱{(it.price * it.qty).toLocaleString()}</b>
                   </div>
                 ))}
               </div>
-              {+discount > 0 && (
+              {savedBill.discount > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#b91c1c", marginTop: "6px" }}>
                   <span>Discount / Senior:</span>
-                  <b>-₱{(+discount).toLocaleString()}</b>
+                  <b>-{money(savedBill.discount)}</b>
                 </div>
               )}
               <div style={{ borderTop: "2px solid #0f172a", paddingTop: "8px", marginTop: "8px", display: "flex", justifyContent: "space-between", fontSize: "14px" }}>
                 <b>Total Amount Paid:</b>
-                <b style={{ color: "#166534" }}>₱{total.toLocaleString()}</b>
+                <b style={{ color: "#166534" }}>{money(savedBill.amount)}</b>
               </div>
             </div>
 
+            <p>Payment date (Philippine time): {paymentDate(paymentRecord.paidAt) || "Not recorded"} · {paymentTime(paymentRecord.paidAt)}</p>
+            {savedBill.mismatch && <p role="status">Saved itemization differs from the recorded payment. The payment amount above is preserved.</p>}
             <div style={{ display: "flex", justifyContent: "center", gap: "10px" }}>
               <button className="btn ghost sm" onClick={() => window.print()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <Printer size={15} /> Print Receipt

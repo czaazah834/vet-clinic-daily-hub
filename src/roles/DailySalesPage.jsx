@@ -17,31 +17,31 @@ import {
   ChevronRight,
   Coins
 } from "lucide-react";
-import { TODAY, plus, ymd, petName, ownerName } from "../lib.jsx";
+import { ymd } from "../lib.jsx";
+import { today } from "../booking.js";
+import { dailyCollections, pendingCheckout, paymentMethod, paymentTime, money } from "../assistantWorkflow.js";
+import { ownerBill } from "../ownerBilling.js";
 import BillingModal from "./BillingModal.jsx";
 
 export default function DailySalesPage({ db, setDb, me, go, say }) {
-  const [selDate, setSelDate] = useState(TODAY);
+  const TODAY = today();
+  const [selDate, setSelDate] = useState(today);
+  const [showUndated, setShowUndated] = useState(false);
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
   const [receiptAppt, setReceiptAppt] = useState(null);
 
-  // Appointments on selected date
-  const dayAppts = (db.appts || []).filter(a => a.date === selDate && a.status !== "Cancelled");
-  const paidAppts = dayAppts.filter(a => a.billingStatus === "Paid");
-  const unbilledCompleted = dayAppts.filter(a => a.status === "Completed" && a.billingStatus !== "Paid");
-
-  const totalRevenue = paidAppts.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
-  const unbilledRevenue = unbilledCompleted.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
-
-  // Method breakdown
-  const cashTotal = paidAppts.filter(a => (a.paymentMethod || "Cash").toLowerCase() === "cash").reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
-  const gcashTotal = paidAppts.filter(a => (a.paymentMethod || "").toLowerCase().includes("gcash")).reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
-  const cardTotal = paidAppts.filter(a => (a.paymentMethod || "").toLowerCase().includes("card") || (a.paymentMethod || "").toLowerCase().includes("maya")).reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+  const collections = dailyCollections(db.appts || [], selDate);
+  const pending = pendingCheckout(db.appts || [], selDate);
+  const paidAppts = collections.paid, unbilledCompleted = pending.visits;
+  const totalRevenue = collections.total;
+  const cashTotal = collections.methods.cash, gcashTotal = collections.methods.gcash;
+  const digitalTotal = [collections.methods.gcash, collections.methods.card, collections.methods.maya];
+  const cardTotal = collections.methods.card, mayaTotal = collections.methods.maya;
 
   // Filtered paid list
-  const filteredPaid = paidAppts.filter(a => {
-    if (methodFilter !== "all" && (a.paymentMethod || "Cash").toLowerCase() !== methodFilter.toLowerCase()) return false;
+  const filteredPaid = (showUndated ? collections.undated : paidAppts).filter(a => {
+    if (methodFilter !== "all" && paymentMethod(a.paymentMethod) !== methodFilter) return false;
     if (!search.trim()) return true;
     const q = search.trim().toLowerCase();
     const pet = (db.pets || []).find(p => p.id === a.petId) || {};
@@ -96,6 +96,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             <input
               type="date"
               value={selDate}
+              aria-label="Report date"
               onChange={e => setSelDate(e.target.value)}
               style={{ border: "none", background: "transparent", fontWeight: 700, fontSize: "14px", color: "var(--navy)", outline: "none", cursor: "pointer" }}
             />
@@ -130,11 +131,14 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             onClick={() => window.print()}
             style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, border: "1px solid #cbd5e1" }}
           >
-            <Printer size={15} /> Print Daily Z-Reading
+            <Printer size={15} /> Print daily report
           </button>
         </div>
       </div>
 
+      <p>Collections use the recorded payment date in Philippine time. Checkout counts refer to visits completed on {selDate}; saved draft charges may change before payment.</p>
+      {(collections.missingAmounts > 0 || collections.methods.unrecorded !== 0 || collections.methods.other !== 0) && <p role="status">{collections.missingAmounts} payment(s) without a usable amount, excluded from totals. Other recorded methods: {money(collections.methods.other)}. Method not recorded: {money(collections.methods.unrecorded)}.</p>}
+      {collections.undated.length > 0 && <p role="status">{collections.undated.length} payment(s) have no usable payment date and are excluded from daily totals. <button className="btn ghost sm" onClick={() => setShowUndated(v => !v)}>{showUndated ? "Show selected day" : "View undated payments"}</button></p>}
       {/* Financial Overview Metrics Cards */}
       <div style={{
         display: "grid",
@@ -151,7 +155,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             <DollarSign size={20} color="#60a5fa" />
           </div>
           <div style={{ fontSize: "28px", fontWeight: 800 }}>
-            ₱{totalRevenue.toLocaleString()}
+            {money(totalRevenue)}
           </div>
           <div style={{ fontSize: "12px", color: "#bfdbfe", marginTop: "4px" }}>
             {paidAppts.length} settled transaction{paidAppts.length === 1 ? "" : "s"}
@@ -167,10 +171,10 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             <Coins size={18} color="#166534" />
           </div>
           <div style={{ fontSize: "24px", fontWeight: 800, color: "#166534" }}>
-            ₱{cashTotal.toLocaleString()}
+            {money(cashTotal)}
           </div>
           <div style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
-            {paidAppts.filter(a => (a.paymentMethod || "Cash").toLowerCase() === "cash").length} cash receipt(s)
+            {paidAppts.filter(a => paymentMethod(a.paymentMethod) === "cash").length} cash receipt(s)
           </div>
         </div>
 
@@ -178,15 +182,15 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
         <div style={{ background: "#ffffff", padding: "18px 20px", borderRadius: "14px", border: "1px solid #e2e8f0" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
             <span style={{ fontSize: "12px", fontWeight: 700, textTransform: "uppercase", color: "#64748b" }}>
-              Digital (GCash / Card)
+              Digital (GCash / Card / Maya)
             </span>
             <CreditCard size={18} color="#0284c7" />
           </div>
           <div style={{ fontSize: "24px", fontWeight: 800, color: "#0369a1" }}>
-            ₱{(gcashTotal + cardTotal).toLocaleString()}
+            {money(digitalTotal.some(v => v === null) ? null : Math.round(digitalTotal.reduce((sum,v) => sum + v * 100,0)) / 100)}
           </div>
           <div style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
-            GCash: ₱{gcashTotal.toLocaleString()} &bull; Card/Maya: ₱{cardTotal.toLocaleString()}
+            GCash: {money(gcashTotal)} &bull; Card: {money(cardTotal)} &bull; Maya: {money(mayaTotal)}
           </div>
         </div>
 
@@ -202,7 +206,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             {unbilledCompleted.length}
           </div>
           <div style={{ fontSize: "12px", color: unbilledCompleted.length > 0 ? "#854d0e" : "#64748b", marginTop: "4px" }}>
-            {unbilledCompleted.length > 0 ? `₱${unbilledRevenue.toLocaleString()} pending settlement` : "No pending checkouts"}
+            {unbilledCompleted.length > 0 ? `${money(pending.draftTotal)} saved draft charges · ${pending.awaitingInvoice} awaiting invoice` : "No pending checkouts"}
           </div>
         </div>
       </div>
@@ -236,7 +240,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                   >
                     <Receipt size={14} />
                     <span>Bill {p.name || "Patient"}</span>
-                    <span>(₱{a.amount})</span>
+                    <span>({ownerBill(a).amount === null ? "Awaiting invoice" : `${money(ownerBill(a).amount)} draft`})</span>
                   </button>
                 );
               })}
@@ -250,20 +254,23 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
         <div style={{ padding: "14px 20px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", flex: "1 1 320px" }}>
             <h3 style={{ margin: 0, fontSize: "16px", color: "var(--navy)" }}>
-              Daily Sales Ledger &bull; {selDate}
+              Payment ledger &bull; {showUndated ? "Payment date not recorded" : selDate}
             </h3>
 
             {/* Method filter */}
             <select
               value={methodFilter}
+              aria-label="Payment method filter"
               onChange={e => setMethodFilter(e.target.value)}
               style={{ padding: "5px 10px", fontSize: "12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
             >
               <option value="all">All Payment Methods</option>
-              <option value="Cash">Cash</option>
-              <option value="GCash">GCash</option>
-              <option value="Maya">Maya</option>
-              <option value="Credit Card">Credit / Debit Card</option>
+              <option value="cash">Cash</option>
+              <option value="gcash">GCash</option>
+              <option value="maya">Maya</option>
+              <option value="card">Credit / Debit Card</option>
+              <option value="unrecorded">Not recorded</option>
+              <option value="other">Other recorded methods</option>
             </select>
           </div>
 
@@ -271,7 +278,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             <Search size={15} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
             <input
               type="search"
-              placeholder="Filter by owner, pet, OR#..."
+              placeholder="Filter by owner, pet, visit reference..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{ width: "100%", padding: "6px 10px 6px 32px", fontSize: "12.5px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
@@ -284,7 +291,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ textAlign: "left", background: "#f8fafc", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>
-                  <th style={{ padding: "12px 16px" }}>Time &bull; Receipt #</th>
+                  <th style={{ padding: "12px 16px" }}>Payment time &bull; Visit reference</th>
                   <th style={{ padding: "12px 16px" }}>Patient &bull; Owner</th>
                   <th style={{ padding: "12px 16px" }}>Services Rendered</th>
                   <th style={{ padding: "12px 16px" }}>Payment Method</th>
@@ -296,7 +303,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                 {filteredPaid.map(a => {
                   const pet = (db.pets || []).find(p => p.id === a.petId) || {};
                   const owner = (db.owners || []).find(o => o.id === pet.ownerId) || {};
-                  const orNumber = `OR-${a.date.replace(/-/g, "")}-${a.id.slice(-4).toUpperCase()}`;
+
 
                   return (
                     <tr
@@ -309,9 +316,9 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                     >
                       {/* Time and OR */}
                       <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
-                        <b style={{ color: "var(--navy)" }}>{a.time}</b>
+                        <b style={{ color: "var(--navy)" }}>{paymentTime(a.paidAt)}</b>
                         <small style={{ display: "block", color: "#64748b", fontFamily: "monospace", fontSize: "11px" }}>
-                          {orNumber}
+                          {a.id}
                         </small>
                       </td>
 
@@ -348,14 +355,14 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                           color: (a.paymentMethod || "").toLowerCase().includes("cash") ? "#047857" : "#0369a1",
                           border: (a.paymentMethod || "").toLowerCase().includes("cash") ? "1px solid #a7f3d0" : "1px solid #bfdbfe",
                         }}>
-                          {a.paymentMethod || "Cash"}
+                          {a.paymentMethod?.trim() || "Not recorded"}
                         </span>
                       </td>
 
                       {/* Amount */}
                       <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
                         <b style={{ fontSize: "14.5px", color: "#0f172a" }}>
-                          ₱{(parseFloat(a.amount) || 0).toLocaleString()}
+                          {money(ownerBill(a).amount)}
                         </b>
                       </td>
 
@@ -381,7 +388,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
           </div>
         ) : (
           <div className="empty sm" style={{ padding: "36px 20px", textAlign: "center" }}>
-            No settled transactions recorded on {selDate}.
+            {showUndated ? "No payments with an unrecorded date match these filters." : `No settled transactions match these filters on ${selDate}.`}
           </div>
         )}
       </section>
@@ -394,9 +401,9 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
           setDb={setDb}
           me={me}
           onClose={() => setReceiptAppt(null)}
-          onPaid={(paidRecord) => {
+          onPaid={(amount) => {
             setReceiptAppt(null);
-            say && say(`Payment of ₱${paidRecord?.amount?.toLocaleString() || ""} settled successfully!`);
+            say && say(`Payment of ${money(amount)} settled successfully!`);
           }}
         />
       )}

@@ -1011,7 +1011,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
   const TODAY = bookingToday();
   const [petId, setPetId] = useState(slot.petId || db.pets[0]?.id || "");
   const [vetId, setVetId] = useState(slot.vetId || doctors[0]?.[0] || "");
-  const [date, setDate] = useState(slot.fromVaccineCard ? slot.date : slot.date && slot.date >= TODAY ? slot.date : TODAY);
+  const [date, setDate] = useState(slot.fromVaccineCard || slot.followUpId ? slot.date : slot.date && slot.date >= TODAY ? slot.date : TODAY);
   const [time, setTime] = useState(slot.time || "09:00");
   const [service, setService] = useState(slot.service || "checkup");
   const [reason, setReason] = useState(slot.reason || "");
@@ -1024,6 +1024,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
 
   const selectedPet = db.pets.find(p => p.id === petId) || {};
   const owner = db.owners.find(o => o.id === selectedPet.ownerId) || {};
+  const followUp = db.records.find(r => r.id === followUpId && r.petId === petId);
 
   const validateDate = (val) => {
     if (!val) return "Please choose an appointment date.";
@@ -1089,6 +1090,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
             </div>
 
             <label>Follow-up request (optional)<select value={followUpId} onChange={e => setFollowUpId(e.target.value)}><option value="">Regular visit</option>{openFollowUps(db,petId).map(r => <option key={r.id} value={r.id}>{r.followUpDate} · {r.followUpReason}</option>)}</select></label>
+            {followUp && <section aria-label="Selected follow-up instructions" className="ow-note"><b>{followUp.careStatus} · Target: {followUp.followUpDate}</b><p style={{whiteSpace:"pre-wrap"}}>{followUp.followUpReason}</p><small>Select an available visit time. Booking does not change the vet's target date.</small></section>}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div className="fld">
                 <label>Veterinarian</label>
