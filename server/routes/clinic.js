@@ -74,7 +74,8 @@ clinicRouter.get("/state", async (req, res) => {
       if (!weightsByPet[w.pet_id]) weightsByPet[w.pet_id] = [];
       weightsByPet[w.pet_id].push({
         date: toDateStr(w.date),
-        kg: parseFloat(w.kg)
+        kg: parseFloat(w.kg),
+        by: w.recorded_by || "Clinic Front Desk"
       });
     }
 
@@ -94,7 +95,7 @@ clinicRouter.get("/state", async (req, res) => {
       vaccinationCardId: p.vaccination_card_id || "",
       notes: p.notes || "",
       photo: p.photo || "",
-      weights: weightsByPet[p.id] || [{ date: toDateStr(p.birth), kg: parseFloat(p.weight) }]
+      weights: weightsByPet[p.id] || [{ date: toDateStr(p.birth), kg: parseFloat(p.weight), by: "Initial Registration" }]
     }));
 
     const owners = ownersRes.rows.map(o => ({
