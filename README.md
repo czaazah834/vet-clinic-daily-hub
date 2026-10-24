@@ -651,3 +651,17 @@ replace that change; the following refresh reconciles the current server state.
 Checks: `node --test tests/clinic-loading.test.js server/tests/state-performance.test.js`,
 `node --test tests/*.test.js`, `npm run test:clinic`, `npm run test:auth`,
 `npm run test:account`, and `npm run build`.
+
+### Vet SOAP field feedback
+
+SOAP now checks all four clinical sections, real nonfuture consultation dates,
+optional finite weights greater than 0 and up to 120 kg, prescription-note length,
+and real follow-up targets with bounded instructions before sending. Errors appear
+beside the fields and retain entered notes. The appended follow-up text counts
+toward the server's existing 10,000-character treatment limit. Vaccine dose,
+brand/lot, booster approval, stale-visit and duplicate-save guards remain in place.
+The server retains final validation and authorization. Missing intake assessments
+are labelled as unrecorded instead of assuming normal temperature or ideal weight.
+
+Check: `node --test tests/soap-validation.test.js`; `npm run test:clinic`;
+`npm run build`.

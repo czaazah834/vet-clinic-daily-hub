@@ -1,3 +1,4 @@
+import { validateSoapFields } from "../soapValidation.js";
 import PrescriptionBuilder from "./PrescriptionBuilder.jsx";
 import { calculateSupply } from "../prescription.js";
 import { boosterDate, VACCINE_SERVICE } from "../clinicalWorkflow.js";
@@ -69,12 +70,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
 
   const set = (k, v) => {
     setF(p => ({ ...p, [k]: v, ...(["date","vaccine","intervalDays","brand","batch","doseNo","doseOf"].includes(k) ? {scheduleApproved:false} : {}) }));
-    if (k === "diagnosis") {
-      setErrs(p => ({ ...p, diagnosis: !v.trim() ? "Assessment / Diagnosis is required" : "" }));
-    } else if (k === "treatment") {
-      setErrs(p => ({ ...p, treatment: !v.trim() ? "Plan / Treatment is required" : "" }));
-    } else if (errs[k]) {
-      setErrs(p => ({ ...p, [k]: "" }));
+    if (["diagnosis", "treatment"].includes(k) || errs[k]) {
+      const message = validateSoapFields({...f, [k]: v}, TODAY)[k] || "";
+      setErrs(p => ({...p, [k]: message}));
     }
   };
 
@@ -93,7 +91,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     ev.preventDefault();
     if (inFlight.current) return;
     if (stale) {setErrs(p=>({...p,save:"This visit has changed or is not in consultation. Refresh clinic records and reopen it. Your notes remain here for reference."}));return;}
-    const e = {};
+    const e = validateSoapFields(f, TODAY);
     if (!serviceCatalog.length || catalogError) e.save = "Load the official service catalog before finalizing.";
     let selectedItems;
     try {
@@ -103,18 +101,12 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         return p;
       });
     } catch (err) { e.prescription = err.message; }
-    if (!f.diagnosis.trim()) e.diagnosis = "Assessment / Diagnosis is required";
-    if (!f.treatment.trim()) e.treatment = "Plan / Treatment is required";
     if (f.giveVaccine) {
       if (!Number.isInteger(+f.doseNo) || +f.doseNo < 1 || +f.doseOf < +f.doseNo || !Number.isInteger(+f.doseOf) || +f.doseOf > 20) e.vaccine = "Enter the administered dose number and total planned doses (1–20).";
       if (!boosterDate(f.date, f.intervalDays) || !f.scheduleApproved) e.vaccine = "Enter and approve the booster interval for this patient.";
       if (!f.vaccine) e.vaccine = "Please select the administered biological / vaccine.";
       if (!f.brand.trim()) e.brand = "Vaccine manufacturer brand name is required.";
       if (!f.batch.trim()) e.batch = "Lot / Batch number is required for official certification.";
-    }
-    if (f.scheduleFollowUp) {
-      if (!f.followUpReason.trim()) e.followUpReason = "Enter follow-up instructions.";
-      if (!f.followUpDate || f.followUpDate < TODAY) e.followUpDate = "Follow-up date must be today or in the future.";
     }
 
     if (Object.keys(e).length) {
@@ -305,8 +297,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                   )}
                 </div>
                 <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", color: "#334155" }}>
-                  <span><b>Temperature:</b> {iv.temp}°C ({iv.tempAnalysis?.label || "Normal"})</span>
-                  <span><b>Weight:</b> {iv.weight} kg ({iv.weightAnalysis?.label || "Ideal"})</span>
+                  <span><b>Temperature:</b> {iv.temp}°C ({iv.tempAnalysis?.label || "Assessment not recorded"})</span>
+                  <span><b>Weight:</b> {iv.weight} kg ({iv.weightAnalysis?.label || "Assessment not recorded"})</span>
                   {iv.weightAnalysis?.trend && <span><b>Change:</b> {iv.weightAnalysis.trend}</span>}
                   {iv.recordedAt && <span style={{ color: "#64748b" }}>Logged at: {iv.recordedAt}</span>}
                 </div>
@@ -324,11 +316,14 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                   <b>S - Subjective (Chief Complaint &amp; History)</b><i> *</i>
                   <textarea
                     rows={2}
+                    aria-invalid={!!errs.symptoms}
+                    aria-describedby={errs.symptoms ? "soap-symptoms-error" : undefined}
                     value={f.symptoms}
                     onChange={e => set("symptoms", e.target.value)}
                     placeholder="Patient symptoms, onset, behavioral observations, owner complaint..."
                   />
                 </label>
+                {errs.symptoms && <span id="soap-symptoms-error" className="err" role="alert">{errs.symptoms}</span>}
               </div>
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
@@ -336,31 +331,44 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                   <b>O - Objective (Physical Exam &amp; Vitals)</b><i> *</i>
                   <textarea
                     rows={2}
+                    aria-invalid={!!errs.objective}
+                    aria-describedby={errs.objective ? "soap-objective-error" : undefined}
                     value={f.objective}
                     onChange={e => set("objective", e.target.value)}
                     placeholder="Body temperature, heart rate, hydration, mucous membranes, lymph nodes..."
                   />
                 </label>
+                {errs.objective && <span id="soap-objective-error" className="err" role="alert">{errs.objective}</span>}
               </div>
 
               <div className="fld">
-                <label>Patient Weight Today (kg)</label>
+                <label htmlFor="soap-weight">Patient Weight Today (kg)</label>
                 <input
+                  id="soap-weight"
                   type="number"
+                  min="0" max="120"
+                  aria-invalid={!!errs.weight}
+                  aria-describedby={errs.weight ? "soap-weight-error" : undefined}
                   step="0.1"
                   value={f.weight}
                   onChange={e => set("weight", e.target.value)}
                   placeholder="e.g. 14.8"
                 />
+                {errs.weight && <span id="soap-weight-error" className="err" role="alert">{errs.weight}</span>}
               </div>
 
               <div className="fld">
-                <label>Consultation Date</label>
+                <label htmlFor="soap-date">Consultation Date</label>
                 <input
+                  id="soap-date"
                   type="date"
+                  max={TODAY}
+                  aria-invalid={!!errs.date}
+                  aria-describedby={errs.date ? "soap-date-error" : undefined}
                   value={f.date}
                   onChange={e => set("date", e.target.value)}
                 />
+                {errs.date && <span id="soap-date-error" className="err" role="alert">{errs.date}</span>}
               </div>
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
@@ -368,13 +376,15 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                   <b>A - Assessment (Diagnosis)</b><i> *</i>
                   <textarea
                     rows={2}
+                    aria-invalid={!!errs.diagnosis}
+                    aria-describedby={errs.diagnosis ? "soap-diagnosis-error" : undefined}
                     value={f.diagnosis}
                     onChange={e => set("diagnosis", e.target.value)}
                     placeholder="Clinical diagnosis, differential diagnosis, condition assessment..."
                     className={errs.diagnosis ? "bad" : ""}
                   />
                 </label>
-                {errs.diagnosis && <span className="err">{errs.diagnosis}</span>}
+                {errs.diagnosis && <span id="soap-diagnosis-error" className="err" role="alert">{errs.diagnosis}</span>}
               </div>
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
@@ -382,13 +392,15 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                   <b>P - Plan (Treatment &amp; In-Clinic Procedures)</b><i> *</i>
                   <textarea
                     rows={2}
+                    aria-invalid={!!errs.treatment}
+                    aria-describedby={errs.treatment ? "soap-treatment-error" : undefined}
                     value={f.treatment}
                     onChange={e => set("treatment", e.target.value)}
                     placeholder="Procedures performed, fluids administered, wound treatment, instructions..."
                     className={errs.treatment ? "bad" : ""}
                   />
                 </label>
-                {errs.treatment && <span className="err">{errs.treatment}</span>}
+                {errs.treatment && <span id="soap-treatment-error" className="err" role="alert">{errs.treatment}</span>}
               </div>
 
               <fieldset style={{gridColumn:"1/-1"}}><legend>Confirm services performed</legend>
@@ -486,7 +498,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
 
                 {f.scheduleFollowUp && (
                   <div style={{ marginTop: "12px" }}>
-                    <label>Care status <select value={f.careStatus} onChange={e => set("careStatus", e.target.value)}><option>Follow-up required</option><option>Recheck required</option></select></label>
+                    <label>Care status <select aria-invalid={!!errs.careStatus} value={f.careStatus} onChange={e => set("careStatus", e.target.value)}><option>Follow-up required</option><option>Recheck required</option></select></label>
+                    {errs.careStatus && <p className="err" role="alert">{errs.careStatus}</p>}
                     <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
                       {[
                         { label: "In 3 Days", days: 3 },
