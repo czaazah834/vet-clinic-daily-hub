@@ -1,3 +1,4 @@
+import {useHistoryComplete} from "../../ClinicHistory.jsx";
 import { useState, useEffect, useRef } from "react";
 import { Badge, scope, petName, ICON, I } from "../../lib.jsx";
 import { auth, OFFLINE_MSG } from "../../authApi.js";
@@ -63,6 +64,7 @@ const veterinarianLabel = (v, vets) => {
 const tone = s => s === "Overdue" ? "er" : s === "Due soon" ? "wa" : "";
 
 export function OwnerVacc({ db, setDb, me, go, say }) {
+  const historyComplete=useHistoryComplete();
   const pets = scope(db, me, "pets");
   const vetOf = v => veterinarianLabel(v, db.vets || []);
   const [selectedId, setSel] = useState(() => (pick.petId && pets.some(p => p.id === pick.petId) ? pick.petId : pets[0] ? pets[0].id : ""));
@@ -239,7 +241,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
               >
                 🔄 {isFlipped ? "Flip to Page 1" : "Flip Card (Page 1 ➜ Page 2)"}
               </button>
-              <button className="btn ghost sm" onClick={() => window.print()}>
+              <button className="btn ghost sm" disabled={!historyComplete} title={!historyComplete?"Load all saved history above before printing the complete card.":undefined} onClick={() => window.print()}>
                 <Icon n="print" size={14} /> Print Card
               </button>
             </div>
@@ -409,7 +411,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                     {/* Summary Row inside Card */}
                     <div className="vc-profile-summary" style={{ marginTop: 4, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                       <div style={{ display: "flex", gap: 16 }}>
-                        <div><div style={{ fontSize: "10.5px", color: "#64748b", textTransform: "uppercase" }}>Total Records</div><b style={{ fontSize: "14px", color: "#0f172a" }}>{mine.length}</b></div>
+                        <div><div style={{ fontSize: "10.5px", color: "#64748b", textTransform: "uppercase" }}>{historyComplete?"Total Records":"Loaded Records"}</div><b style={{ fontSize: "14px", color: "#0f172a" }}>{mine.length}</b></div>
                         <div><div style={{ fontSize: "10.5px", color: "#166534", textTransform: "uppercase" }}>On Track</div><b style={{ fontSize: "14px", color: "#166534" }}>{count("On track")}</b></div>
                         <div><div style={{ fontSize: "10.5px", color: "#92400e", textTransform: "uppercase" }}>Due Soon</div><b style={{ fontSize: "14px", color: "#92400e" }}>{count("Due soon")}</b></div>
                         <div><div style={{ fontSize: "10.5px", color: "#991b1b", textTransform: "uppercase" }}>Overdue</div><b style={{ fontSize: "14px", color: "#991b1b" }}>{count("Overdue")}</b></div>

@@ -1,3 +1,4 @@
+import {stateReadPlan,historyPage} from '../stateReadPlan.js';
 import { assessWeight, assessTemp } from '../../src/roles/vitals.js';
 import { sendClinicState } from "../stateResponse.js";
 import { visibleStateVaccinations } from "../stateVaccinations.js";
@@ -62,17 +63,14 @@ function toDateStr(val) {
 }
 
 /* 1. BOOTSTRAP / FULL STATE SYNC */
-clinicRouter.get("/state", async (req, res) => {
+clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) => {
   try {
     await ensurePetRegistrationSchema();
     await ensureCareSchema();
     await ensurePrescriptionSchema();
-    const owner = req.user.role === "owner";
-    const vet = req.user.role === "vet";
-    const scopeParams = owner ? [req.user.ownerId] : vet ? [[req.user.vetId, req.user.id].filter(Boolean)] : [];
-    const petScope = owner ? "SELECT id FROM pets WHERE owner_id = $1" : "SELECT pet_id FROM appointments WHERE vet_id = ANY($1::varchar[])";
-    const scoped = owner || vet;
-    const wherePet = scoped ? ` WHERE pet_id IN (${petScope})` : "";
+    const plan=stateReadPlan(req.user,{...req.query,view:req.path==='/state/summary'?'summary':req.path==='/state/history'?'history':'full'});
+    const {owner,vet,scoped,params:scopeParams,petScope}=plan;
+    const read=key=>query(plan.reads[key].sql,plan.reads[key].params);
     const [
       ownersRes,
       petsRes,
@@ -84,7 +82,7 @@ clinicRouter.get("/state", async (req, res) => {
       logsRes,
       vetsRes
     ] = await Promise.all([
-      query(`
+      plan.history ? Promise.resolve({rows:[]}) : query(`
         SELECT o.*, u.birthday, u.first_name, u.last_name, u.middle_initial, u.role as user_role,
                a.house_street, a.country, a.state, a.city, a.zip_code
         FROM owners o
@@ -93,21 +91,34 @@ clinicRouter.get("/state", async (req, res) => {
         ${owner ? "WHERE o.id = $1" : vet ? `WHERE o.id IN (SELECT owner_id FROM pets WHERE id IN (${petScope}))` : ""}
         ORDER BY o.name ASC
       `, scopeParams),
-      query(`SELECT * FROM pets${scoped ? ` WHERE id IN (${petScope})` : ""} ORDER BY name ASC`, scopeParams),
-      query(`SELECT * FROM pet_weights${wherePet} ORDER BY date ASC`, scopeParams),
-      query(`SELECT * FROM appointments${owner ? ` WHERE pet_id IN (${petScope})` : vet ? " WHERE vet_id = ANY($1::varchar[])" : ""} ORDER BY date ASC, time ASC`, scopeParams),
-      query(`SELECT * FROM vaccinations${wherePet} ORDER BY date ASC, id ASC`, scopeParams),
-      query(`SELECT * FROM consultations${wherePet} ORDER BY date DESC`, scopeParams),
-      vet ? Promise.resolve({ rows: [] }) : query(`SELECT * FROM pet_requests${owner ? " WHERE owner_id = $1" : ""} ORDER BY created_at DESC`, owner ? scopeParams : []),
-      req.user.role === "admin" ? query("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100") : Promise.resolve({ rows: [] }),
-      query("SELECT id, vet_id, first_name, last_name, role FROM users WHERE role = 'vet' AND COALESCE(to_jsonb(users)->>'is_active', 'true') <> 'false' ORDER BY first_name ASC")
+      plan.history ? Promise.resolve({rows:[]}) : query(`SELECT * FROM pets${scoped ? ` WHERE id IN (${petScope})` : ""} ORDER BY name ASC`, scopeParams),
+      read("weights"),
+      read("appts"),
+      read("vaccs"),
+      read("consults"),
+      vet || plan.history ? Promise.resolve({ rows: [] }) : query(`SELECT * FROM pet_requests${owner ? " WHERE owner_id = $1" : ""} ORDER BY created_at DESC`, owner ? scopeParams : []),
+      req.user.role === "admin" && !plan.history ? query("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100") : Promise.resolve({ rows: [] }),
+      plan.history ? Promise.resolve({rows:[]}) : query("SELECT id, vet_id, first_name, last_name, role FROM users WHERE role = 'vet' AND COALESCE(to_jsonb(users)->>'is_active', 'true') <> 'false' ORDER BY first_name ASC")
     ]);
+
+    const page=plan.history?historyPage(plan,{appts:apptsRes,vaccs:vaccsRes,consults:consultsRes,weights:weightsRes}):null;
+    // Page boundary must not hide the appointment/vitals for a saved note.
+    if(plan.history && consultsRes.rows.length) {
+      const related=await query(`SELECT * FROM appointments WHERE id=ANY($${scopeParams.length+1}::varchar[]) AND ${plan.filters.appts}`,[...scopeParams,consultsRes.rows.map(c=>c.appt_id).filter(Boolean)]);
+      const ids=new Set(apptsRes.rows.map(a=>a.id));apptsRes.rows.push(...related.rows.filter(a=>!ids.has(a.id)));
+    }
+    let totals;
+    if(plan.summary) {
+      const counts=await query(`SELECT (SELECT count(*)::int FROM consultations WHERE ${plan.filters.consults}) AS consultations, (SELECT jsonb_object_agg(status,n) FROM (SELECT status,count(*)::int n FROM appointments WHERE ${plan.filters.appts} GROUP BY status) s) AS appointment_status`,scopeParams);
+      totals=counts.rows[0];
+    }
 
     // Attach weights to pets
     const weightsByPet = {};
     for (const w of weightsRes.rows) {
       if (!weightsByPet[w.pet_id]) weightsByPet[w.pet_id] = [];
       weightsByPet[w.pet_id].push({
+        id: w.id,
         date: toDateStr(w.date),
         kg: parseFloat(w.kg),
         by: w.recorded_by || "Clinic Front Desk"
@@ -257,6 +268,8 @@ clinicRouter.get("/state", async (req, res) => {
     });
 
     sendClinicState(req, res, {
+      ...(plan.summary?{summary:true,totals}:{}),
+      ...(page?{page,weights:weightsByPet}:{}),
       vets: vetsRes.rows.map(v => ({
         id: v.vet_id || v.id,
         name: `Dr. ${[v.first_name, v.last_name].filter(Boolean).join(" ")}`
@@ -271,7 +284,7 @@ clinicRouter.get("/state", async (req, res) => {
     });
   } catch (err) {
     console.error("Clinic state fetch error:", err);
-    res.status(500).json({ error: "Failed to load clinic state: " + err.message });
+    res.status(err.status || 500).json({ error: err.status?err.message:"Failed to load clinic records. Please retry." });
   }
 });
 

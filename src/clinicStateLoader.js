@@ -5,7 +5,7 @@ import { clinicRequest } from './clinicApi.js';
 export function createClinicStateLoader(request = clinicRequest) {
   let snapshot, etag;
   return async signal => {
-    const result = await request('GET', '/api/state', undefined, {signal, ifNoneMatch: etag, responseMetadata: true});
+    const result = await request('GET', '/api/state/summary', undefined, {signal, ifNoneMatch: etag, responseMetadata: true});
     if (result.notModified) {
       if (!snapshot) throw new Error('Clinic records could not be confirmed. Please retry.');
       return snapshot;

@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import {ClinicHistory,HistoryControls} from "./ClinicHistory.jsx";
+import {subscribeClinicDate,clinicDateSnapshot} from "./clinicDate.js";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { Menu, LogOut } from "lucide-react";
 import { Logo, I, ROLES, E, scope, Table } from "./lib.jsx";
 import EntityPage from "./EntityPage.jsx";
@@ -14,11 +16,15 @@ function Reports({ db, me }) {
   return (<>
     <div className="bar"><select value={r.type} onChange={e => setR({ type: e.target.value, from: "", to: "" })} aria-label="Report type">{["appts", "vacc", "records", "pets"].map(k => <option key={k} value={k}>{E[k].title}</option>)}</select>
       {r.type !== "pets" && <><input type="date" value={r.from} onChange={e => setR({ ...r, from: e.target.value })} aria-label="From" /><input type="date" value={r.to} onChange={e => setR({ ...r, to: e.target.value })} aria-label="To" /></>}
-      <button className="btn ghost" onClick={() => window.print()}>Print</button></div>
+      <button className="btn ghost" disabled={db.summary && !db.historyComplete} title={db.summary && !db.historyComplete?"Load all saved history before printing a complete report.":undefined} onClick={() => window.print()}>Print</button></div>
     {bad ? <p className="err">The “From” date must be on or before the “To” date.</p> : <><p><b>{list.length}</b> record(s)</p><Table db={db} ent={r.type} list={list} me={me} /></>}
   </>);
 }
-export default function Portal({ cfg, me, db, setDb, onLogout, dataLoading = false, dataError = "", refreshing = false, onRetry }) {
+export default function Portal(props) {
+  return <ClinicHistory key={`${props.me.id}:${props.me.role}`} db={props.db} me={props.me}>{db=><PortalBody {...props} db={db}/>}</ClinicHistory>;
+}
+function PortalBody({ cfg, me, db, setDb, onLogout, dataLoading = false, dataError = "", refreshing = false, onRetry }) {
+  useSyncExternalStore(subscribeClinicDate,clinicDateSnapshot,clinicDateSnapshot);
   const account = accountProfile(db, me);
   useEffect(() => {
     let active = true;
@@ -54,6 +60,7 @@ export default function Portal({ cfg, me, db, setDb, onLogout, dataLoading = fal
             <p>{dataLoading ? "Clinic records could not load." : "Records may be out of date. Changes still require a successful server save."} {dataError}</p>
             <button className="btn sm" disabled={refreshing} onClick={onRetry}>{refreshing ? "Retrying…" : "Retry loading records"}</button>
           </section>}
+          {!dataLoading && <HistoryControls auto={!cur.dash && !["users","prices","audit","pet-requests"].includes(page)} />}
           {dataLoading ? (!dataError && <section className="clinic-loading" role="status"><span className="clinic-spinner" aria-hidden="true" />Loading clinic records…</section>) : cur.Page ? <cur.Page db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.dash ? <Dash db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.rep ? <Reports db={db} me={me} /> : <EntityPage key={cur.k} ent={cur.ent} db={db} setDb={setDb} me={me} say={say} />}
         </main>
       </div>

@@ -1,3 +1,4 @@
+import {HistoryControls,useHistoryComplete} from "../ClinicHistory.jsx";
 import { useState } from "react";
 import {
   FileText,
@@ -25,6 +26,7 @@ import PetCardModal from "./PetCardModal.jsx";
 import SoapConsultationModal from "./SoapConsultationModal.jsx";
 
 export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit }) {
+  const historyComplete=useHistoryComplete();
   const [cardPetId, setCardPetId] = useState(null);
   const pet = (db.pets || []).find(p => p.id === record.petId) || {};
   const owner = (db.owners || []).find(o => o.id === pet.ownerId || o.userId === pet.ownerId) || {};
@@ -46,6 +48,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1060, display: "grid", placeItems: "center", padding: "16px" }}>
       <div className="modal" style={{ width: "min(780px, 100%)", maxHeight: "94vh", overflowY: "auto", padding: "26px 30px" }}>
+        <HistoryControls auto />
         
         {/* Top Header Toolbar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #e2e8f0", paddingBottom: "14px", marginBottom: "18px" }}>
@@ -74,7 +77,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
             <button
               type="button"
               className="btn sm ghost"
-              onClick={() => window.print()}
+              disabled={!historyComplete} title={!historyComplete?"Load all saved history before printing a complete clinical record.":undefined} onClick={() => window.print()}
               style={{ display: "flex", alignItems: "center", gap: "5px" }}
               title="Print medical certificate / consultation summary"
             >
@@ -357,7 +360,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--navy)", background: "#eff6ff", padding: "6px 12px", borderRadius: "8px", border: "1px solid #bfdbfe" }}>
-            {records.length} Total Consultation(s)
+            {db.totals?.consultations ?? records.length} Consultations on file · {records.length} loaded
           </span>
         </div>
       </div>

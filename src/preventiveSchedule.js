@@ -1,17 +1,18 @@
-export const TODAY = new Date().toISOString().slice(0, 10);
+import {today} from "./booking.js";
+export {TODAY} from "./clinicDate.js";
 
 /* Date math helpers */
 function addDays(dateStr, days) {
   if (!dateStr) return "";
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() + days);
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
 function addMonths(dateStr, months) {
   if (!dateStr) return "";
-  const d = new Date(dateStr + "T00:00:00");
-  d.setMonth(d.getMonth() + months);
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCMonth(d.getUTCMonth() + months);
   return d.toISOString().slice(0, 10);
 }
 
@@ -46,12 +47,12 @@ export function formatSpeciesLabel(species) {
 }
 
 export function getNextBirthdayAnniversary(birthDate) {
-  if (!birthDate) return addDays(TODAY, 365);
-  const b = new Date(birthDate + "T00:00:00");
-  const now = new Date(TODAY + "T00:00:00");
-  let nextAnniv = new Date(now.getFullYear(), b.getMonth(), b.getDate());
+  if (!birthDate) return addDays(today(), 365);
+  const b = new Date(birthDate + "T00:00:00Z");
+  const now = new Date(today() + "T00:00:00Z");
+  let nextAnniv = new Date(Date.UTC(now.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate()));
   if (nextAnniv < now) {
-    nextAnniv = new Date(now.getFullYear() + 1, b.getMonth(), b.getDate());
+    nextAnniv = new Date(Date.UTC(now.getUTCFullYear() + 1, b.getUTCMonth(), b.getUTCDate()));
   }
   return nextAnniv.toISOString().slice(0, 10);
 }
@@ -71,14 +72,14 @@ export function computeAgeDetails(birthDate) {
       lifeStageLabel: "Unknown"
     };
   }
-  const b = new Date(birthDate + "T00:00:00");
-  const now = new Date(TODAY + "T00:00:00");
+  const b = new Date(birthDate + "T00:00:00Z");
+  const now = new Date(today() + "T00:00:00Z");
   const diffTime = Math.max(0, now - b);
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   const diffWeeks = Math.floor(diffDays / 7);
   
-  let months = (now.getFullYear() - b.getFullYear()) * 12 + now.getMonth() - b.getMonth();
-  if (now.getDate() < b.getDate()) months--;
+  let months = (now.getUTCFullYear() - b.getUTCFullYear()) * 12 + now.getUTCMonth() - b.getUTCMonth();
+  if (now.getUTCDate() < b.getUTCDate()) months--;
   months = Math.max(0, months);
   const years = Math.floor(months / 12);
 
@@ -167,8 +168,8 @@ export function getPreventiveSchedule(birthDate, rawSpecies = "Canine", complete
       const lastDHPP = completedVaccs.find(v => v.done && v.vaccine?.toLowerCase().includes("dhpp"));
       const lastRabies = completedVaccs.find(v => v.done && v.vaccine?.toLowerCase().includes("rabies"));
 
-      const dewormTarget = lastDeworm?.date ? addDays(lastDeworm.date, 90) : addDays(TODAY, 14);
-      const parasiteTarget = lastParasite?.date ? addDays(lastParasite.date, 30) : addDays(TODAY, 7);
+      const dewormTarget = lastDeworm?.date ? addDays(lastDeworm.date, 90) : addDays(today(), 14);
+      const parasiteTarget = lastParasite?.date ? addDays(lastParasite.date, 30) : addDays(today(), 7);
       const dhppTarget = lastDHPP?.date ? addDays(lastDHPP.date, 365) : nextAnniv;
       const rabiesTarget = lastRabies?.date ? addDays(lastRabies.date, 365) : nextAnniv;
 
@@ -265,7 +266,7 @@ export function getPreventiveSchedule(birthDate, rawSpecies = "Canine", complete
           constraints: "Senior protocol for patients 7 years and older.",
           isCore: true,
           isRecurring: true,
-          targetDateOverride: addDays(TODAY, 30),
+          targetDateOverride: addDays(today(), 30),
           lifeStage: "Senior"
         });
       }
@@ -496,8 +497,8 @@ export function getPreventiveSchedule(birthDate, rawSpecies = "Canine", complete
       const lastFVRCP = completedVaccs.find(v => v.done && v.vaccine?.toLowerCase().includes("fvrcp"));
       const lastRabies = completedVaccs.find(v => v.done && v.vaccine?.toLowerCase().includes("rabies"));
 
-      const dewormTarget = lastDeworm?.date ? addDays(lastDeworm.date, 90) : addDays(TODAY, 14);
-      const parasiteTarget = lastParasite?.date ? addDays(lastParasite.date, 30) : addDays(TODAY, 7);
+      const dewormTarget = lastDeworm?.date ? addDays(lastDeworm.date, 90) : addDays(today(), 14);
+      const parasiteTarget = lastParasite?.date ? addDays(lastParasite.date, 30) : addDays(today(), 7);
       const fvrcpTarget = lastFVRCP?.date ? addDays(lastFVRCP.date, 365) : nextAnniv;
       const rabiesTarget = lastRabies?.date ? addDays(lastRabies.date, 365) : nextAnniv;
 
@@ -594,7 +595,7 @@ export function getPreventiveSchedule(birthDate, rawSpecies = "Canine", complete
           constraints: "Senior protocol for feline patients 7 years and older.",
           isCore: true,
           isRecurring: true,
-          targetDateOverride: addDays(TODAY, 30),
+          targetDateOverride: addDays(today(), 30),
           lifeStage: "Senior"
         });
       }
@@ -890,9 +891,9 @@ export function getPreventiveSchedule(birthDate, rawSpecies = "Canine", complete
 
   return rawItems.map(item => {
     const targetDate = item.targetDateOverride || addDays(birthDate, item.daysOffset);
-    const isPast = targetDate < TODAY;
-    const isToday = targetDate === TODAY;
-    const isDueSoon = !isPast && targetDate <= addDays(TODAY, 14);
+    const isPast = targetDate < today();
+    const isToday = targetDate === today();
+    const isDueSoon = !isPast && targetDate <= addDays(today(), 14);
 
     if (item.isJuvenileCompleted) {
       return {

@@ -50,6 +50,10 @@ async function main() {
 
     await query(fs.readFileSync(path.join(__dirname, "../database/password-recovery.sql"), "utf8"));
 
+    await query(fs.readFileSync(path.join(__dirname, "../database/verification-delivery.sql"), "utf8"));
+
+    await query(fs.readFileSync(path.join(__dirname, "../database/state-read-indexes.sql"), "utf8"));
+
     // 2. Default Seed Passwords (satisfies 12-128 chars, uppercase, lowercase, number, symbol)
     const adminPassHash = await hashPassword("Admin1234567!");
     const vetPassHash = await hashPassword("Vet123456789!");

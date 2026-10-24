@@ -1,3 +1,4 @@
+import {HistoryControls} from "../../ClinicHistory.jsx";
 import { useState } from "react";
 import { formatSpeciesLabel } from "../../preventiveSchedule.js";
 import { Icon } from "./ui.jsx";
@@ -22,6 +23,7 @@ export default function MedProfile({ p }) {
 
   return (
     <div className="ow-mp" style={{ maxWidth: "100%", padding: "4px 0" }}>
+      <HistoryControls auto />
       {/* 1. Verified Allergies Section */}
       <section aria-labelledby="mp-al" style={{ marginBottom: "24px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>

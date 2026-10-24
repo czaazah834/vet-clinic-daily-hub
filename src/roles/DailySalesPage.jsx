@@ -1,3 +1,4 @@
+import {useFollowingClinicDay} from "../useClinicDay.js";
 import { useState } from "react";
 import {
   Receipt,
@@ -25,7 +26,7 @@ import BillingModal from "./BillingModal.jsx";
 
 export default function DailySalesPage({ db, setDb, me, go, say }) {
   const TODAY = today();
-  const [selDate, setSelDate] = useState(today);
+  const [selDate, setSelDate] = useFollowingClinicDay();
   const [showUndated, setShowUndated] = useState(false);
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
@@ -62,6 +63,8 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
   };
 
   const isToday = selDate === TODAY;
+
+  if(db.summary && !db.historyComplete && selDate!==TODAY)return <section className="card"><h3>Historical sales</h3><p>Load all saved history above before viewing totals for {selDate}.</p><button className="btn ghost" onClick={()=>setSelDate(TODAY)}>Today's sales</button></section>;
 
   return (
     <div>

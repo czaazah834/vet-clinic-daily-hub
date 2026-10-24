@@ -1,4 +1,5 @@
-﻿import { useState } from "react";
+import {useResendTimer} from "../useResendTimer.js";
+﻿import { useState, useRef } from "react";
 import { Logo, I, ROLES } from "../lib.jsx";
 import { validateLogin } from "../validate.js";
 import { useLive } from "../roles/owner/ui.jsx";
@@ -35,6 +36,9 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
   const [busy, setBusy] = useState(false);
   const [top, setTop] = useState("");
   const [rv, setRv] = useState("");
+  const [cool,setCool]=useResendTimer();
+  const [resending,setResending]=useState(false);
+  const sending=useRef(false);
   const [unver, setUnver] = useState(false);
 
   const submit = async (e) => {
@@ -57,15 +61,18 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
   };
 
   const resend = async () => {
+    if(sending.current || busy || cool>0)return;
+    sending.current=true;setResending(true);
     setRv("");
     try {
-      await auth.resendVerification(f.v.email.trim());
+      const result=await auth.resendVerification(f.v.email.trim());
       setTop("");
-      setUnver(false);
-      setRv("If that account is unverified, a new link was sent. Check your inbox.");
+      setRv(result.message);
+      setCool(result.retryAfter ?? 60);
     } catch (x) {
       setTop(x.offline ? OFFLINE_MSG : x.message || "Please try again.");
-    }
+      setCool(x.retryAfter || (x.status===429 || x.status===503?60:0));
+    } finally {sending.current=false;setResending(false);}
   };
 
   const title = role ? `Log in · ${ROLES[role][0]}` : "Log in";
@@ -92,6 +99,7 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
             Email<i> *</i>
             <input
               id="login-email"
+              disabled={resending}
               type="email"
               autoComplete="username"
               value={f.v.email}
@@ -139,16 +147,9 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
         {top && (
           <p className="err" role="alert">
             {top}
-            {unver && (
-              <>
-                {" "}
-                <button type="button" className="lnk" onClick={resend}>
-                  Resend verification email
-                </button>
-              </>
-            )}
           </p>
         )}
+        {unver && <button type="button" className="lnk" disabled={resending || busy || cool>0} onClick={resend}>{resending?"Sending…":cool>0?`Resend email in ${cool}s`:"Resend verification email"}</button>}
         {rv && <p className="okm" role="status" style={{ color: "var(--ok, #16a34a)" }}>{rv}</p>}
 
         <button className="btn gold wide" disabled={busy}>

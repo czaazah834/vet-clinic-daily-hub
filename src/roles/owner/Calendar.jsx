@@ -1,3 +1,4 @@
+import {useFollowingClinicDay} from "../../useClinicDay.js";
 import { useState } from "react";
 import { VETS, TODAY, scope, petName, dueState } from "../../lib.jsx";
 import { fmt12, ymdLocal, setPrefill } from "./ui.jsx";
@@ -7,7 +8,7 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 const KIND = { visit: ["Visit", "k-visit"], done: ["Past visit", "k-done"], given: ["Vaccine given", "k-given"], due: ["Vaccine due", "k-due"], over: ["Overdue vaccine", "k-over"] };
 
 export default function OwnerCalendar({ db, me, go }) {
-  const t = new Date(), [cur, setCur] = useState({ y: t.getFullYear(), m: t.getMonth() }), [pet, setPet] = useState(""), [sel, setSel] = useState(TODAY);
+  const t = new Date(TODAY+"T00:00:00"), [cur, setCur] = useState({ y: t.getFullYear(), m: t.getMonth() }), [pet, setPet] = useState(""), [sel, setSel] = useFollowingClinicDay();
   const pets = scope(db, me, "pets"), ev = {};
   const add = (d, e) => { if (d) (ev[d] = ev[d] || []).push(e); };
   scope(db, me, "appts").filter(a => a.status !== "Cancelled" && (!pet || a.petId === pet)).forEach(a => add(a.date, { kind: ["Completed", "No-show"].includes(a.status) || a.date < TODAY ? "done" : "visit", time: a.time, text: `${petName(db, a.petId)}: ${a.reason}`, sub: `${(VETS.find(v => v[0] === a.vetId) || [])[1] || ""} · ${a.status}`, appt: a }));

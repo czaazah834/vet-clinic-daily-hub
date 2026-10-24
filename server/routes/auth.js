@@ -1,3 +1,4 @@
+import {ensureVerificationDelivery,confirmDelivery,issueVerification,sendMobileVerification,verificationFailure} from '../verificationDelivery.js';
 import {appUrl,sessionCookie} from '../appOrigin.js';
 import {requestPasswordReset,resetPassword} from '../passwordRecovery.js';
 import { randomInt } from 'node:crypto';
@@ -156,6 +157,7 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'An account with this email already exists.' });
     }
 
+    await ensureVerificationDelivery();
     const pwHash = await hashPassword(req.body.password);
     const userId = 'u_' + randomHex(8);
     const ownerId = 'o_' + randomHex(8);
@@ -202,11 +204,12 @@ router.post('/register', async (req, res) => {
         [ownerId, userId, fullName, em, mob, fullAddress]
       );
 
+      await client.query('UPDATE users SET email_verification_requested_at=clock_timestamp() WHERE id=$1',[userId]);
       // Generate email verification token
       await client.query(
-        `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at)
-         VALUES ($1, $2, 'email_verify', NOW() + INTERVAL '24 hours')`,
-        [userId, sha256(rawToken)]
+        `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at, delivery_confirmed, destination)
+         VALUES ($1, $2, 'email_verify', NOW() + INTERVAL '24 hours', false, $3)`,
+        [userId, sha256(rawToken), em]
       );
 
     });
@@ -214,17 +217,19 @@ router.post('/register', async (req, res) => {
     // Send verification email
     const siteUrl = getAppUrl(req);
     const verifyLink = `${siteUrl}/?verify=${rawToken}`;
-    await sendMail(
+    const sent = await confirmDelivery(rawToken,userId, () => sendMail(
       em,
       'Welcome to PawCare - Verify your email address',
       `Hello ${fn}!\n\nPlease verify your email for your PawCare account:\n${verifyLink}\n\nWarm regards,\nPawCare Team`,
       renderVerifyEmailHtml(fn, verifyLink)
-    );
+    ));
 
     res.json({
       status: 'ok',
       email: em,
-      message: 'Registration successful! Verification link dispatched.',
+      delivery: sent ? 'accepted' : 'failed',
+      retryAfter: 60,
+      message: sent ? 'Account created. The email provider accepted your verification email. Check your inbox and spam folder.' : 'Account created, but the verification email could not be sent. Retry sending it in one minute.',
     });
   } catch (err) {
     console.error('Registration failed:', err);
@@ -372,41 +377,25 @@ router.post('/logout', async (req, res) => {
 
 // 5. RESEND VERIFICATION EMAIL
 router.post('/resend-verification', async (req, res) => {
-  const { email } = req.body;
-  const em = String(email || '').trim().toLowerCase();
-  if (!em) return res.status(400).json({ error: 'Email is required.' });
+  const em = typeof req.body?.email==='string'?req.body.email.trim().toLowerCase():'';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em) || em.length>255) return res.status(400).json({ error: 'Enter a valid email address.' });
 
   try {
     const r = await query('SELECT * FROM users WHERE email = $1', [em]);
     if (!r.rows.length) {
-      return res.json({ status: 'ok', message: 'If an account exists, a verification link has been sent.' });
+      return res.json({ status: 'ok', message: 'If an eligible account matches, check your email or contact the clinic for verification help.',retryAfter:60 });
     }
     const u = r.rows[0];
     if (u.email_verified_at) {
       return res.json({ status: 'ok', message: 'Email address is already verified.' });
     }
 
-    const rawToken = randomHex(24);
-    await query('DELETE FROM verification_tokens WHERE user_id = $1 AND type = \'email_verify\'', [u.id]);
-    await query(
-      `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at)
-       VALUES ($1, $2, 'email_verify', NOW() + INTERVAL '24 hours')`,
-      [u.id, sha256(rawToken)]
-    );
-
-    const siteUrl = getAppUrl(req);
-    const verifyLink = `${siteUrl}/?verify=${rawToken}`;
-    await sendMail(
-      em,
-      'PawCare - Verify your email address',
-      `Please verify your email address:\n${verifyLink}`,
-      renderVerifyEmailHtml(u.name || 'Pet Parent', verifyLink)
-    );
-
-    res.json({ status: 'ok', message: 'Verification link sent to your email.' });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to resend verification link.' });
-  }
+    const {token:rawToken,destination} = await issueVerification(u.id,'email_verify');
+    const verifyLink = `${getAppUrl()}/?verify=${rawToken}`;
+    const sent = await confirmDelivery(rawToken,u.id,()=>sendMail(destination,'PawCare - Verify your email address',`Please verify your email address:\n${verifyLink}`,renderVerifyEmailHtml(u.first_name || 'Pet Parent',verifyLink)));
+    if(!sent)return res.status(503).json({error:'The verification email could not be sent. Retry in one minute.',retryAfter:60});
+    res.json({status:'ok',delivery:'accepted',retryAfter:60,message:'The email provider accepted your verification email. Check your inbox and spam folder.'});
+  } catch (err) {return verificationFailure(res,err);}
 });
 
 // 6. VERIFY EMAIL LINK (Supports GET and POST)
@@ -420,11 +409,12 @@ async function handleEmailVerification(req, res) {
   }
 
   try {
+    await ensureVerificationDelivery();
     const r = await query(
       `SELECT t.*, u.id as user_id, u.email, u.first_name, u.mobile_number, u.mobile_verified
        FROM verification_tokens t
        JOIN users u ON u.id = t.user_id
-       WHERE t.token_hash = $1 AND t.type = 'email_verify' AND t.expired_at > NOW()`,
+       WHERE t.token_hash = $1 AND t.type = 'email_verify' AND t.expired_at > NOW() AND t.delivery_confirmed=true AND t.destination=u.email`,
       [sha256(token)]
     );
     if (!r.rows.length) {
@@ -452,22 +442,9 @@ async function handleEmailVerification(req, res) {
     );
     res.cookie('sid', sid, sessionCookie(7 * 86400 * 1000));
 
-    // Generate and send mobile OTP via TextBee
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    await query(`DELETE FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp'`, [tok.user_id]);
-    await query(
-      `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at)
-       VALUES ($1, $2, 'mobile_otp', NOW() + INTERVAL '10 minutes')`,
-      [tok.user_id, sha256(otpCode)]
-    );
-
-    if (tok.mobile_number) {
-      try {
-        await sendSms(tok.mobile_number.trim(), `PawCare Security: Your verification OTP code is ${otpCode}. Valid for 10 minutes.`);
-      } catch (smsErr) {
-        console.warn('Initial TextBee SMS warning:', smsErr.message);
-      }
-    }
+    let sent=false,retryAfter=60;
+    try {sent=await sendMobileVerification({...tok,id:tok.user_id});}
+    catch(error){if(error.status!==429)throw error;retryAfter=error.retryAfter;}
 
     if (req.headers.accept?.includes('text/html') && !req.xhr) {
       return res.redirect('/?verified=ok');
@@ -477,7 +454,8 @@ async function handleEmailVerification(req, res) {
       status: 'ok',
       message: 'Email address successfully verified!',
       token: sid,
-      phone: tok.mobile_number
+      phone: tok.mobile_number,
+      delivery: sent ? 'accepted' : 'unavailable',retryAfter
     });
   } catch (err) {
     console.error('Email verify error:', err);
@@ -501,18 +479,20 @@ async function verificationUser(req) {
     [sha256(sid)]
   );
   const user = r.rows[0];
-  return user?.email_verified_at ? user : null;
+  return user?.email_verified_at && user.is_active!==false ? user : null;
 }
 
 router.get(['/otp/info', '/otp-info'], async (req, res) => {
   try {
     const user = await verificationUser(req);
     if (!user) return res.status(401).json({ error: 'Open your email verification link or log in to continue.' });
+    await ensureVerificationDelivery();
     const tok = await query(
-      `SELECT id FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp' AND expired_at > NOW()`,
-      [user.id]
+      `SELECT id FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp' AND expired_at > NOW() AND delivery_confirmed=true AND attempts<3 AND destination=$2`,
+      [user.id,user.mobile_number]
     );
-    return res.json({ mobileVerified: !!user.mobile_verified, phone: user.mobile_number || '', hasActiveOtp: tok.rows.length > 0 });
+    const retryAfter=Math.max(0,Math.ceil((new Date(user.mobile_otp_requested_at).getTime()+60000-Date.now())/1000)) || 0;
+    return res.json({ retryAfter, mobileVerified: !!user.mobile_verified, phone: user.mobile_number || '', hasActiveOtp: tok.rows.length > 0 });
   } catch (err) {
     res.status(500).json({ error: 'Could not check mobile verification. Please try again.' });
   }
@@ -523,17 +503,10 @@ router.post(['/otp/resend', '/send-otp'], async (req, res) => {
     const user = await verificationUser(req);
     if (!user) return res.status(401).json({ error: 'Open your email verification link or log in to continue.' });
     if (user.mobile_verified) return res.status(409).json({ error: 'Mobile number already verified. Please log in.' });
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await query(`DELETE FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp'`, [user.id]);
-    await query(
-      `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at) VALUES ($1, $2, 'mobile_otp', NOW() + INTERVAL '10 minutes')`,
-      [user.id, sha256(code)]
-    );
-    if (user.mobile_number) await sendSms(user.mobile_number.trim(), `PawCare Security: Your verification code is ${code}. Valid for 10 minutes.`);
-    res.json({ status: 'ok', ok: true, message: 'Verification code sent to your registered phone.' });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to send OTP.' });
-  }
+    const sent=await sendMobileVerification(user);
+    if(!sent)return res.status(503).json({error:'The SMS code could not be sent. Retry in one minute.',retryAfter:60});
+    res.json({status:'ok',ok:true,delivery:'accepted',retryAfter:60,message:'The SMS provider accepted your verification code.'});
+  } catch (err) {return verificationFailure(res,err);}
 });
 
 router.post(['/otp/verify', '/verify-otp'], async (req, res) => {
@@ -543,34 +516,24 @@ router.post(['/otp/verify', '/verify-otp'], async (req, res) => {
     const user = await verificationUser(req);
     if (!user) return res.status(401).json({ error: 'Open your email verification link or log in to continue.' });
     if (user.mobile_verified) return res.status(409).json({ error: 'Mobile number already verified. Please log in.' });
-    const r = await query(
-      `SELECT * FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp' AND expired_at > NOW() ORDER BY created_at DESC LIMIT 1`,
-      [user.id]
-    );
-    const tok = r.rows[0];
-    if (!tok) return res.status(400).json({ error: 'Code has expired or is invalid. Request a new one.' });
-    if (tok.token_hash !== sha256(code)) {
-      const attempts = (tok.attempts || 0) + 1;
-      if (attempts >= 3) {
-        await query('DELETE FROM verification_tokens WHERE id = $1', [tok.id]);
-        return res.status(400).json({ error: 'Too many incorrect attempts. Please request a new code.' });
-      }
-      await query('UPDATE verification_tokens SET attempts = $1 WHERE id = $2', [attempts, tok.id]);
-      return res.status(400).json({ error: `Incorrect code. ${3 - attempts} attempt(s) remaining.` });
-    }
+    await ensureVerificationDelivery();
     const completed = await withTransaction(async client => {
-      const consumed = await client.query(
-        `DELETE FROM verification_tokens WHERE id = $1 AND token_hash = $2 AND expired_at > NOW() RETURNING user_id`,
-        [tok.id, sha256(code)]
-      );
-      if (!consumed.rows.length) return false;
+      // Same lock order as code replacement; attempts and consumption are atomic.
+      const current=(await client.query('SELECT * FROM users WHERE id=$1 FOR UPDATE',[user.id])).rows[0];
+      if(!current || current.mobile_verified || current.is_active===false || current.mobile_number!==user.mobile_number)return false;
+      const tok=(await client.query("SELECT * FROM verification_tokens WHERE user_id=$1 AND type='mobile_otp' AND expired_at>clock_timestamp() AND delivery_confirmed=true AND attempts<3 AND destination=$2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE",[user.id,current.mobile_number])).rows[0];
+      if(!tok)return false;
+      if(tok.token_hash!==sha256(code)) {
+        await client.query('UPDATE verification_tokens SET attempts=attempts+1 WHERE id=$1',[tok.id]);
+        return false;
+      }
+      await client.query('DELETE FROM verification_tokens WHERE id=$1',[tok.id]);
       await client.query('UPDATE users SET mobile_verified = true, mobile_verified_at = NOW() WHERE id = $1', [user.id]);
-      await client.query(`DELETE FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp'`, [user.id]);
-      // Verification completes registration; a password login must create the next session.
-      await client.query('DELETE FROM sessions WHERE user_id = $1', [user.id]);
+      await client.query("DELETE FROM verification_tokens WHERE user_id=$1 AND type='mobile_otp'",[user.id]);
+      await client.query('DELETE FROM sessions WHERE user_id = $1',[user.id]);
       return true;
     });
-    if (!completed) return res.status(400).json({ error: 'Code has expired or was already used. Request a new one.' });
+    if(!completed)return res.status(400).json({error:'Code is incorrect, expired, used or has reached three attempts. Request a new code when the resend timer ends.'});
     res.clearCookie('sid', { path: '/' });
     return res.json({ status: 'ok', ok: true, requiresLogin: true, message: 'Account verified. Please log in.' });
   } catch (err) {
@@ -728,6 +691,7 @@ router.post('/staff/accept-invite', async (req,res) => {
   const pwErr=validatePasswordComplexity(password);
   if(pwErr)return res.status(400).json({error:pwErr});
   try {
+    await ensureVerificationDelivery();
     const pwHash=await hashPassword(password),userId='u_'+randomHex(8),sid=randomHex(32),otpCode=String(randomInt(100000,1000000));
     await withTransaction(async client=>{
       const inv=(await client.query('SELECT * FROM staff_invitations WHERE token_hash=$1 FOR UPDATE',[sha256(token)])).rows[0];
@@ -739,13 +703,14 @@ router.post('/staff/accept-invite', async (req,res) => {
       await client.query(`INSERT INTO users(id,first_name,last_name,birthday,password_hash,email,role,vet_id,mobile_number,email_verified_at,mobile_verified)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),false)`,[userId,firstName.trim(),lastName.trim(),birthday,pwHash,inv.email,inv.role,vetId,phone.number]);
       await client.query('UPDATE staff_invitations SET accepted_at=NOW() WHERE id=$1',[inv.id]);
-      await client.query("INSERT INTO verification_tokens(user_id,token_hash,type,expired_at) VALUES($1,$2,'mobile_otp',NOW()+INTERVAL '10 minutes')",[userId,sha256(otpCode)]);
+      await client.query('UPDATE users SET mobile_otp_requested_at=clock_timestamp() WHERE id=$1',[userId]);
+      await client.query("INSERT INTO verification_tokens(user_id,token_hash,type,expired_at,delivery_confirmed,destination) VALUES($1,$2,'mobile_otp',NOW()+INTERVAL '10 minutes',false,$3)",[userId,sha256(otpCode),phone.number]);
       await client.query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '7 days')",[sha256(sid),userId]);
       await client.query('INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)',[`${firstName.trim()} ${lastName.trim()}`,inv.role,`Accepted staff invitation ${inv.id}; mobile verification pending (${userId}).`]);
     });
-    await sendSms(phone.number,`PawCare Staff Security: Your verification OTP code is ${otpCode}. Valid for 10 minutes.`);
+    const sent=await confirmDelivery(otpCode,userId,()=>sendSms(phone.number,`PawCare Staff Security: Your verification OTP code is ${otpCode}. Valid for 10 minutes.`));
     res.cookie('sid',sid,sessionCookie(7 * 86400 * 1000));
-    res.json({status:'ok',needsOtp:true,message:'Account created. Verify your mobile number to continue.',token:sid});
+    res.json({status:'ok',needsOtp:true,delivery:sent?'accepted':'failed',retryAfter:60,message:sent?'Account created. Verify your mobile number to continue.':'Account created, but the SMS could not be sent. Retry in one minute.',token:sid});
   }catch(error){res.status(error.status||(error.code==='23505'?409:500)).json({error:error.status?error.message:error.code==='23505'?'This account already exists. Log in or contact the administrator.':'Unable to complete staff setup. Try logging in if your account was already created.'});}
 });
 

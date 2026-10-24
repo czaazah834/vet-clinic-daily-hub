@@ -804,3 +804,60 @@ Checks: `npm run test:origin`, `npm run test:auth`, `npm run test:clinic`,
 `TEST_DATABASE_URL=<disposable-local-db> npm run test:recovery:postgres`,
 `npm run test:admin:postgres` and `npm run test:scheduling:postgres` with the same
 local database setting, plus `npm run build`.
+
+### Verification delivery, clinic date and history loading
+
+Apply `server/database/verification-delivery.sql` and
+`server/database/state-read-indexes.sql` before deployment (both are included in
+`npm run db:init`). Verification routes can initialize their migration when the
+runtime role allows DDL. State indexes are installed by the initializer.
+
+New email/mobile verification tokens start unconfirmed, are bound to the saved
+contact, and become usable only after the provider confirms acceptance. This is
+not proof of inbox/handset delivery. Development outbox, missing/failed provider
+responses and exceptions report unavailable delivery. A failed signup delivery
+still returns the saved account and a retry instruction. Durable per-account,
+per-channel 60-second resend limits survive refresh, token exhaustion and failed
+delivery; OTP verification allows three atomic attempts. Completing mobile
+verification still revokes setup sessions and requires a fresh password login.
+Pending tokens issued before this migration have unknown delivery status and
+must be resent; already verified accounts keep their verification.
+
+Clinic dates use Asia/Manila. Mounted portal screens update at midnight and on
+focus/visibility restoration. Views following today advance; explicitly selected
+historical dates and unsaved form values are preserved. Date-only preventive
+schedule calculations do not depend on the browser timezone.
+
+The UI polls `/api/state/summary`, keeping current/future visits, overnight active
+care, unpaid completed visits, today's collections and linked saved notes (including backdated notes), unresolved followups,
+current vaccine recalls and latest weights. Dashboard totals are computed over
+the complete authorized scope. It does not fetch older notes, settled visits,
+older dose details or weight histories on each poll. Legacy `/api/state` retains
+its complete response contract for existing callers.
+
+`/api/state/history` reads up to 50 primary records per collection per page,
+ordered by `(date DESC, id DESC)` with a continuation cursor rather than OFFSET.
+It also includes the linked appointments (at most 50) needed to read a page's
+saved notes/vitals. Optional `petId` filtering retains the same owner/vet scope;
+cursors never grant access. History is held only in the current authenticated
+portal's memory. The UI loads the first batch on history screens and further
+batches on demand, indicates partial searches, preserves earlier pages on errors,
+and marks loaded history stale after summary changes. Complete report/card
+printing and historical sales totals require all history batches to be loaded.
+Refresh history to see a new consistent traversal after records change. Current
+summary records take precedence over older loaded copies, and records for pets
+leaving the authenticated scope are removed.
+
+Validation commands:
+
+```sh
+npm run test:auth
+npm run test:clinic
+npm run test:dates
+node --test tests/clinic-loading.test.js
+TEST_DATABASE_URL=postgresql://localhost/disposable_test_database npm run test:system:postgres
+npm run build
+```
+
+Database tests accept only a local disposable PostgreSQL endpoint and mock email
+and SMS delivery; they never verify production delivery.

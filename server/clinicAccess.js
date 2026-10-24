@@ -32,7 +32,7 @@ export async function clinicAccess(req, res, next) {
     if (key === 'GET /reminders/calls') return allow('assistant', 'admin') ? next() : denied();
     if (key === 'GET /reminders/status') return allow('assistant', 'admin') ? next() : denied();
     if (key === 'GET /appointments/availability') return allow('owner', 'assistant') ? next() : denied();
-    if (key === 'GET /state' || key === 'GET /services/prices') return next();
+    if (['GET /state','GET /state/summary','GET /state/history'].includes(key) || key === 'GET /services/prices') return next();
     if (key === 'GET /logs') return allow('admin') ? next() : denied();
     // Account edits use the validated, session-scoped account router.
     if (key === 'POST /owner/contact') return fail(res, 410, 'Use account profile settings to update your contact details.');
