@@ -1,15 +1,19 @@
 // Every clinic operation must receive a real server acknowledgment.
-export async function clinicRequest(method, path, body) {
+export async function clinicRequest(method, path, body, options = {}) {
   const headers = { 'Content-Type': 'application/json' };
+  if (options.ifNoneMatch) headers['If-None-Match'] = options.ifNoneMatch;
   try {
     const token = globalThis.localStorage?.getItem('pawcare_token') || globalThis.sessionStorage?.getItem('pawcare_token');
     if (token) headers.Authorization = `Bearer ${token}`;
   } catch { /* Cookie sessions still work when browser storage is unavailable. */ }
   let response;
   try {
-    response = await fetch(path, { method, headers, credentials: 'include', ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    response = await fetch(path, { method, headers, credentials: 'include', ...(options.signal ? {signal: options.signal} : {}), ...(method === 'GET' ? {cache: 'no-store'} : {}), ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   } catch {
     throw new Error('Unable to reach the clinic server. Your changes have not been confirmed. Check your connection and retry.');
+  }
+  if (response.status === 304 && options.responseMetadata && options.ifNoneMatch) {
+    return {notModified: true, etag: options.ifNoneMatch};
   }
   let data;
   try { data = await response.json(); }
@@ -25,5 +29,6 @@ export async function clinicRequest(method, path, body) {
   if (data.token) {
     try { globalThis.localStorage?.setItem('pawcare_token', data.token); globalThis.sessionStorage?.setItem('pawcare_token', data.token); } catch { /* Cookie session remains available. */ }
   }
-  return data?.data !== undefined ? data.data : data;
+  const value = data?.data !== undefined ? data.data : data;
+  return options.responseMetadata ? {data: value, etag: response.headers.get('ETag'), notModified: false} : value;
 }

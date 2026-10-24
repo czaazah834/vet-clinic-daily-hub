@@ -250,3 +250,15 @@ test('checkout inbox and claims are reception-only, including spoofed role field
 test('call history is restricted to reception and administrative oversight',async()=>{
  for(const role of ['owner','vet']) assert.equal((await request(role,'GET','/reminders/calls?petId=p1')).status,403);
 });
+
+test('state tags never bypass session checks or current role scope', async () => {
+  const url = `http://127.0.0.1:${server.address().port}/api/state`;
+  const load = (role, etag) => fetch(url, {headers:{...(role ? {Cookie:`sid=session-${role}`} : {}), ...(etag ? {'If-None-Match':etag} : {})}});
+  const first = await load('admin');assert.equal(first.status,200);const etag=first.headers.get('etag');await first.json();
+  const same=await load('admin',etag);assert.equal(same.status,304);assert.equal(await same.text(),'');
+  assert.equal((await load(null,etag)).status,401);
+  const owner=await load('owner',etag);assert.equal(owner.status,200);assert.notEqual(owner.headers.get('etag'),etag);
+  assert.deepEqual((await owner.json()).data.pets.map(p=>p.id),['p1']);
+  db.appts[0].status='Checked-in';const changed=await load('admin',etag);assert.equal(changed.status,200);
+  assert.equal((await changed.json()).data.appts[0].status,'Checked-in');
+});

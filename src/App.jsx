@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { clinicRequest } from "./clinicApi.js";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { startClinicSync } from "./clinicSync.js";
+import { createClinicStateLoader } from "./clinicStateLoader.js";
 import { emptyClinicState, applyClinicState } from "./clinicState.js";
 import { bindStore, setSessionUser } from "./api.js";
 import { auth, OFFLINE_MSG } from "./authApi.js";
@@ -10,12 +11,17 @@ import Forgot from "./pages/Forgot.jsx";
 import { CheckEmail, Otp, Unlock } from "./pages/Verify.jsx";
 import StaffSetup from "./pages/StaffSetup.jsx";
 import DevInbox from "./pages/DevInbox.jsx";
-import Portal from "./Portal.jsx";
-import { admin } from "./roles/Admin.jsx";
-import { vet } from "./roles/Vet.jsx";
-import { assistant } from "./roles/Assistant.jsx";
-import { owner } from "./roles/Owner.jsx";
-const CFG = { admin, vet, assistant, owner };
+const portalFor = (loadRole, name) => lazy(async () => {
+  const [{default: Portal}, role] = await Promise.all([import("./Portal.jsx"), loadRole()]);
+  return {default: props => <Portal cfg={role[name]} {...props} />};
+});
+const CFG = {
+  admin: portalFor(() => import("./roles/Admin.jsx"), "admin"),
+  vet: portalFor(() => import("./roles/Vet.jsx"), "vet"),
+  assistant: portalFor(() => import("./roles/Assistant.jsx"), "assistant"),
+  owner: portalFor(() => import("./roles/Owner.jsx"), "owner"),
+};
+const blankClinic = emptyClinicState();
 
 function getInitialView() {
   if (typeof window === "undefined") return "landing";
@@ -54,6 +60,9 @@ function saveCachedUser(user) {
 export default function App() {
   const [db, setDb] = useState(emptyClinicState), [me, setMe] = useState(getCachedUser), [restoring, setRestoring] = useState(() => !getCachedUser()), [view, setView] = useState(getInitialView), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
   const [clinicError, setClinicError] = useState("");
+  const [loadedFor, setLoadedFor] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const retrySync = useRef(() => {});
   const [otpEnabled, setOtpEnabled] = useState(() => getInitialView() !== "otp");
   const dbRef = useRef(db); dbRef.current = db;
   useEffect(() => { bindStore(() => dbRef.current, setDb); }, []);
@@ -91,28 +100,35 @@ export default function App() {
   // Sync only authenticated records; empty results clear stale and demo data.
   useEffect(() => {
     if (!me || restoring) return;
-    let active = true;
-    const syncState = async () => {
-      try {
-        const remote = await clinicRequest("GET", "/api/state");
-        if (!active) return;
-        setDb(p => applyClinicState(p, remote));
+    const identity = `${me.id}:${me.role}`;
+    let showProgress = true, hasData = false;
+    const sync = startClinicSync({
+      load: createClinicStateLoader(),
+      getBaseline: () => dbRef.current,
+      onLoading: value => { if (showProgress) setRefreshing(value); },
+      onData: (remote, baseline) => {
+        const expectedBaseline = hasData ? baseline : undefined;
+        hasData = true;
+        setDb(previous => applyClinicState(previous, remote, expectedBaseline));
+        setLoadedFor(identity);
+        showProgress = false;
+        setRefreshing(false);
         setClinicError("");
-      } catch (error) {
-        if (!active) return;
+      },
+      onError: error => {
+        showProgress = true;
         if (error.status === 401 || error.status === 403) {
-          setDb(emptyClinicState()); setMe(null); saveCachedUser(null); setSessionUser(null);
+          sync.stop();
+          setDb(emptyClinicState()); setLoadedFor(""); setMe(null); saveCachedUser(null); setSessionUser(null);
           setNotice("Your session has ended. Please log in again."); setBad(true); setView("login");
-        } else setClinicError("Clinic connection unavailable. Displayed records may be out of date. Changes require a successful server save.");
-      }
-    };
-    syncState();
-    const interval = setInterval(syncState, 3000);
-    window.addEventListener("focus", syncState);
-    return () => { active = false; clearInterval(interval); window.removeEventListener("focus", syncState); };
+        } else setClinicError(error.message || "Clinic connection unavailable. Please retry.");
+      },
+    });
+    retrySync.current = () => { showProgress = true; sync.refresh(); };
+    return () => { sync.stop(); retrySync.current = () => {}; };
   }, [me?.id, me?.role, restoring]);
   /* Log out here and on the server. A message (e.g. idle timeout) sends the person to Log in with that notice. */
-  const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } try { localStorage.removeItem("pawcare_token"); sessionStorage.removeItem("pawcare_token"); } catch (_) {} setDb(emptyClinicState()); setClinicError(""); setMe(null); saveCachedUser(null); setSessionUser(null); window.history.replaceState(null, "", window.location.pathname); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
+  const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } try { localStorage.removeItem("pawcare_token"); sessionStorage.removeItem("pawcare_token"); } catch (_) {} setDb(emptyClinicState()); setLoadedFor(""); setClinicError(""); setMe(null); saveCachedUser(null); setSessionUser(null); window.history.replaceState(null, "", window.location.pathname); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
   /* Work Shift Session Timeout: 8 hours (standard full clinic shift) */
   useEffect(() => {
     if (!me) return;
@@ -182,7 +198,14 @@ export default function App() {
   const onLogin = r => { if (r.needsOtp) { setNotice(""); enterOtp(); } else { setMe(r.user); saveCachedUser(r.user); } };   // password right but mobile not verified yet: ask for the SMS code first
 
   // Render the normal app instead of an intrusive full-screen restoring view.
-  if (me) return <>{clinicError && <div role="alert" style={{ padding: "12px 20px", background: "#fff7ed", color: "#9a3412" }}>{clinicError}</div>}<Portal cfg={CFG[me.role]} me={me} db={db} setDb={setDb} onLogout={() => logout()} /></>;
+  if (me) {
+    const RolePortal = CFG[me.role];
+    const ready = loadedFor === `${me.id}:${me.role}`;
+    return <Suspense fallback={<div className="clinic-loading" role="status">Loading your workspace…</div>}>
+      <RolePortal key={`${me.id}:${me.role}`} me={me} db={ready ? db : blankClinic} setDb={setDb} onLogout={() => logout()}
+        dataLoading={!ready} dataError={clinicError} refreshing={refreshing} onRetry={() => retrySync.current()} />
+    </Suspense>;
+  }
   const screen =
     view === "login" ? <Login role={role} notice={notice} bad={bad} onLogin={onLogin} onBack={() => go("landing")} go={go} />
     : view === "staff-setup" ? <StaffSetup token={flow.inviteToken} onDone={r => { if (r.needsOtp) { setNotice(""); enterOtp(); } else { setMe(r.user); saveCachedUser(r.user); } }} onCancel={() => go("landing")} />

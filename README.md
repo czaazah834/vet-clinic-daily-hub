@@ -624,3 +624,30 @@ vet, current patient weight, vaccine brand/lot, annual boosters or dispensing.
 Checks: `node --test tests/vet-queue.test.js tests/appointment-status.test.js
  tests/consultation-save.test.js tests/owner-vaccination.test.js`,
 `npm run test:clinic`, and `npm run build`.
+
+### Shared clinic data loading
+
+All four portals use one session-scoped data sync. The first load shows a loading
+state instead of empty lists and zero counts. Failures offer Retry; later refresh
+failures retain loaded records with an out-of-date warning. The pending request
+is cancelled on session cleanup and times out after 20 seconds. Polling runs
+three seconds after each completed request, with no overlapping requests; hidden
+and offline tabs pause and resume when visible/online. Initial portal code loads
+only for the selected role.
+
+`GET /api/state` keeps its existing JSON envelope and authorization/scope rules.
+After successful scoped reads, it sends a response tag. A matching
+`If-None-Match` returns 304 with no body. The last response and tag live only in
+the current sync session's memory; clinical data is not stored in a browser or
+shared HTTP cache (`Cache-Control: private, no-store`). This reduces repeated
+record/photo transfers, not the number of authorization or database checks.
+The server indexes administered vaccine names once while preserving the existing
+rules for hiding superseded suggestions.
+
+Unchanged rows and collections retain their references to avoid unnecessary UI
+updates. A refresh started before a locally acknowledged record change cannot
+replace that change; the following refresh reconciles the current server state.
+
+Checks: `node --test tests/clinic-loading.test.js server/tests/state-performance.test.js`,
+`node --test tests/*.test.js`, `npm run test:clinic`, `npm run test:auth`,
+`npm run test:account`, and `npm run build`.

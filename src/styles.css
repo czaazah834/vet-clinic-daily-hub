@@ -162,3 +162,10 @@ th{background:#f3f6fc;color:#5b6b8f}td{border-top:1px solid var(--bd2)}
 .act{white-space:normal}.act .btn{margin:2px 0}
 
 .wnavr{display:flex;gap:10px;align-items:center}.wnavr .btn{text-decoration:none}
+
+.clinic-loading { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 180px; padding: 24px; color: #334155; }
+.clinic-spinner { width: 24px; height: 24px; border: 3px solid #dbeafe; border-top-color: #2563eb; border-radius: 50%; animation: clinic-loading-spin .8s linear infinite; }
+.clinic-data-error { padding: 16px; margin-bottom: 18px; border: 1px solid #fed7aa; border-radius: 12px; background: #fff7ed; color: #9a3412; }
+.clinic-data-error p { margin: 0 0 12px; }
+@keyframes clinic-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .clinic-spinner { animation: none; } }

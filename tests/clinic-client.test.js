@@ -44,3 +44,16 @@ test('successful sign-in keeps the returned session token for later authenticate
     assert.equal(stored.get('pawcare_token'), 'synthetic-session-token');
   } finally { if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage; }
 });
+
+test('conditional state GETs forward cancellation, retain tags and accept body-free confirmations', async () => {
+  const controller = new AbortController();
+  const fetch = mock.method(globalThis, 'fetch', async (path, options) => {
+    assert.equal(options.signal, controller.signal);
+    assert.equal(options.cache, 'no-store');
+    assert.equal(options.headers['If-None-Match'], '"saved"');
+    return new Response(null, {status:304});
+  });
+  assert.deepEqual(await clinicRequest('GET', '/api/state', undefined, {signal:controller.signal, ifNoneMatch:'"saved"', responseMetadata:true}), {notModified:true,etag:'"saved"'});
+  fetch.mock.mockImplementation(async()=>new Response(JSON.stringify({success:true,data:{pets:[]}}),{headers:{ETag:'"new"'}}));
+  assert.deepEqual(await clinicRequest('GET', '/api/state', undefined, {responseMetadata:true}), {data:{pets:[]},etag:'"new"',notModified:false});
+});
