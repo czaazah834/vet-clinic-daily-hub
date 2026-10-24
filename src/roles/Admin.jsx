@@ -1,3 +1,6 @@
+import AdminStaff, { useAdminStaff, AdminAudit } from "./AdminStaff.jsx";
+import ReminderStatus from "./ReminderStatus.jsx";
+import { currentVaccinationDue } from "../vaccinationDue.js";
 import { useState } from "react";
 import {
   Send,
@@ -47,6 +50,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
   const submit = async (e) => {
     e.preventDefault();
     setErr("");
+    if (loading) return;
     if (!f.name.trim()) return setErr("Staff full name is required");
     if (!f.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) return setErr("Valid staff email required");
 
@@ -62,7 +66,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
         setSuccess(res);
         setDb(p => ({
           ...p,
-          log: addLog(p, me, `Administrator ${me.name} dispatched staff invitation to ${f.name} (${f.role}) via Brevo.`)
+          log: addLog(p, me, `Administrator ${me.name} created staff invitation for ${f.name} (${f.role}).`)
         }));
       } else {
         setErr(res.error || "Failed to dispatch staff invitation.");
@@ -74,9 +78,9 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
     }
   };
 
-  const copyLink = () => {
+  const copyLink = async () => {
     if (!success?.inviteLink) return;
-    navigator.clipboard.writeText(success.inviteLink);
+    try { await navigator.clipboard.writeText(success.inviteLink); } catch { setErr("Unable to copy. Select and copy the link below."); return; }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -92,7 +96,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
               Invite Staff Member
             </h3>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-              Authorizes a Veterinarian or Vet Assistant account via Brevo invitation email
+              Invite staff to set their password and verify their mobile number
             </p>
           </div>
           <button className="btn ghost sm" onClick={onClose} style={{ padding: "6px" }} aria-label="Close">
@@ -106,11 +110,11 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
               <Check size={28} strokeWidth={2.5} />
             </div>
             <h4 style={{ margin: "0 0 8px", fontSize: "17px", color: "#14532d", fontWeight: 700 }}>
-              Invitation Sent Successfully!
+              Invitation Created
             </h4>
             <p style={{ margin: "0 0 18px", color: "#475569", fontSize: "13px", lineHeight: 1.5 }}>
-              An invitation email has been dispatched via <b>Brevo</b> to <b>{f.email}</b>.<br />
-              The recipient will receive an activation link to set their password and verify their phone number via <b>TextBee SMS OTP</b>.
+              {success.delivery === "accepted" ? <>The email provider accepted the invitation for <b>{f.email}</b>.</> : <>Email delivery is unconfirmed. Use the secure activation link below and check the configured email service.</>}<br />
+              The activation link lets staff set their password and verify their phone number via <b>TextBee SMS OTP</b>.
             </p>
 
             <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "20px", textAlign: "left" }}>
@@ -136,6 +140,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
               </div>
             </div>
 
+            {err && <p role="alert">{err}</p>}
             <div className="row end">
               <button className="btn gold" onClick={onClose}>Done</button>
             </div>
@@ -178,7 +183,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
                 required
               />
               <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
-                An invitation email will be sent to this address via Brevo with a secure setup link.
+                The email service sends a secure setup link to this address.
               </span>
             </div>
 
@@ -208,6 +213,12 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
 function Dash({ db, setDb, me, go, say }) {
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [logSearch, setLogSearch] = useState("");
+  const staff = useAdminStaff();
+  const unpaid = db.appts.filter(a=>a.status === "Completed" && a.billingStatus !== "Paid");
+  const unfinished = db.appts.filter(a=>["Checked-in","In consultation"].includes(a.status) && a.date <= TODAY);
+  const locked = (staff.data?.staff || []).filter(u=>u.active && u.locked);
+  const inactiveIds = (staff.data?.staff || []).filter(u=>!u.active).flatMap(u=>[u.id,u.vetId].filter(Boolean));
+  const reassign = db.appts.filter(a=>a.date >= TODAY && ["Scheduled","Confirmed","Checked-in"].includes(a.status) && inactiveIds.includes(a.vetId));
 
   const logs = (db.log || []).filter(l => {
     const text = (l.msg || l.action || "").toLowerCase();
@@ -221,7 +232,7 @@ function Dash({ db, setDb, me, go, say }) {
     <>
       <Hero
         title={`Administrator Console · ${me.name}`}
-        text="Full clinic oversight: system-wide analytics, staff account provisioning, clinical workflows and security audit logs."
+        text="Review clinic exceptions, manage staff access, audit settled payments and inspect clinical records. Reception and veterinarians carry out patient care."
         icons={["hospital", "shield"]}
       >
         <div className="row" style={{ flexWrap: "wrap", gap: "10px" }}>
@@ -229,13 +240,13 @@ function Dash({ db, setDb, me, go, say }) {
             + Invite Staff (Vet / Assistant)
           </button>
           <button className="btn" onClick={() => go("users")}>
-            Manage User Accounts
+            Manage Staff Access
           </button>
           <button className="btn ghost" onClick={() => go("cal")}>
             Clinic Master Calendar
           </button>
           <button className="btn ghost" onClick={() => go("reports")}>
-            Print Audit Reports
+            View Clinic Reports
           </button>
         </div>
       </Hero>
@@ -244,25 +255,36 @@ function Dash({ db, setDb, me, go, say }) {
         items={[
           ["user", db.owners.length, "Registered Owners"],
           ["paw", db.pets.length, "Animal Patients"],
-          ["shield", db.users.length, "User Accounts"],
+          ["shield", staff.data?.accountCount ?? "—", "Registered accounts"],
           ["calendar", db.appts.filter(a => a.date === TODAY).length, "Today's Appointments"],
-          ["alert", db.vacc.filter(v => v.nextDue && !v.done && v.nextDue < TODAY).length, "Overdue Vaccines"],
+          ["alert", currentVaccinationDue(db.vacc).filter(v=>v.nextDue<TODAY).length, "Certified booster recalls overdue"],
           ["file", db.records.length, "Consultations on File"],
         ]}
       />
 
+      <section className="card" style={{marginTop:16}}>
+        <h3>Needs attention</h3><p>Review exceptions and direct the responsible team to the next action.</p>
+        {staff.error && <p role="alert">{staff.error} <button className="btn ghost sm" onClick={staff.load}>Retry staff status</button></p>}
+        <div style={{display:'grid',gap:12}}>
+          <div><b>{staff.data ? locked.length : '—'} active staff account(s) locked</b> · Review the reason and unlock access if appropriate. <button className="btn ghost sm" onClick={()=>go('users')}>Review staff access</button></div>
+          <div><b>{staff.data ? reassign.length : '—'} upcoming visit(s) assigned to inactive doctors</b> · Ask reception to confirm reassignment with the client. <button className="btn ghost sm" onClick={()=>go('cal')}>Review calendar</button></div>
+          <div><b>{unpaid.length} completed visit(s) unpaid</b> · Ask reception to resolve its checkout inbox. <button className="btn ghost sm" onClick={()=>go('sales')}>Review sales</button></div>
+          <div><b>{unfinished.length} arrived visit(s) unfinished</b> · Check with the assigned clinical team. <button className="btn ghost sm" onClick={()=>go('records')}>Review clinical records</button></div>
+        </div>
+      </section>
+      <ReminderStatus />
       <div className="two" style={{ marginTop: "16px" }}>
         <Bars title="Appointments by Status" data={by(db.appts, "status")} />
-        <Bars title="System Accounts by Role (RBAC)" data={by(db.users, "role")} />
+        {staff.data && <Bars title="Staff accounts by role" data={by(staff.data.staff, "role")} />}
       </div>
 
       {/* Security & Activity Audit Log */}
       <section className="card" style={{ marginTop: "16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
           <div>
-            <h3 style={{ margin: "0 0 4px" }}>System Security &amp; Activity Audit Log</h3>
+            <h3 style={{ margin: "0 0 4px" }}>Recent clinic activity</h3>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-              Permanent audit trail tracking all clinical entries, walk-in registrations, appointments and staff activity.
+              Latest 100 saved entries. Open System Audit Trail to search older activity.
             </p>
           </div>
           <input
@@ -328,16 +350,22 @@ function Dash({ db, setDb, me, go, say }) {
   );
 }
 
+function StaffPage(props) {
+  const [inviting,setInviting] = useState(false),[revision,setRevision]=useState(0);
+  return <><AdminStaff key={revision} onInvite={()=>setInviting(true)} />{inviting && <StaffModal {...props} onClose={()=>{setInviting(false);setRevision(r=>r+1);}} />}</>;
+}
+
 export const admin = {
   portal: "Clinic Administrator Console",
   Dash,
   menu: [
     { k: "home", l: "Clinic Overview", i: "hospital", dash: 1, sub: "Clinic-wide analytics, audit trail, and staff provisioning." },
-    M("users", "Staff & User Accounts", "shield", "users", "RBAC control: create and manage staff logins, roles, and credentials."),
-    { k: "sales", l: "Daily Sales & Billing", i: "receipt", Page: DailySalesPage, sub: "Daily collections register, cashier receipts, and sales breakdown." },
+    { k:"users", l:"Staff Access & Invitations", i:"shield", Page:StaffPage, sub:"Invite veterinarians and assistants, review access, and resolve locked accounts." },
+    { k: "sales", l: "Sales & Financial Audit", i: "receipt", Page: DailySalesPage, sub: "Review settled payments and receipts; reception collects payments." },
     { k: "cal", l: "Master Calendar", i: "calendar", Page: ClinicCalendar, sub: "Clinic appointment calendar (read-only administrative oversight)." },
     { k: "clients-patients", l: "Clients & Patients Masterlist", i: "users", Page: ClientsAndPatientsPage, sub: "Unified masterlist of pet owners, animal patient profiles, and official vaccination cards." },
     { k: "records", l: "Consultations & EMR", i: "file", Page: ConsultationsPage, sub: "Certified veterinary consultation notes, EMR, and prescription handoff." },
+    { k:"audit", l:"System Audit Trail", i:"shield", Page:AdminAudit, sub:"Search saved activity and review older entries." },
     { k: "reports", l: "Reports & Audits", i: "chart", rep: 1, sub: "Filter, audit, and print clinic summaries." },
     { k: "owners", hide: true, Page: ClientsAndPatientsPage },
     { k: "pets", hide: true, Page: ClientsAndPatientsPage },

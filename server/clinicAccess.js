@@ -20,11 +20,12 @@ export async function clinicAccess(req, res, next) {
   };
   const selectDoctor = async id => {
     if (typeof id !== 'string' || !id) return null;
-    const row = (await query("SELECT id, vet_id FROM users WHERE role = 'vet' AND (vet_id = $1 OR id = $1)", [id])).rows[0];
+    const row = (await query("SELECT id, vet_id FROM users WHERE role = 'vet' AND COALESCE(to_jsonb(users)->>'is_active', 'true') <> 'false' AND (vet_id = $1 OR id = $1)", [id])).rows[0];
     return row ? row.vet_id || row.id : null;
   };
   const appointment = async id => (await query('SELECT * FROM appointments WHERE id = $1', [id])).rows[0];
   try {
+    if ((req.method === 'GET' && ['/admin/staff','/admin/audit'].includes(path)) || (req.method === 'POST' && /^\/admin\/(?:staff\/[^/]+\/access|invitations\/[^/]+\/revoke)$/.test(path))) return allow('admin') ? next() : denied();
     if (path === '/checkout-inbox' && req.method === 'GET' || /^\/checkout-inbox\/[^/]+\/(claim|renew|release)$/.test(path) && req.method === 'POST') return allow('assistant') ? next() : denied();
     if (key === 'GET /reminders/status') return allow('assistant', 'admin') ? next() : denied();
     if (key === 'GET /appointments/availability') return allow('owner', 'assistant') ? next() : denied();

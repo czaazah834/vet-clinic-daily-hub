@@ -1,3 +1,4 @@
+import { adminRouter } from "./admin.js";
 import { ensurePetRegistrationSchema, validatePetRegistration, validatePetPhoto, lockRegistrationOwner, checkRegistrationCapacity, checkRequestRevision, registrationAudit, registrationError } from '../petRegistration.js';
 import { checkoutRouter } from "./checkout.js";
 import { ensureCheckoutInboxSchema, createCheckoutTask, authorizeCheckoutPayment, finishCheckoutTask } from "../checkout.js";
@@ -15,6 +16,7 @@ import { clinicAccess, assignedTo, validateStatusChange } from "../clinicAccess.
 export const clinicRouter = express.Router();
 clinicRouter.use(requireAuth, clinicAccess);
 clinicRouter.use("/checkout-inbox", checkoutRouter);
+clinicRouter.use("/admin", adminRouter);
 
 /* Helper: log an action to audit_logs */
 async function recordAudit(userName, userRole, action) {
@@ -85,7 +87,7 @@ clinicRouter.get("/state", async (req, res) => {
       query(`SELECT * FROM consultations${wherePet} ORDER BY date DESC`, scopeParams),
       vet ? Promise.resolve({ rows: [] }) : query(`SELECT * FROM pet_requests${owner ? " WHERE owner_id = $1" : ""} ORDER BY created_at DESC`, owner ? scopeParams : []),
       req.user.role === "admin" ? query("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100") : Promise.resolve({ rows: [] }),
-      query("SELECT id, vet_id, first_name, last_name, role FROM users WHERE role = 'vet' ORDER BY first_name ASC")
+      query("SELECT id, vet_id, first_name, last_name, role FROM users WHERE role = 'vet' AND COALESCE(to_jsonb(users)->>'is_active', 'true') <> 'false' ORDER BY first_name ASC")
     ]);
 
     // Attach weights to pets
@@ -1489,7 +1491,7 @@ clinicRouter.get("/appointments/availability", async (req, res) => {
     await ensureSchedulingSchema();
     const { vetId, date, service, excludeId } = req.query;
     if (!validDate(date)) throw bookingError("Choose a valid appointment date.");
-    const doctor = (await query("SELECT id, vet_id FROM users WHERE role = 'vet' AND (vet_id = $1 OR id = $1)", [vetId])).rows[0];
+    const doctor = (await query("SELECT id, vet_id FROM users WHERE role = 'vet' AND COALESCE(to_jsonb(users)->>'is_active', 'true') <> 'false' AND (vet_id = $1 OR id = $1)", [vetId])).rows[0];
     if (!doctor) throw bookingError("Choose a current veterinarian.");
     let excluded;
     if (excludeId) {

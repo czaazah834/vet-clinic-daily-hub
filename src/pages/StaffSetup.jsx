@@ -27,7 +27,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
-    birthday: "1992-05-15",
+    birthday: "",
     mobileNumber: "+63 9",
     password: "",
     confirmPassword: ""

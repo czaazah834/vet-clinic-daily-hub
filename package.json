@@ -18,7 +18,8 @@
   "reminders:once": "node server/scripts/reminder-worker.js --once",
   "test:scheduling": "node --test server/tests/scheduling.test.js server/tests/reminder-delivery.test.js",
   "test:scheduling:postgres": "node --test server/tests/scheduling-postgres.test.js",
-  "test:registration:postgres": "node --test server/tests/pet-registration-postgres.test.js"
+  "test:registration:postgres": "node --test server/tests/pet-registration-postgres.test.js",
+  "test:admin:postgres": "node --experimental-test-module-mocks --test server/tests/admin-postgres.test.js"
  },
  "dependencies": {
   "bcryptjs": "^3.0.3",
