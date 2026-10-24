@@ -1,9 +1,10 @@
+import { currentVaccinationDue, vaccinationAppointment, vaccinationBooking, vaccinationStatus } from "../../ownerVaccination.js";
 import { api } from "../../api.js";
 import { today as bookingToday, lastDay } from "../../booking.js";
 import { useAvailability } from "../../useAvailability.js";
 import { openFollowUps } from "../../clinicalWorkflow.js";
 import { useState, useEffect } from "react";
-import { Badge, I, ICON, TODAY, scope, petName, uid, addLog, dueState } from "../../lib.jsx";
+import { Badge, I, ICON, scope, petName, uid, addLog } from "../../lib.jsx";
 import ApptDetails from "./ApptDetails.jsx";
 import { useLive, Field, Suggest, Modal, addNote, prefill, fmt12, ymdLocal } from "./ui.jsx";
 import { SERVICES, MAX_DAYS, ServicePicker, SlotPicker, inferService, serviceOf, holidayName, durOf, durText, addMin, makeReason, splitReason } from "./services.jsx";
@@ -43,7 +44,7 @@ const mkRules = (db, me, editing) => v => {
 function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   const TODAY = bookingToday(), LAST = lastDay();
   const pets = scope(db, me, "pets"), owner = db.owners.find(o => o.id === me.ownerId) || {};
-  const prev = editing ? serviceOf(editing) : "", svc0 = editing ? prev : start && start.reason ? inferService(start.reason) : "";
+  const prev = editing ? serviceOf(editing) : "", svc0 = editing ? prev : start?.service || (start?.reason ? inferService(start.reason) : "");
   const f = useLive({ followUpId: editing?.followUpId || start?.followUpId || "", service: svc0, petId: editing ? editing.petId : (start && start.petId) || (pets.length === 1 ? pets[0].id : ""), vetId: editing ? editing.vetId : "", date: editing ? editing.date : (start && start.date) || "", time: editing ? editing.time : "", notes: editing ? editing.notes || "" : "" }, mkRules(db, me, editing));
   const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const { v } = f, S = SERVICES[v.service];
@@ -115,7 +116,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
         {start && (start.fromVaccineCard || start.vaccineName) && (
           <div className="ow-banner ok" style={{ marginBottom: 12 }}>
             <span>
-              💉 <b>Vaccine Booster Schedule:</b> Booking for <b>{start.vaccineName || start.reason}</b> on <b>{start.date || "your scheduled date"}</b>. Please select your veterinarian and preferred time slot!
+              💉 <b>Vaccine Booster Schedule:</b> Booking for <b>{start.vaccineName || start.reason}</b>. {start.vaccineDueDate && <>Vet-approved due date: <b>{start.vaccineDueDate}</b>. </>}Choose an available visit date, veterinarian and time. The due date does not reserve a visit.
             </span>
           </div>
         )}
@@ -174,23 +175,26 @@ const KIND = { visit: ["Visit", "k-visit"], done: ["Past visit", "k-done"], give
 
 /* { "YYYY-MM-DD": [event, ...] } for the calendar dots and the vaccine notes under the list. */
 function buildEvents(db, me, pet, svc, q) {
+  const TODAY = bookingToday();
   const ev = {}, add = (d, x) => { if (d) (ev[d] = ev[d] || []).push(x); }, needle = q.trim().toLowerCase();
   scope(db, me, "appts").filter(a => a.status !== "Cancelled" && (!pet || a.petId === pet) && (!svc || serviceOf(a) === svc)).forEach(a => {
     const vet = (liveDoctors(db).find(v => v[0] === a.vetId) || [])[1] || "", text = `${petName(db, a.petId)}: ${a.reason}`;
     if (needle && ![text, vet, a.status, a.date].join(" ").toLowerCase().includes(needle)) return;
     add(a.date, { kind: ["Completed", "No-show"].includes(a.status) || a.date < TODAY ? "done" : "visit", text, appt: a });
   });
+  const current = currentVaccinationDue(scope(db, me, "vacc"));
   if (!svc) scope(db, me, "vacc").filter(v => !pet || v.petId === pet).forEach(v => {
     const nm = petName(db, v.petId);
     if (needle && !`${nm} ${v.vaccine}`.toLowerCase().includes(needle)) return;
-    add(v.date, { kind: "given", text: `${nm}: ${v.vaccine} given`, sub: v.notes || "", vacc: v });
-    if (!v.done && v.nextDue) add(v.nextDue, { kind: dueState(v.nextDue) === "Overdue" ? "over" : "due", text: `${nm}: ${v.vaccine} due`, sub: dueState(v.nextDue), vacc: v });
+    if (v.done) add(v.date, { kind: "given", text: `${nm}: ${v.vaccine} given`, sub: v.notes || "", vacc: v });
+    if (current.some(x => x.id === v.id)) add(v.nextDue, { kind: vaccinationStatus(v, current) === "Overdue" ? "over" : "due", text: `${nm}: ${v.vaccine} due`, sub: vaccinationStatus(v, current), vacc: v });
   });
   return ev;
 }
 
 /* Small month grid. Click a day to filter the list to it, click it again to clear. */
 function MiniCalendar({ ev, day, setDay }) {
+  const TODAY = bookingToday();
   const t = new Date(), [cur, setCur] = useState({ y: t.getFullYear(), m: t.getMonth() });
   const first = new Date(cur.y, cur.m, 1), cells = Array.from({ length: 42 }, (_, i) => new Date(cur.y, cur.m, 1 - first.getDay() + i));
   const move = n => { const d = new Date(cur.y, cur.m + n, 1); setCur({ y: d.getFullYear(), m: d.getMonth() }); };
@@ -220,6 +224,7 @@ function MiniCalendar({ ev, day, setDay }) {
 }
 
 export default function OwnerAppts({ db, setDb, me, say }) {
+  const TODAY = bookingToday();
   const [modal, setModal] = useState(() => prefill.data ? { book: true, start: prefill.data } : null), [q, setQ] = useState(""), [view, setView] = useState("upcoming"), [pet, setPet] = useState(""), [svc, setSvc] = useState(""), [day, setDay] = useState("");
   useEffect(() => { prefill.data = null; }, []);
   const pets = scope(db, me, "pets");
@@ -284,7 +289,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
               💉 Vaccines &amp; Care Scheduled on this Day
             </h4>
             {dayVacc.map((x, i) => {
-              const matchedAppt = list.find(a => a.petId === x.vacc?.petId && a.date === day);
+              const matchedAppt = ["due", "over"].includes(x.kind) ? vaccinationAppointment(x.vacc, scope(db, me, "appts")) : null;
               return (
                 <div className="ow-evrow" key={i} style={{ alignItems: "center" }}>
                   <span className={`ow-ev ${KIND[x.kind][1]}`}>
@@ -295,7 +300,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
                     {x.sub && <small style={{ display: "block", color: "var(--mu)" }}>{x.sub}</small>}
                     {matchedAppt && (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 3, fontSize: "0.78rem", color: "#15803d", fontWeight: 700 }}>
-                        ✓ Visit pre-scheduled for {fmt12(matchedAppt.time)}
+                        ✓ {matchedAppt.status}: {matchedAppt.date} at {fmt12(matchedAppt.time)}
                       </span>
                     )}
                   </div>
@@ -309,7 +314,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
                       View appointment
                     </button>
                   ) : (
-                    (x.kind === "due" || x.kind === "over" || x.kind === "sched" || x.vacc?.nextDue) && (
+                    (x.kind === "due" || x.kind === "over") && (
                       <button
                         type="button"
                         className="btn sm"
@@ -317,13 +322,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
                         style={{ whiteSpace: "nowrap" }}
                         onClick={() => setModal({
                           book: true,
-                          start: {
-                            petId: x.vacc.petId,
-                            reason: x.vacc.vaccine || "Vaccination",
-                            date: day,
-                            fromVaccineCard: true,
-                            vaccineName: x.vacc.vaccine
-                          }
+                          start: vaccinationBooking(x.vacc)
                         })}
                       >
                         Book visit by time

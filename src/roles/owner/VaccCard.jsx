@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Badge, VETS, scope, petName, dueState, TODAY, ICON, I } from "../../lib.jsx";
+import { Badge, scope, petName, ICON, I } from "../../lib.jsx";
 import { auth, OFFLINE_MSG } from "../../authApi.js";
 import { setPrefill, Avatar, toSquare, pick, petAge, Icon, Modal, fmt12 } from "./ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails } from "../../preventiveSchedule.js";
+import { today as bookingToday } from "../../booking.js";
+import { currentVaccinationDue, vaccinationStatus, vaccinationAppointment, vaccinationBooking } from "../../ownerVaccination.js";
 import MedProfile from "./MedProfile.jsx";
 
 const CLINIC = {
@@ -16,7 +18,6 @@ const CLINIC = {
 
 const doseLabel = v => v.doseNo ? (v.doseOf ? `Dose ${v.doseNo} of ${v.doseOf}` : `Dose ${v.doseNo}`) : "";
 
-const stateOf = v => v.done ? "Completed" : dueState(v.nextDue) || "No next dose";
 
 const parseDateSafe = d => {
   if (!d) return null;
@@ -34,7 +35,7 @@ const parseDateSafe = d => {
 const daysTo = d => {
   const dt = parseDateSafe(d);
   if (!dt) return 0;
-  const today = parseDateSafe(TODAY) || new Date();
+  const today = parseDateSafe(bookingToday()) || new Date();
   return Math.round((dt - today) / 864e5);
 };
 
@@ -51,18 +52,19 @@ const rel = d => {
   const n = daysTo(d);
   return n === 0 ? "Today" : n > 0 ? `in ${plural(n, "day")}` : `${plural(-n, "day")} overdue`;
 };
-const vetOf = v => {
+const veterinarianLabel = (v, vets) => {
   if (!v) return "PawCare Clinic";
   if (v.isExternal || v.recorded_by?.includes("External") || v.recordedBy?.includes("External") || v.brand?.includes("External") || v.protocolType?.includes("External") || v.notes?.includes("External")) {
     return "External Clinic (Guide)";
   }
-  const n = v.vetName || (VETS.find(x => x[0] === v.vetId) || [])[1];
+  const n = v.vetName || vets.find(x => x.id === v.vetId)?.name;
   return n ? `${/^dr\.?\s/i.test(n) ? "" : "Dr. "}${n}${v.vetLicense ? ` · Lic. ${v.vetLicense}` : ""}` : "Veterinarian not recorded";
 };
 const tone = s => s === "Overdue" ? "er" : s === "Due soon" ? "wa" : "";
 
 export function OwnerVacc({ db, setDb, me, go, say }) {
   const pets = scope(db, me, "pets");
+  const vetOf = v => veterinarianLabel(v, db.vets || []);
   const [selectedId, setSel] = useState(() => (pick.petId && pets.some(p => p.id === pick.petId) ? pick.petId : pets[0] ? pets[0].id : ""));
   const sel = pets.some(p => p.id === selectedId) ? selectedId : pets[0]?.id || "";
   const [det, setDet] = useState(null), [st, setSt] = useState(""), [q, setQ] = useState(""), [tab, setTab] = useState("vacc");
@@ -72,44 +74,19 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
   useEffect(() => { pick.petId = null; }, []);
   
   // Whenever selected pet changes, reset to page 1
-  useEffect(() => { setIsFlipped(false); }, [sel]);
+  useEffect(() => { setIsFlipped(false); setDet(null); }, [sel]);
 
   const all = (scope(db, me, "vacc") || []).slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  const myAppts = (scope(db, me, "appts") || []).filter(a => !["Cancelled", "No-show"].includes(a.status));
-  const getApptForRecord = v => {
-    if (!v) return null;
-    let found = v.nextDue ? myAppts.find(a => a.petId === v.petId && a.date === v.nextDue) : null;
-    if (!found && v.vaccine) {
-      const q = v.vaccine.toLowerCase();
-      found = myAppts.find(a => a.petId === v.petId && a.date >= TODAY && (a.reason || "").toLowerCase().includes(q));
-    }
-    return found;
-  };
+  const current = currentVaccinationDue(all);
+  const hasBooster = v => current.some(x => x.id === v.id);
+  const stateOf = v => vaccinationStatus(v, current);
+  const getApptForRecord = v => v && hasBooster(v) ? vaccinationAppointment(v, scope(db, me, "appts")) : null;
 
   const over = all.filter(v => stateOf(v) === "Overdue"), soon = all.filter(v => stateOf(v) === "Due soon");
   const p = pets.find(x => x.id === sel), o = (db.owners || []).find(x => x.id === me.ownerId) || {};
   const ageDetails = p?.birth ? computeAgeDetails(p.birth) : null;
-  const mine = all
-    .filter(v => v.petId === sel)
-    .filter((v, idx, arr) => {
-      if (!v.done) {
-        const hasCompleted = arr.some(other =>
-          other.id !== v.id &&
-          other.done &&
-          (
-            (other.vaccine?.toLowerCase().includes("rabies") && v.vaccine?.toLowerCase().includes("rabies")) ||
-            (other.vaccine?.toLowerCase().includes("dhpp") && v.vaccine?.toLowerCase().includes("dhpp")) ||
-            (other.vaccine?.toLowerCase().includes("5-in-1") && v.vaccine?.toLowerCase().includes("5-in-1")) ||
-            (other.vaccine?.toLowerCase().includes("deworm") && v.vaccine?.toLowerCase().includes("deworm")) ||
-            other.vaccine?.toLowerCase() === v.vaccine?.toLowerCase()
-          )
-        );
-        if (hasCompleted) return false;
-      }
-      return true;
-    });
+  const mine = all.filter(v => v.petId === sel);
   const count = s => mine.filter(v => stateOf(v) === s).length;
-  const next = mine.filter(v => !v.done && v.nextDue).sort((a, b) => a.nextDue.localeCompare(b.nextDue))[0];
 
   let list = mine;
   if (st) list = list.filter(v => stateOf(v) === st);
@@ -117,13 +94,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
   const filtered = !!(st || q.trim());
 
   const book = v => {
-    setPrefill({
-      petId: v.petId,
-      reason: v.vaccine || "Vaccination",
-      date: v.nextDue || TODAY,
-      fromVaccineCard: true,
-      vaccineName: `${v.vaccine}${doseLabel(v) ? ` (${doseLabel(v)})` : ""}`
-    });
+    setPrefill(vaccinationBooking(v));
     go("appts");
   };
   
@@ -164,7 +135,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
 
   const badge = id => {
     const l = all.filter(v => v.petId === id), a = l.filter(v => stateOf(v) === "Overdue").length, b = l.filter(v => stateOf(v) === "Due soon").length;
-    return a ? <span className="badge er">{a} overdue</span> : b ? <span className="badge">{b} due soon</span> : l.length ? <span className="badge ok">Up to date</span> : <small>No records</small>;
+    return a ? <span className="badge er">{a} overdue</span> : b ? <span className="badge">{b} due soon</span> : l.some(v => !v.done) ? <span className="badge">Vet review needed</span> : l.length ? <span className="badge ok">No booster due soon</span> : <small>No records</small>;
   };
 
   if (!pets.length) {
@@ -178,7 +149,6 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
     );
   }
 
-  const nextState = next ? stateOf(next) : "";
   const cardIdFormatted = p?.vaccinationCardId || "Awaiting clinic-issued card";
 
   const handleRowClick = (v) => {
@@ -189,6 +159,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
   const petIndex = pets.findIndex(x => x.id === sel);
   const selectPet = id => {
     setSel(id);
+    setDet(null);
     setSt("");
     setQ("");
     setIsFlipped(false);
@@ -258,7 +229,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
             </div>
 
             <div className="vc-toolbar-actions">
-              <span className="vc-passport-stamp verified">Verified Digital Card #{cardIdFormatted}</span>
+              <span className="vc-passport-stamp verified">Digital vaccination card · {cardIdFormatted}</span>
               <button
                 type="button"
                 className="btn gold sm"
@@ -557,19 +528,19 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                   {v.nextDue ? (
                                     <>
                                       <b>{fmtDate(v.nextDue)}</b>
-                                      {!v.done && <div style={{ fontSize: "11px", color: s === "Overdue" ? "#dc2626" : s === "Due soon" ? "#d97706" : "#059669" }}>{rel(v.nextDue)}</div>}
+                                      {hasBooster(v) && <div style={{ fontSize: "11px", color: s === "Overdue" ? "#dc2626" : s === "Due soon" ? "#d97706" : "#059669" }}>{rel(v.nextDue)}</div>}
                                       {matchedAppt && (
                                         <div style={{ fontSize: "10.5px", color: "#15803d", fontWeight: 700, marginTop: "2px" }}>
-                                          ✓ Appt: {fmt12(matchedAppt.time)}
+                                          ✓ Visit: {fmtDate(matchedAppt.date)} · {fmt12(matchedAppt.time)}
                                         </div>
                                       )}
                                     </>
                                   ) : "—"}
                                 </td>
                                 <td style={{ padding: "8px", fontSize: "11.5px", color: "#475569" }}>
-                                  {v.brand || "Veterinary Nobivac"}
+                                  {v.brand || "Product not recorded"}
                                   <div style={{ fontFamily: "monospace", color: "#64748b" }}>
-                                    {v.batch ? `Lot: ${v.batch}` : "Lot: AUTO-0912"}
+                                    {v.batch ? `Lot: ${v.batch}` : "Lot not recorded"}
                                   </div>
                                 </td>
                                 <td style={{ padding: "8px" }}>
@@ -591,10 +562,10 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                 <td style={{ padding: "8px" }}>
                                   {matchedAppt ? (
                                     <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "#dcfce7", color: "#15803d", border: "1px solid #86efac", padding: "1px 6px", borderRadius: "8px", fontSize: "10.5px", fontWeight: 700 }}>
-                                      ✓ Scheduled
+                                      ✓ {matchedAppt.status}
                                     </span>
                                   ) : (
-                                    <Badge v={s === "No next dose" ? "Completed" : s} />
+                                    <Badge v={s} />
                                   )}
                                 </td>
                               </tr>
@@ -650,7 +621,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                       <label className="ow-lbl" htmlFor="vc-st">Filter by Status</label>
                       <select id="vc-st" value={st} onChange={e => setSt(e.target.value)}>
                         <option value="">All statuses</option>
-                        {["Overdue", "Due soon", "On track", "Completed"].map(s => <option key={s}>{s}</option>)}
+                        {["Overdue", "Due soon", "On track", "Completed", "Vet review needed"].map(s => <option key={s}>{s}</option>)}
                       </select>
                     </div>
                     <div>
@@ -685,7 +656,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                           {list.map(v => {
                             const s = stateOf(v), t = tone(s);
                             const matchedAppt = getApptForRecord(v);
-                            const hasNext = !!v.nextDue && !v.done;
+                            const hasNext = hasBooster(v);
                             return (
                               <tr
                                 key={v.id}
@@ -712,10 +683,10 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                 <td data-label="Next dose">
                                   <span>
                                     {v.nextDue ? fmtDate(v.nextDue) : "—"}
-                                    {v.nextDue && !v.done && <small className={`vc-rel ${t}`}>{rel(v.nextDue)}</small>}
+                                    {hasBooster(v) && <small className={`vc-rel ${t}`}>{rel(v.nextDue)}</small>}
                                     {matchedAppt && (
                                       <small style={{ display: "block", color: "#166534", fontWeight: 700, marginTop: "2px" }}>
-                                        ✓ Scheduled {matchedAppt.time ? `• ${fmt12(matchedAppt.time)}` : ""}
+                                        ✓ {matchedAppt.status} · {fmtDate(matchedAppt.date)} {matchedAppt.time ? `• ${fmt12(matchedAppt.time)}` : ""}
                                       </small>
                                     )}
                                   </span>
@@ -724,20 +695,20 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                   <span>
                                     {matchedAppt ? (
                                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#dcfce7", color: "#15803d", border: "1px solid #86efac", padding: "2px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: 700 }}>
-                                        ✓ Scheduled
+                                        ✓ {matchedAppt.status}
                                       </span>
                                     ) : (
-                                      <Badge v={s === "No next dose" ? "Completed" : s} />
+                                      <Badge v={s} />
                                     )}
                                     {v.done ? (
-                                      <small className="vc-rel">Completed</small>
+                                      <small className="vc-rel">Dose administered</small>
                                     ) : matchedAppt ? (
-                                      <small className="vc-rel" style={{ color: "#166534" }}>Visit confirmed</small>
+                                      <small className="vc-rel" style={{ color: "#166534" }}>{matchedAppt.status}</small>
                                     ) : null}
                                   </span>
                                 </td>
                                 <td data-label="Product / Batch">
-                                  <span>{v.batch ? `Lot ${v.batch}` : "Lot: AUTO-0912"}</span>
+                                  <span>{v.batch ? `Lot ${v.batch}` : "Lot not recorded"}</span>
                                 </td>
                                 <td className="act vc-noprint">
                                   {matchedAppt ? (
@@ -752,7 +723,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                       }}
                                       title={`Visit scheduled for ${fmtDate(matchedAppt.date)} at ${fmt12(matchedAppt.time)}. Click to view in My Appointments.`}
                                     >
-                                      ✓ Scheduled {matchedAppt.time ? `(${fmt12(matchedAppt.time)})` : ""}
+                                      View appointment
                                     </button>
                                   ) : hasNext ? (
                                     <button
@@ -802,7 +773,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
         <Modal title={`${det.vaccine}${doseLabel(det) ? ` · ${doseLabel(det)}` : ""}`} onClose={() => setDet(null)}>
           <div style={{ maxHeight: "70vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <Badge v={stateOf(det) === "No next dose" ? "Completed" : stateOf(det)} />
+              <Badge v={stateOf(det)} />
               <span className="vc-passport-stamp verified">
                 Recorded on Card #{cardIdFormatted}
               </span>
@@ -811,11 +782,11 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
             <dl style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 16px", margin: 0 }}>
               <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Patient</dt><dd style={{ margin: "2px 0 0", fontWeight: 700, color: "var(--navy)" }}>{p?.name}</dd></div>
               <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Species / Breed</dt><dd style={{ margin: "2px 0 0" }}>{formatSpeciesLabel(p?.species)} • {p?.breed}</dd></div>
-              <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Date Administered</dt><dd style={{ margin: "2px 0 0" }}>{fmtDate(det.date)}</dd></div>
-              <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Next Booster Due</dt><dd style={{ margin: "2px 0 0", fontWeight: 700, color: det.nextDue ? "#0284c7" : "inherit" }}>{det.nextDue ? `${fmtDate(det.nextDue)} (${rel(det.nextDue)})` : "None scheduled"}</dd></div>
+              <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Date Administered</dt><dd style={{ margin: "2px 0 0" }}>{det.done ? fmtDate(det.date) : "Not administered"}</dd></div>
+              <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Next Booster Due</dt><dd style={{ margin: "2px 0 0", fontWeight: 700, color: det.nextDue ? "#0284c7" : "inherit" }}>{det.nextDue ? `${fmtDate(det.nextDue)}${hasBooster(det) ? ` (${rel(det.nextDue)})` : " · Historical / unapproved schedule"}` : "None scheduled"}</dd></div>
               <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Veterinarian</dt><dd style={{ margin: "2px 0 0" }}>{vetOf(det)}</dd></div>
-              <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Vaccine Brand</dt><dd style={{ margin: "2px 0 0" }}>{det.brand || "Nobivac"}</dd></div>
-              <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Vial Batch / Lot</dt><dd style={{ margin: "2px 0 0", fontFamily: "monospace" }}>{det.batch || "AUTO-0912"}</dd></div>
+              <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Vaccine Brand</dt><dd style={{ margin: "2px 0 0" }}>{det.brand || "Not recorded"}</dd></div>
+              <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Vial Batch / Lot</dt><dd style={{ margin: "2px 0 0", fontFamily: "monospace" }}>{det.batch || "Not recorded"}</dd></div>
               <div><dt style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mu)" }}>Protocol Type</dt><dd style={{ margin: "2px 0 0" }}>{det.protocolType || "Core Protocol"}</dd></div>
             </dl>
 
@@ -842,7 +813,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                   </button>
                 );
               }
-              if (det.nextDue && !det.done) {
+              if (hasBooster(det)) {
                 return (
                   <button
                     type="button"
