@@ -37,14 +37,14 @@ function stateOf(v) {
 
 export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBook, onCheckIn, onBill }) {
   const [actionError, setActionError] = useState("");
-  const p = (db.pets || []).find(x => x.id === petId) || (db.pets || [])[0] || {};
+  const p = (db.pets || []).find(x => x.id === petId) || {};
   const o = (db.owners || []).find(x => x.id === p.ownerId) || {};
   const [isFlipped, setIsFlipped] = useState(false);
   const fileInputRef = useRef(null);
 
   if (!p.id) return null;
 
-  const activeAppt = appt || (db.appts || []).find(a => a.petId === p.id && a.date === TODAY && a.status !== "Cancelled");
+  const activeAppt = appt ? (db.appts || []).find(a => a.id === appt.id && a.petId === p.id) : (db.appts || []).find(a => a.petId === p.id && a.date === TODAY && a.status !== "Cancelled");
   const ageDetails = p.birth ? computeAgeDetails(p.birth) : null;
   const vaccs = (db.vacc || db.vaccs || [])
     .filter(v => v.petId === p.id)
@@ -185,7 +185,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                       type="button"
                       className="btn sm"
                       onClick={() => {
-                        moveAppt(setDb, activeAppt.id, "Confirmed", me, setActionError);
+                        moveAppt(setDb, activeAppt.id, "Confirmed", me, setActionError, activeAppt);
                       }}
                       style={{ fontWeight: 600 }}
                     >
@@ -232,7 +232,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                       type="button"
                       className="btn sm"
                       onClick={() => {
-                        moveAppt(setDb, activeAppt.id, "Confirmed", me, setActionError);
+                        moveAppt(setDb, activeAppt.id, "Confirmed", me, setActionError, activeAppt);
                       }}
                       style={{ fontWeight: 600 }}
                     >

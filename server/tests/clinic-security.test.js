@@ -81,7 +81,7 @@ const request = async (role, method, path, body) => {
   const res = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer session-${role}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   return { status: res.status, data: await res.json() };
 };
-const endpoints = [['GET','/admin/staff'],['GET','/admin/audit'],['POST','/admin/staff/u_vet/access'],['POST','/admin/invitations/inv1/revoke'],['GET', '/checkout-inbox'], ['POST', '/checkout-inbox/a1/claim'], ['POST', '/checkout-inbox/a1/renew'], ['POST', '/checkout-inbox/a1/release'], ['GET', '/appointments/availability'], ['GET', '/reminders/status'], ['GET', '/state'], ['GET', '/logs'], ['GET', '/services/prices'], ['POST', '/owners'], ['POST', '/pets'], ['POST', '/owner/contact'], ['POST', '/owner/pets'], ['POST', '/pets/p1/weights'], ['POST', '/pets/p1/photo'], ['POST', '/owner/pets/p1/photo'], ['POST', '/pet-requests'], ['PUT', '/pet-requests/r1'], ['DELETE', '/pet-requests/r1'], ['POST', '/pet-requests/r1/approve'], ['POST', '/pet-requests/r1/decline'], ['POST', '/appointments'], ['PUT', '/appointments/a1'], ['PATCH', '/appointments/a1/status'], ['DELETE', '/appointments/a1'], ['POST', '/appointments/a1/billing'], ['POST', '/walk-in'], ['POST', '/vaccinations'], ['DELETE', '/vaccinations/v1'], ['POST', '/consultations'], ['POST', '/logs'], ['POST', '/reminders/send'], ['POST', '/reminders/log-call']];
+const endpoints = [['GET','/admin/staff'],['GET','/admin/audit'],['POST','/admin/staff/u_vet/access'],['POST','/admin/invitations/inv1/revoke'],['GET', '/checkout-inbox'], ['POST', '/checkout-inbox/a1/claim'], ['POST', '/checkout-inbox/a1/renew'], ['POST', '/checkout-inbox/a1/release'], ['GET', '/appointments/availability'], ['GET', '/reminders/status'], ['GET','/reminders/calls'], ['GET', '/state'], ['GET', '/logs'], ['GET', '/services/prices'], ['POST', '/owners'], ['POST', '/pets'], ['POST', '/owner/contact'], ['POST', '/owner/pets'], ['POST', '/pets/p1/weights'], ['POST', '/pets/p1/photo'], ['POST', '/owner/pets/p1/photo'], ['POST', '/pet-requests'], ['PUT', '/pet-requests/r1'], ['DELETE', '/pet-requests/r1'], ['POST', '/pet-requests/r1/approve'], ['POST', '/pet-requests/r1/decline'], ['POST', '/appointments'], ['PUT', '/appointments/a1'], ['PATCH', '/appointments/a1/status'], ['DELETE', '/appointments/a1'], ['POST', '/appointments/a1/billing'], ['POST', '/walk-in'], ['POST', '/vaccinations'], ['DELETE', '/vaccinations/v1'], ['POST', '/consultations'], ['POST', '/logs'], ['POST', '/reminders/send'], ['POST', '/reminders/log-call']];
 test('all clinic endpoints reject anonymous access before any database query', async () => {
   for (const [method, path] of endpoints) assert.equal((await request(null, method, path, method === 'GET' ? undefined : {})).status, 401, path);
   assert.equal(calls.length, 0);
@@ -245,4 +245,8 @@ test('checkout inbox and claims are reception-only, including spoofed role field
   assert.equal((await request(role,'GET','/checkout-inbox')).status,403);
   for(const action of ['claim','renew','release'])assert.equal((await request(role,'POST',`/checkout-inbox/a1/${action}`,{actorRole:'assistant'})).status,403);
  }
+});
+
+test('call history is restricted to reception and administrative oversight',async()=>{
+ for(const role of ['owner','vet']) assert.equal((await request(role,'GET','/reminders/calls?petId=p1')).status,403);
 });

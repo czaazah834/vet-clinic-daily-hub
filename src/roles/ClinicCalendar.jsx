@@ -2,7 +2,7 @@ import { prefill } from "./owner/ui.jsx";
 import { openFollowUps } from "../clinicalWorkflow.js";
 import { useAvailability } from "../useAvailability.js";
 import { lastDay, today as bookingToday, SERVICES, openSlots, reservationCovers, addMin, durOf } from "../booking.js";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Calendar,
   Clock,
@@ -88,6 +88,9 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const [sel, setSel] = useState(TODAY);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const confirmingRef = useRef(new Set());
+  const [confirming, setConfirming] = useState({});
+  const [actionError, setActionError] = useState("");
 
   const canGoPrevMonth = cur.y > curYearMin || (cur.y === curYearMin && cur.m > curMonthMin);
   const canGoNextMonth = cur.y < curYearMin + 1 || (cur.y === curYearMin + 1 && cur.m < 11);
@@ -147,8 +150,14 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const niceDate = new Date(sel + "T00:00:00").toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
   const handleAction = async (a, action) => {
-    if (!await moveAppt(setDb, a.id, action, me, say)) return;
-    say && say(`${LABEL[action] || action} updated`);
+    if (confirmingRef.current.has(a.id)) return;
+    confirmingRef.current.add(a.id);
+    setActionError("");
+    setConfirming(p => ({...p,[a.id]:true}));
+    const saved = await moveAppt(setDb, a.id, action, me, setActionError, a);
+    confirmingRef.current.delete(a.id);
+    setConfirming(p => ({...p,[a.id]:false}));
+    if (saved) say && say(`${LABEL[action] || action} updated`);
   };
 
   // Quick booking submit saved to PostgreSQL backend
@@ -209,6 +218,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 
   return (
     <div className="clinic-calendar">
+      {actionError && <p className="err" role="alert">{actionError}</p>}
       {/* Top Header Card */}
       <div className="card cc-toolbar">
         <div className="cc-controls">
@@ -556,10 +566,11 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                   {me.role === "assistant" && apptMatch.status === "Scheduled" && (
                                     <button
                                       className="btn sm"
+                                      disabled={!!confirming[apptMatch.id]}
                                       onClick={() => handleAction(apptMatch.appt, "Confirmed")}
                                       style={{ fontSize: "12px", padding: "4px 8px" }}
                                     >
-                                      Confirm
+                                      {confirming[apptMatch.id] ? "Confirming…" : "Confirm"}
                                     </button>
                                   )}
 
@@ -579,7 +590,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                     <button
                                       className="btn sm gold"
                                       onClick={async () => {
-                                        if (!await moveAppt(setDb, apptMatch.appt.id, "In consultation", me, say)) return;
+                                        if (!await moveAppt(setDb, apptMatch.appt.id, "In consultation", me, say, apptMatch.appt)) return;
                                         setActiveSoap({ appt: apptMatch.appt, pet: apptMatch.petObj });
                                       }}
                                       style={{ fontSize: "12px", padding: "4px 8px" }}
@@ -662,7 +673,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
       ) : (
         /* Daily List below Month View */
         <div className="card" style={{ padding: "20px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
             <div>
               <h3 style={{ margin: "0 0 4px", fontSize: "18px" }}>
                 Visits Scheduled on {niceDate} {sel === TODAY ? "(Today)" : ""}
@@ -684,6 +695,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                 return (
                   <div
                     key={e.id}
+                    className="cc-day-visit"
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
@@ -700,7 +712,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                         <SpeciesIcon species={e.species} size={20} />
                       </div>
                       <div>
-                        <div style={{ fontWeight: "700", fontSize: "14.5px", display: "flex", alignItems: "center", gap: "8px" }}>
+                        <div style={{ fontWeight: "700", fontSize: "14.5px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
                           <span>{e.pet}</span>
                           <span style={{ fontWeight: "400", color: "#64748b" }}>({e.owner})</span>
                           <span style={{ fontSize: "11px", color: svc.color, fontWeight: "700", display: "flex", alignItems: "center", gap: "3px" }}>
@@ -716,14 +728,14 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                     <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                       <Badge v={e.status} />
                       {me.role === "assistant" && e.status === "Scheduled" && (
-                        <button className="btn sm" onClick={() => handleAction(e.appt, "Confirmed")}>Confirm</button>
+                        <button className="btn sm" disabled={!!confirming[e.id]} onClick={() => handleAction(e.appt, "Confirmed")}>{confirming[e.id] ? "Confirming…" : "Confirm"}</button>
                       )}
                       {me.role === "assistant" && ["Scheduled", "Confirmed"].includes(e.status) && (
                         <button className="btn sm gold" onClick={() => setCheckInAppt(e.appt)}>Check in</button>
                       )}
                       {isDoctor && e.status === "Checked-in" && (
                         <button className="btn sm gold" onClick={async () => {
-                          if (!await moveAppt(setDb, e.appt.id, "In consultation", me, say)) return;
+                          if (!await moveAppt(setDb, e.appt.id, "In consultation", me, say, e.appt)) return;
                           setActiveSoap({ appt: e.appt, pet: e.petObj });
                         }}>
                           Start Consultation

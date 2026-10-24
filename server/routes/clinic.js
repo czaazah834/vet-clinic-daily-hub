@@ -1,3 +1,4 @@
+import { logReminderCall, reminderCallHistory } from "../reminderCalls.js";
 import { sameIntakeVisit } from "../../src/intakeVisit.js";
 import { clinicalCharges, validateClinicalCharges } from "../clinicalCharges.js";
 import { boosterDate } from "../../src/clinicalWorkflow.js";
@@ -1587,8 +1588,8 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
       const current = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
       if (!current) throw Object.assign(new Error("Appointment not found."), { status: 404 });
       if (req.user.role === "owner" && !(await client.query("SELECT id FROM pets WHERE id = $1 AND owner_id = $2", [current.pet_id, req.user.ownerId])).rows.length) throw Object.assign(new Error("Appointment not found."), { status: 404 });
-      if (status === "Checked-in" && req.body.expectedVisit !== undefined && !sameIntakeVisit(current, req.body.expectedVisit)) {
-        throw bookingError("This visit or its intake has changed. Close this form, refresh clinic records and reopen intake.", 409);
+      if (req.body.expectedVisit !== undefined && !sameIntakeVisit(current, req.body.expectedVisit)) {
+        throw bookingError("This visit has changed. Refresh clinic records and reopen its current action.", 409);
       }
       const invalid = validateStatusChange(current, req.body, req.user);
       if (invalid) throw Object.assign(new Error(invalid), { status: 409 });
@@ -2477,7 +2478,8 @@ clinicRouter.get("/reminders/status", async (req, res) => {
   } catch { res.status(500).json({ error:"Unable to load reminder status." }); }
 });
 
-clinicRouter.post("/reminders/log-call", handleSendReminder);
+clinicRouter.get("/reminders/calls", reminderCallHistory);
+clinicRouter.post("/reminders/log-call", (req,res) => req.body.logOnly === true ? logReminderCall(req,res) : handleSendReminder(req,res));
 clinicRouter.post("/reminders/send", handleSendReminder);
 
 

@@ -1,4 +1,4 @@
-import { clinicRequest } from "./clinicApi.js";
+import { changeAppointmentStatus } from "./appointmentStatus.js";
 import { useState } from "react";
 import {
   House,
@@ -296,13 +296,5 @@ export const addLog = (p, me, msg) => {
   return [newEntry, ...(p.log || [])].slice(0, 100);
 };
 
-export const moveAppt = async (setDb, id, status, me, onError = () => {}) => {
-  try {
-    await clinicRequest("PATCH", `/api/appointments/${id}/status`, { status });
-    setDb(p => ({ ...p, appts: p.appts.map(a => a.id === id ? { ...a, status } : a) }));
-    return true;
-  } catch (error) {
-    onError(error.message);
-    return false;
-  }
-};
+export const moveAppt = (setDb, id, status, me, onError = () => {}, expected) =>
+  changeAppointmentStatus(setDb, id, status, onError, expected);

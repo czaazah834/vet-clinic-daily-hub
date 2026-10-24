@@ -512,3 +512,46 @@ silently ignored that failure.
 Checks: `node --test tests/intake-visit.test.js`, `npm run test:clinic`,
 `npm run test:scheduling:postgres` with a disposable local database, and
 `npm run build`.
+
+### Appointment confirmations and status actions
+
+Dashboard, calendar, card and visit-list status actions send the displayed visit
+snapshot. The server checks it under the appointment lock before confirming or
+starting a consultation, including when only the slot, assigned veterinarian or
+intake has changed. Existing role and transition rules still apply.
+
+Repeated actions for one appointment share a pending lock across views using the
+same clinic store. Dashboard/calendar confirmation buttons show their pending
+state, errors remain visible and failed requests allow retry. Only a matching
+server acknowledgment updates local records; an older response cannot replace a
+newer local visit. Cards follow the current saved appointment and never replace
+a removed patient with another patient's details.
+
+Checks: `node --test tests/appointment-status.test.js`, `npm run test:clinic`,
+`npm run test:scheduling:postgres` with a disposable local database, and
+`npm run build`.
+
+### Reception reminder call records
+
+The assistant's Log call form records an observed outcome: Reached owner,
+No answer, Callback requested or Contact unavailable. Optional notes and the
+latest 20 patient call records show the saved staff name, contact snapshot and
+Manila date/time. A missing phone allows only Contact unavailable. This form
+records calls; automatic email/SMS delivery results remain in the reminder panel.
+
+`POST /api/reminders/log-call` with `logOnly: true` requires an authenticated
+assistant and the saved patient, owner, current certified vaccination recall,
+booster date and contact snapshot. A stable request UUID makes identical retries
+return the original record, including after an uncertain response. Changed
+payloads cannot reuse that UUID. The call and its audit entry commit together;
+errors retain the form and stale details require refreshing and reopening it.
+`GET /api/reminders/calls?petId=...` exposes patient history to assistants and
+admins. Owners and veterinarians cannot access this reception endpoint.
+Existing dispatch requests without `logOnly` and `/api/reminders/send` retain
+their existing behavior.
+
+The `server/database/reminder-calls.sql` schema is included in `npm run db:init`
+and is also created on first use. Deployment must include `src/reminderCall.js`
+alongside the server files. Checks: `node --test tests/reminder-call.test.js`,
+`npm run test:clinic`, `npm run test:scheduling:postgres` with a disposable local
+database, and `npm run build`.

@@ -54,3 +54,8 @@
   .cc-day-summary strong { display: block; margin: 0; }
   .cc-empty { align-items: flex-start; }
 }
+
+/* Keep the selected day's visit and its status actions reachable on phones. */
+.cc-day-visit { flex-wrap: wrap; gap: 12px; min-width: 0; overflow-wrap: anywhere; }
+.cc-day-visit > div { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+.cc-day-visit > div > div { min-width: 0; max-width: 100%; }

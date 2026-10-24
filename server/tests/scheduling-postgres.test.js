@@ -358,3 +358,61 @@ test('status audit failure rolls back intake, patient weight and weight history'
  const audit=(await query("SELECT * FROM audit_logs WHERE action LIKE 'Updated appointment intake_audit%'")).rows;
  assert.equal(audit.length,1);assert.equal(audit[0].user_name,'Test assistant');assert.equal(audit[0].user_role,'assistant');
 });
+
+test('confirmation and consultation start reject snapshots from before rescheduling or remeasurement',async()=>{
+ const {intakeVisitSnapshot}=await import('../../src/intakeVisit.js');
+ const id='confirm_snapshot';
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,'p8','v1',$2,'15:00','Confirmation examination','Scheduled')",[id,clinicClock().date]);
+ const before=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+ await query("UPDATE appointments SET date=$1,reason='Rescheduled examination' WHERE id=$2",[shiftDate(clinicClock().date,1),id]);
+ const stale=await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Confirmed',expectedVisit:intakeVisitSnapshot(before)});
+ assert.equal(stale.status,409);assert.equal((await query('SELECT status FROM appointments WHERE id=$1',[id])).rows[0].status,'Scheduled');
+ const fresh=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+ const results=await Promise.all([1,2].map(()=>req('assistant','PATCH',`/appointments/${id}/status`,{status:'Confirmed',expectedVisit:intakeVisitSnapshot(fresh)})));
+ assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+ await query("UPDATE appointments SET status='Checked-in',intake_vitals=$1 WHERE id=$2",[JSON.stringify({weight:5,temp:38.5}),id]);
+ const measured=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+ await query("UPDATE appointments SET intake_vitals=$1 WHERE id=$2",[JSON.stringify({weight:5.5,temp:38.8}),id]);
+ assert.equal((await req('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation',expectedVisit:intakeVisitSnapshot(measured)})).status,409);
+ const remeasured=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+ assert.equal((await req('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation',expectedVisit:intakeVisitSnapshot(remeasured)})).status,200);
+ assert.equal((await query('SELECT COUNT(*)::int n FROM audit_logs WHERE action LIKE $1',[`Updated appointment ${id}%`])).rows[0].n,2);
+});
+
+const callBody=()=>({logOnly:true,requestId:crypto.randomUUID(),vaccinationId:'call_dose',petId:'call_pet',ownerId:'o1',dueDate:'2026-12-01',expectedPhone:'+639000000000',outcome:'No answer',notes:'Try again in the morning.'});
+test('call outcomes are durable, idempotent, patient-scoped and audited as the authenticated assistant',async()=>{
+ await query("INSERT INTO pets(id,owner_id,name,birth) VALUES('call_pet','o1','Call patient','2023-01-01')");
+ await vaccine('call_dose','2026-12-01',{pet:'call_pet'});
+ const body=callBody();
+ const results=await Promise.all([1,2].map(()=>req('assistant','POST','/reminders/log-call',{...body,ownerPhone:'forged',ownerEmail:'forged@example.invalid',staffName:'Forged staff',sendEmail:true,sendSmsMsg:true})));
+ assert.deepEqual(results.map(r=>r.status),[200,200]);assert.equal(results[0].data.call.id,body.requestId);assert.deepEqual(results[0].data.call,results[1].data.call);
+ assert.equal(results[0].data.call.staffName,'Test assistant');assert.equal(results[0].data.call.phone,body.expectedPhone);
+ assert.equal((await query('SELECT COUNT(*)::int n FROM reminder_call_logs WHERE id=$1',[body.requestId])).rows[0].n,1);
+ assert.equal((await query('SELECT COUNT(*)::int n FROM audit_logs WHERE action LIKE $1',[`Recorded reminder call ${body.requestId}%`])).rows[0].n,1);
+ assert.equal((await req('assistant','POST','/reminders/log-call',{...body,notes:'Different call'})).status,409);
+ const history=await req('assistant','GET','/reminders/calls?petId=call_pet');assert.equal(history.status,200);assert.equal(history.data.calls[0].id,body.requestId);
+ assert.equal((await req('assistant','GET','/reminders/calls?petId=p2')).data.calls.length,0);
+ for(const role of ['owner','vet']) {assert.equal((await req(role,'GET','/reminders/calls?petId=call_pet')).status,403);assert.equal((await req(role,'POST','/reminders/log-call',callBody())).status,403);}
+ assert.equal((await req('admin','GET','/reminders/calls?petId=call_pet')).status,200);
+});
+test('call saves reject invalid outcomes, mismatched owners, stale contact and superseded uncertified recalls',async()=>{
+ const before=(await query('SELECT COUNT(*)::int n FROM reminder_call_logs')).rows[0].n;
+ for(const change of [{outcome:''},{notes:'x'.repeat(2001)},{expectedPhone:''}]) assert.equal((await req('assistant','POST','/reminders/log-call',{...callBody(),...change})).status,400);
+ for(const change of [{ownerId:'o2'},{expectedPhone:'09170000000'},{dueDate:'2026-12-02'},{vaccinationId:'missing'}]) assert.equal((await req('assistant','POST','/reminders/log-call',{...callBody(),...change})).status,409);
+ await vaccine('call_suggestion','2026-12-01',{pet:'call_pet',done:false,vet:''});
+ assert.equal((await req('assistant','POST','/reminders/log-call',{...callBody(),vaccinationId:'call_suggestion'})).status,409);
+ await vaccine('call_new',null,{pet:'call_pet',date:'2026-10-25'});
+ assert.equal((await req('assistant','POST','/reminders/log-call',callBody())).status,409);
+ assert.equal((await query('SELECT COUNT(*)::int n FROM reminder_call_logs')).rows[0].n,before);
+});
+test('call notes and audit roll back together, and a failed save can reuse its original request',async()=>{
+ await query("UPDATE vaccinations SET next_due='2026-12-03' WHERE id='call_new'");
+ const body={...callBody(),vaccinationId:'call_new',dueDate:'2026-12-03'};
+ await query(`CREATE FUNCTION reject_call_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Recorded reminder call%' THEN RAISE EXCEPTION 'synthetic call audit failure'; END IF; RETURN NEW; END $$`);
+ await query('CREATE TRIGGER reject_call_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_call_audit()');
+ try {assert.equal((await req('assistant','POST','/reminders/log-call',body)).status,500);assert.equal((await query('SELECT COUNT(*)::int n FROM reminder_call_logs WHERE id=$1',[body.requestId])).rows[0].n,0);}
+ finally {await query('DROP TRIGGER reject_call_audit ON audit_logs');}
+ const saved=await req('assistant','POST','/reminders/log-call',body);assert.equal(saved.status,200);assert.equal(saved.data.call.notes,body.notes);
+ await query("UPDATE owners SET phone='' WHERE id='o1'");
+ const unavailable=await req('assistant','POST','/reminders/log-call',{...body,requestId:crypto.randomUUID(),expectedPhone:'',outcome:'Contact unavailable'});assert.equal(unavailable.status,200);assert.equal(unavailable.data.call.phone,'');
+});
