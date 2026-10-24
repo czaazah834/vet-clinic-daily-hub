@@ -39,3 +39,10 @@ test('legacy helper calls without a snapshot still require an acknowledged statu
  assert.equal(await changeAppointmentStatus(s.set,'visit','In consultation',()=>{},undefined,async(m,p,b)=>{body=b;return response('In consultation')}),true);
  assert.deepEqual(body,{status:'In consultation'});assert.equal(s.get().appts[0].status,'In consultation');
 });
+test('cancellation forwards the reviewed reason and retains the server reason',async()=>{
+ const s=store();let sent;
+ const request=async(m,p,b)=>{sent=b;return response('Cancelled',{cancel_reason:'Schedule conflict'})};
+ assert.equal(await changeAppointmentStatus(s.set,'visit','Cancelled',()=>{},visit,request,{cancelReason:'Schedule conflict'}),true);
+ assert.equal(sent.cancelReason,'Schedule conflict');assert.equal(sent.expectedVisit.status,'Scheduled');
+ assert.equal(s.get().appts[0].cancelReason,'Schedule conflict');
+});

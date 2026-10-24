@@ -1,5 +1,5 @@
-import { checkInDateError } from '../src/intakeVisit.js';
-import { clinicClock } from './scheduling.js';
+import { checkInDateError, intakeFieldsError } from '../src/intakeVisit.js';
+import { clinicClock, minutes, validDate } from './scheduling.js';
 import { query } from './db.js';
 
 const fail = (res, status, error) => res.status(status).json({ error });
@@ -135,12 +135,20 @@ export function validateStatusChange(row, body, user) {
   if (body.date !== undefined || body.time !== undefined) return 'Use rescheduling to change the appointment date or time.';
   if (body.billingStatus !== undefined) return 'Billing changes require the checkout workflow.';
   if (user.role !== 'assistant' && ['intakeVitals', 'date', 'time', 'reason'].some(k => body[k] !== undefined)) return 'Only reception can record intake or change arrival details.';
+  if (body.reason !== undefined && (typeof body.reason !== 'string' || !body.reason.trim() || body.reason.length > 500)) return 'Enter a visit reason of no more than 500 characters.';
   if (body.intakeVitals !== undefined && body.status !== 'Checked-in') return 'Vitals must be recorded during check-in.';
   if (body.status === 'Checked-in') {
     const dateError = checkInDateError(row, clinicClock().date);
     if (dateError) return dateError;
-    const v = body.intakeVitals;
-    if (!v || typeof v.weight !== 'number' || !Number.isFinite(v.weight) || v.weight < 0.05 || v.weight > 120 || typeof v.temp !== 'number' || !Number.isFinite(v.temp) || v.temp < 33 || v.temp > 45) return 'Record a valid measured weight (0.05–120 kg) and temperature (33–45°C).';
+    const error = intakeFieldsError(body.intakeVitals, body.reason === undefined ? row.reason : body.reason);
+    if (error) return error;
+  }
+  if (body.status === 'Cancelled' && (typeof body.cancelReason !== 'string' || !body.cancelReason.trim() || body.cancelReason.length > 500)) return 'Enter a cancellation reason of no more than 500 characters.';
+  if (body.cancelReason !== undefined && body.status !== 'Cancelled') return 'Cancellation reasons belong to cancelled visits.';
+  if (body.status === 'No-show') {
+    const now = clinicClock();
+    if (!validDate(row.date) || !Number.isFinite(minutes(row.time))) return 'Correct the saved appointment date and time before marking a no-show.';
+    if (row.date > now.date || (row.date === now.date && minutes(row.time) > minutes(now.time))) return 'A visit cannot be marked no-show before its scheduled date and time in Manila.';
   }
   return null;
 }

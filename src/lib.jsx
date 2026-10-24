@@ -296,5 +296,5 @@ export const addLog = (p, me, msg) => {
   return [newEntry, ...(p.log || [])].slice(0, 100);
 };
 
-export const moveAppt = (setDb, id, status, me, onError = () => {}, expected) =>
-  changeAppointmentStatus(setDb, id, status, onError, expected);
+export const moveAppt = (setDb, id, status, me, onError = () => {}, expected, details = {}) =>
+  changeAppointmentStatus(setDb, id, status, onError, expected, undefined, details);

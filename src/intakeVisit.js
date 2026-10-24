@@ -27,3 +27,14 @@ export function savedIntakeVisit(response, expected) {
   const bookingKind = response.appointment.bookingKind ?? response.appointment.booking_kind;
   return {...visit,...(bookingKind ? {bookingKind} : {})};
 }
+
+export function intakeFieldsError(v, reason) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)
+    || typeof v.weight !== 'number' || !Number.isFinite(v.weight) || v.weight < 0.05 || v.weight > 120
+    || typeof v.temp !== 'number' || !Number.isFinite(v.temp) || v.temp < 33 || v.temp > 45) return 'Record a valid measured weight (0.05–120 kg) and temperature (33–45°C).';
+  if (v.triageLevel !== undefined && !['Routine','Priority','Emergency'].includes(v.triageLevel)) return 'Choose Routine, Priority or Emergency triage.';
+  if (v.fasted !== undefined && typeof v.fasted !== 'boolean') return 'Fasted must be Yes or No.';
+  if (v.notes !== undefined && (typeof v.notes !== 'string' || v.notes.length > 2000)) return 'Intake notes cannot exceed 2,000 characters.';
+  if (typeof reason !== 'string' || !reason.trim() || reason.length > 500) return 'Enter a visit reason of no more than 500 characters.';
+  return null;
+}

@@ -72,7 +72,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const set = (k, v) => {
     setF(p => ({ ...p, [k]: v, ...(["date","vaccine","intervalDays","brand","batch","doseNo","doseOf"].includes(k) ? {scheduleApproved:false} : {}) }));
     if (["diagnosis", "treatment"].includes(k) || errs[k]) {
-      const message = validateSoapFields({...f, [k]: v}, TODAY)[k] || "";
+      const message = validateSoapFields({...f, [k]: v}, TODAY, pet.birth)[k] || "";
       setErrs(p => ({...p, [k]: message}));
     }
   };
@@ -94,7 +94,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     ev.preventDefault();
     if (inFlight.current) return;
     if (stale) {setErrs(p=>({...p,save:"This visit has changed or is not in consultation. Refresh clinic records and reopen it. Your notes remain here for reference."}));return;}
-    const e = validateSoapFields(f, TODAY);
+    const e = validateSoapFields(f, TODAY, pet.birth);
     if (!serviceCatalog.length || catalogError) e.save = "Load the official service catalog before finalizing.";
     let selectedItems;
     try {

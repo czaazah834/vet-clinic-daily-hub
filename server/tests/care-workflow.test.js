@@ -23,3 +23,8 @@ test('follow-up requires real dates, a supported status and clinical instruction
  assert.equal(validateCarePlan(plan,'2026-10-24'),null);
  for(const patch of [{careStatus:'Unknown'},{followUpDate:'2026-02-30'},{followUpDate:'2026-10-23'},{followUpReason:''}]) assert.ok(validateCarePlan({...plan,...patch},'2026-10-24'));
 });
+test('historical consultation cannot create an already overdue follow-up',()=>{
+ const plan={careStatus:'Recheck required',followUpDate:'2026-10-23',followUpReason:'Review'};
+ assert.ok(validateCarePlan(plan,'2026-10-20','2026-10-24'));
+ assert.equal(validateCarePlan({...plan,followUpDate:'2026-10-24'},'2026-10-20','2026-10-24'),null);
+});
