@@ -114,8 +114,9 @@ export const toSquare = (file, px = 256) => new Promise((ok, no) => {
 });
 
 /* Live-validated picture picker: type, size and readability are checked the moment a file is chosen. */
-export function PhotoUpload({ src, fallback, onSave, onRemove, size = 84, round = true, label = "Upload picture" }) {
+export function PhotoUpload({ src, fallback, onSave, onRemove, size = 84, round = true, label = "Upload picture", onBusyChange }) {
   const [err, setErr] = useState(""), [busy, setBusy] = useState(false), ref = useRef();
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const choose = async e => {
     const file = e.target.files && e.target.files[0]; e.target.value = "";
     if (!file) return;

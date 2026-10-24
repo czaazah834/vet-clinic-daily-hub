@@ -35,7 +35,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
     let preScheduledAppt = null;
 
     try {
-      const data = await api.post(`/api/pet-requests/${request.id}/approve`, {});
+      const data = await api.post(`/api/pet-requests/${request.id}/approve`, {revision:request.revision ?? 0});
       if (!data?.pet) throw new Error("The clinic did not confirm approval.");
       if (data.success) {
         assignedCardId = data.cardId || assignedCardId;
@@ -57,6 +57,8 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
             allergies: rawPet.allergies || [],
             vaccinationCardId: rawPet.vaccination_card_id || assignedCardId,
             notes: rawPet.notes || "",
+            photo: rawPet.photo || "",
+            dentalOcclusion: rawPet.dental_occlusion || "",
             registeredAt: TODAY,
             approvedBy: me.name,
             weights: [{ date: TODAY, kg: parseFloat(rawPet.weight) }]
@@ -152,7 +154,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
     setSaveError("");
     setSubmitting(true);
     try {
-      await api.post(`/api/pet-requests/${request.id}/decline`, { reason: declineReason.trim() });
+      await api.post(`/api/pet-requests/${request.id}/decline`, { reason: declineReason.trim(), revision:request.revision ?? 0 });
     } catch (err) {
       setSaveError(err.message);
       setSubmitting(false);
@@ -163,7 +165,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
       ...p,
       petRequests: (p.petRequests || []).map(r =>
         r.id === request.id
-          ? { ...r, status: "Declined", declineReason: declineReason.trim(), reviewedBy: me.name, reviewedAt: TODAY }
+          ? { ...r, status: "Declined", declineReason: declineReason.trim(), revision:(r.revision ?? 0)+1, reviewedBy: me.name, reviewedAt: TODAY }
           : r
       ),
       log: addLog(
@@ -280,6 +282,8 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                 )}
               </div>
             </div>
+
+            {request.photo && <img src={request.photo} alt={`${request.name} submitted by owner`} style={{width:120,height:120,objectFit:"cover",borderRadius:12,marginBottom:16}} />}
 
             {/* Automated Vaccination Card Generation Box */}
             <div style={{ background: "#f0fdf4", padding: "16px", borderRadius: "12px", border: "1px solid #86efac", marginBottom: "16px" }}>

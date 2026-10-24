@@ -1,3 +1,4 @@
+import { ensurePetRegistrationSchema, validatePetRegistration, validatePetPhoto, lockRegistrationOwner, checkRegistrationCapacity, checkRequestRevision, registrationAudit, registrationError } from '../petRegistration.js';
 import { checkoutRouter } from "./checkout.js";
 import { ensureCheckoutInboxSchema, createCheckoutTask, authorizeCheckoutPayment, finishCheckoutTask } from "../checkout.js";
 import { validateBoosterDate } from "../reminders.js";
@@ -50,6 +51,7 @@ function toDateStr(val) {
 /* 1. BOOTSTRAP / FULL STATE SYNC */
 clinicRouter.get("/state", async (req, res) => {
   try {
+    await ensurePetRegistrationSchema();
     const owner = req.user.role === "owner";
     const vet = req.user.role === "vet";
     const scopeParams = owner ? [req.user.ownerId] : vet ? [[req.user.vetId, req.user.id].filter(Boolean)] : [];
@@ -113,6 +115,7 @@ clinicRouter.get("/state", async (req, res) => {
       vaccinationCardId: p.vaccination_card_id || "",
       notes: p.notes || "",
       photo: p.photo || "",
+      dentalOcclusion: p.dental_occlusion || "",
       weights: weightsByPet[p.id] || [{ date: toDateStr(p.birth), kg: parseFloat(p.weight), by: "Initial Registration" }]
     }));
 
@@ -221,6 +224,9 @@ clinicRouter.get("/state", async (req, res) => {
       color: r.color || "",
       neutered: r.neutered || "",
       notes: r.notes || "",
+      photo: r.photo || "",
+      dentalOcclusion: r.dental_occlusion || "",
+      revision: r.revision ?? 0,
       status: r.status,
       declineReason: r.decline_reason || "",
       petId: r.pet_id || "",
@@ -957,89 +963,73 @@ clinicRouter.post("/pets/:id/weights", async (req, res) => {
   }
 });
 
-clinicRouter.post(["/owner/pets/:id/photo", "/pets/:id/photo"], async (req, res) => {
-  const petId = req.params.id;
-  const { photo, actorName, actorRole } = req.body;
-
+clinicRouter.post(['/owner/pets/:id/photo','/pets/:id/photo'],async (req,res) => {
   try {
-    const result = await query(
-      `UPDATE pets SET photo = $1 WHERE id = $2 RETURNING *`,
-      [photo || "", petId]
-    );
-
-    if (!result.rows.length) {
-      const reqRes = await query(
-        `UPDATE pet_requests SET photo = $1 WHERE id = $2 OR pet_id = $2 RETURNING *`,
-        [photo || "", petId]
-      );
-      if (!reqRes.rows.length) {
-        return res.status(404).json({ error: "Pet not found" });
-      }
-      return res.json({ success: true, pet: reqRes.rows[0] });
-    }
-
-    const row = result.rows[0];
-    await recordAudit(actorName || "Owner", actorRole || "owner", `Updated photo for pet ${row.name}`);
-
-    res.json({
-      success: true,
-      pet: {
-        id: row.id,
-        ownerId: row.owner_id,
-        name: row.name,
-        species: row.species,
-        speciesOther: row.species_other || "",
-        breed: row.breed,
-        sex: row.sex,
-        birth: toDateStr(row.birth),
-        weight: parseFloat(row.weight),
-        color: row.color || "",
-        neutered: row.neutered || "Not sure",
-        allergies: row.allergies || [],
-        vaccinationCardId: row.vaccination_card_id || "",
-        notes: row.notes || "",
-        photo: row.photo || ""
-      }
+    const photo = validatePetPhoto(req.body.photo);
+    await ensurePetRegistrationSchema();
+    const row = await withTransaction(async client => {
+      const pet = (await client.query('SELECT id,owner_id FROM pets WHERE id = $1',[req.params.id])).rows[0];
+      const request = pet ? null : (await client.query('SELECT * FROM pet_requests WHERE id = $1 OR pet_id = $1',[req.params.id])).rows[0];
+      const ownerId = pet?.owner_id || request?.owner_id;
+      if (!ownerId || req.user.role === 'owner' && ownerId !== req.user.ownerId) throw registrationError('Pet not found.',404);
+      await lockRegistrationOwner(client,ownerId);
+      // Approval may have completed since the initial read. Re-read under its lock.
+      const current = request ? (await client.query('SELECT * FROM pet_requests WHERE id = $1 FOR UPDATE',[request.id])).rows[0] : null;
+      if (request && !current) throw registrationError('Pet request not found.',404);
+      const petId = pet?.id || (current?.status === 'Approved' ? current.pet_id : null);
+      const saved = petId
+        ? await client.query('UPDATE pets SET photo = $1 WHERE id = $2 RETURNING *',[photo,petId])
+        : await client.query('UPDATE pet_requests SET photo=$1,revision=revision+1 WHERE id=$2 RETURNING *',[photo,current.id]);
+      if (!saved.rows.length) throw registrationError('Pet not found.',404);
+      await registrationAudit(client,req.user,`Updated pet photo ${petId || current.id}`);
+      return saved.rows[0];
     });
-  } catch (err) {
-    console.error("Pet photo update error:", err.message);
-    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
-  }
+    res.json({success:true,pet:{id:row.id,ownerId:row.owner_id,name:row.name,species:row.species,speciesOther:row.species_other || '',breed:row.breed,sex:row.sex,birth:toDateStr(row.birth),weight:Number(row.weight),color:row.color || '',neutered:row.neutered,allergies:row.allergies || [],vaccinationCardId:row.vaccination_card_id || '',notes:row.notes || '',photo:row.photo,dentalOcclusion:row.dental_occlusion || '',revision:row.revision}});
+  } catch(error) {res.status(error.status || 500).json({error:error.status ? error.message : 'Unable to save the pet picture. Please retry.'});}
 });
 
 /* 4. ONLINE PET REGISTRATION REQUESTS & APPROVAL AUTOMATION */
-clinicRouter.post("/pet-requests", async (req, res) => {
-  const {
-    ownerId, name, species, speciesOther, breed, sex,
-    birth, weight, color, neutered, notes
-  } = req.body;
-
-  const effectiveOwnerId = req.user.ownerId;
-
-  const reqId = "req_" + Math.random().toString(36).slice(2, 8);
-
+// Creating and correcting requests use the same validation and owner lock.
+async function savePetRequest(req, res) {
   try {
-    const result = await query(
-      `INSERT INTO pet_requests (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, notes, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'Pending')
-       RETURNING *`,
-      [reqId, effectiveOwnerId, name, species, speciesOther || "", breed || "Mixed Breed", sex || "Male", birth, weight || 5.0, color || "", neutered || "Not sure", notes || ""]
-    );
-    await recordAudit(req.user.name, req.user.role, `Submitted online pet registration request for ${name} (Waiting for Vet Assistant review)`);
-    res.json({ success: true, request: result.rows[0] });
-  } catch (err) {
-    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
-  }
-});
+    const data = validatePetRegistration(req.body);
+    await ensurePetRegistrationSchema();
+    const result = await withTransaction(async client => {
+      await lockRegistrationOwner(client,req.user.ownerId);
+      if (req.params.id) {
+        const current = (await client.query('SELECT * FROM pet_requests WHERE id = $1 FOR UPDATE',[req.params.id])).rows[0];
+        if (!current || current.owner_id !== req.user.ownerId) throw registrationError('Pet request not found.',404);
+        if (!['Pending','Declined'].includes(current.status)) throw registrationError('This request has already been approved. Contact the clinic to correct the patient record.',409);
+        checkRequestRevision(current,req.body.revision);
+      }
+      await checkRegistrationCapacity(client,req.user.ownerId,data.name,req.params.id || null);
+      const values = [data.name,data.species,data.speciesOther,data.breed,data.sex,data.birth,data.weight,data.color,data.neutered,data.notes,data.photo,data.dentalOcclusion];
+      const saved = req.params.id
+        ? await client.query(`UPDATE pet_requests SET name=$1,species=$2,species_other=$3,breed=$4,sex=$5,birth=$6,weight=$7,color=$8,neutered=$9,notes=$10,photo=$11,dental_occlusion=$12,
+            status='Pending',decline_reason=NULL,approved_at=NULL,approved_by=NULL,revision=revision+1,requested_at=CURRENT_DATE WHERE id=$13 RETURNING *`,[...values,req.params.id])
+        : await client.query(`INSERT INTO pet_requests (name,species,species_other,breed,sex,birth,weight,color,neutered,notes,photo,dental_occlusion,id,owner_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,[...values,'req_'+crypto.randomUUID(),req.user.ownerId]);
+      await registrationAudit(client,req.user,`${req.params.id ? 'Corrected and resubmitted' : 'Submitted'} pet request ${saved.rows[0].id} for ${data.name}`);
+      return saved.rows[0];
+    });
+    res.json({success:true,request:result});
+  } catch (error) { res.status(error.status || 500).json({error:error.status ? error.message : 'Unable to save the pet request. Your entries are preserved; please retry.'}); }
+}
+clinicRouter.post('/pet-requests',savePetRequest);
+clinicRouter.put('/pet-requests/:id',savePetRequest);
 
-clinicRouter.delete("/pet-requests/:id", async (req, res) => {
+clinicRouter.delete('/pet-requests/:id',async (req,res) => {
   try {
-    await query("DELETE FROM pet_requests WHERE id = $1", [req.params.id]);
-    await recordAudit(req.user.name, req.user.role, `Withdrew pet registration request ${req.params.id}`);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
-  }
+    await withTransaction(async client => {
+      await lockRegistrationOwner(client,req.user.ownerId);
+      const row = (await client.query('SELECT * FROM pet_requests WHERE id = $1 FOR UPDATE',[req.params.id])).rows[0];
+      if (!row || row.owner_id !== req.user.ownerId) throw registrationError('Pet request not found.',404);
+      if (row.status === 'Approved') throw registrationError('This request has already been approved. Refresh to view the patient.',409);
+      await client.query('DELETE FROM pet_requests WHERE id = $1',[row.id]);
+      await registrationAudit(client,req.user,`Withdrew pet request ${row.id} for ${row.name}`);
+    });
+    res.json({success:true});
+  } catch(error) {res.status(error.status || 500).json({error:error.status ? error.message : 'Unable to remove the pet request. Please retry.'});}
 });
 
 clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
@@ -1047,21 +1037,25 @@ clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
   const { actorName, actorRole } = req.body;
   const today = new Date().toISOString().slice(0, 10);
   const cardId = "VACC-" + new Date().getFullYear() + "-" + Math.floor(1000 + Math.random() * 9000);
-  const newPetId = "p_" + Math.random().toString(36).slice(2, 8);
+  const newPetId = "p_" + crypto.randomUUID();
 
   try {
+    await ensurePetRegistrationSchema();
     const result = await withTransaction(async (client) => {
+      const ownerId = (await client.query("SELECT owner_id FROM pet_requests WHERE id = $1",[reqId])).rows[0]?.owner_id;
+      await lockRegistrationOwner(client,ownerId);
       const qReq = await client.query("SELECT * FROM pet_requests WHERE id = $1 FOR UPDATE", [reqId]);
-      if (!qReq.rows.length) throw new Error("Request not found");
+      if (!qReq.rows.length) throw registrationError("Pet request not found.",404);
       const r = qReq.rows[0];
       if (r.status !== "Pending") throw Object.assign(new Error("This request has already been processed."), { status: 409 });
-      if (r.status === "Approved") throw new Error("Request is already approved");
+      checkRequestRevision(r,req.body.revision);
+      validatePetRegistration({ ...r, weight:Number(r.weight), speciesOther:r.species_other, dentalOcclusion:r.dental_occlusion });
 
       // 1. Insert into pets table
       await client.query(
-        `INSERT INTO pets (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, vaccination_card_id, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-        [newPetId, r.owner_id, r.name, r.species, r.species_other || "", r.breed || "Mixed Breed", r.sex, r.birth, r.weight, r.color || "", r.neutered || "Not sure", cardId, r.notes || ""]
+        `INSERT INTO pets (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, vaccination_card_id, notes, photo, dental_occlusion)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        [newPetId, r.owner_id, r.name, r.species, r.species_other || "", r.breed || "Mixed Breed", r.sex, r.birth, r.weight, r.color || "", r.neutered || "Not sure", cardId, r.notes || "", r.photo || "", r.dental_occlusion || ""]
       );
 
       // 2. Insert weight baseline
@@ -1448,7 +1442,7 @@ clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
       // 4. Update pet_request record
       const upd = await client.query(
         `UPDATE pet_requests
-         SET status = 'Approved', approved_at = CURRENT_DATE, approved_by = $1, pet_id = $2, card_id = $3
+         SET status = 'Approved', approved_at = CURRENT_DATE, approved_by = $1, pet_id = $2, card_id = $3, revision = revision + 1
          WHERE id = $4
          RETURNING *`,
         [actorName || "Vet Assistant", newPetId, cardId, reqId]
@@ -1457,30 +1451,35 @@ clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
       // Registration approval does not reserve clinical time or choose a doctor.
       const preAppt = null;
 
+      await registrationAudit(client,req.user,`Approved pet request ${reqId} for ${r.name} (Assigned Card ${cardId})`);
       const qPet = await client.query("SELECT * FROM pets WHERE id = $1", [newPetId]);
       return { petId: newPetId, cardId, request: upd.rows[0], pet: qPet.rows[0], vaccs: seeded, appointment: preAppt };
     });
 
-    await recordAudit(actorName || "Vet Assistant", actorRole || "assistant", `Approved pet request for ${result.request.name} (Assigned Card ${cardId})`);
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
   }
 });
 
-clinicRouter.post("/pet-requests/:id/decline", async (req, res) => {
-  const reqId = req.params.id;
-  const { reason, actorName, actorRole } = req.body;
+clinicRouter.post('/pet-requests/:id/decline',async (req,res) => {
   try {
-    const result = await query(
-      `UPDATE pet_requests SET status = 'Declined', decline_reason = $1 WHERE id = $2 RETURNING *`,
-      [reason || "Incomplete or invalid pet information", reqId]
-    );
-    await recordAudit(actorName, actorRole, `Declined pet request ${reqId}: ${reason}`);
-    res.json({ success: true, request: result.rows[0] });
-  } catch (err) {
-    res.status(err.status || (err.code === "23505" ? 409 : 500)).json({ error: err.status ? err.message : err.code === "23505" ? "This record already exists. Refresh before trying again." : "Unable to save clinic data. Please try again." });
-  }
+    const reason = req.body.reason;
+    if (typeof reason !== 'string' || !reason.trim() || reason.trim().length > 500) throw registrationError('Explain what the owner needs to correct (up to 500 characters).');
+    await ensurePetRegistrationSchema();
+    const result = await withTransaction(async client => {
+      const ownerId = (await client.query('SELECT owner_id FROM pet_requests WHERE id = $1',[req.params.id])).rows[0]?.owner_id;
+      await lockRegistrationOwner(client,ownerId);
+      const row = (await client.query('SELECT * FROM pet_requests WHERE id = $1 FOR UPDATE',[req.params.id])).rows[0];
+      if (!row) throw registrationError('Pet request not found.',404);
+      if (row.status !== 'Pending') throw registrationError('This request has already been processed.',409);
+      checkRequestRevision(row,req.body.revision);
+      const saved = await client.query("UPDATE pet_requests SET status='Declined',decline_reason=$1,revision=revision+1 WHERE id=$2 RETURNING *",[reason.trim(),row.id]);
+      await registrationAudit(client,req.user,`Declined pet request ${row.id}: ${reason.trim()}`);
+      return saved.rows[0];
+    });
+    res.json({success:true,request:result});
+  } catch(error) {res.status(error.status || 500).json({error:error.status ? error.message : 'Unable to save the review. Please retry.'});}
 });
 
 /* 5. APPOINTMENTS & CHECK-IN INTAKE FLOW */

@@ -40,7 +40,7 @@ export async function clinicAccess(req, res, next) {
     }
     let match;
     if ((match = path.match(/^\/pet-requests\/([^/]+)(?:\/(approve|decline))?$/))) {
-      if (!((req.method === 'DELETE' && !match[2] && allow('owner')) || (req.method === 'POST' && match[2] && allow('assistant')))) return denied();
+      if (!((['DELETE','PUT'].includes(req.method) && !match[2] && allow('owner')) || (req.method === 'POST' && match[2] && allow('assistant')))) return denied();
       const row = (await query('SELECT * FROM pet_requests WHERE id = $1', [decodeURIComponent(match[1])])).rows[0];
       if (!row || (role === 'owner' && row.owner_id !== req.user.ownerId)) return fail(res, 404, 'Pet request not found.');
       if (row.status === 'Approved' || (match[2] && row.status !== 'Pending')) return fail(res, 409, 'This request has already been processed.');
