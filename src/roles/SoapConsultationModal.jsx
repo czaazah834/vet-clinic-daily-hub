@@ -1,3 +1,4 @@
+import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { validateSoapFields } from "../soapValidation.js";
 import PrescriptionBuilder from "./PrescriptionBuilder.jsx";
 import { calculateSupply } from "../prescription.js";
@@ -87,6 +88,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
 
   const [loading, setLoading] = useState(false);
 
+  const review = useSubmissionReview([f,prescriptionItems,performedServices,current,pet,stale,serviceCatalog,catalogError]);
+
   const handleSubmit = async (ev) => {
     ev.preventDefault();
     if (inFlight.current) return;
@@ -114,8 +117,6 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       return;
     }
 
-    inFlight.current=true;
-    setLoading(true);
     const consultId = consultationId.current;
     const effectiveVetId = me.vetId || me.id;
 
@@ -162,6 +163,26 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       ? `\nFollow-up requested for ${f.followUpDate}: ${f.followUpReason.trim()}. Reception to confirm scheduling.` : "";
     newRecord.treatment += followUpNote;
     const request={...newRecord,...(f.weight?{weight:Number(f.weight)}:{}),vaccination:newVacc,expectedVisit};
+    if (!await review.ask({title:"Review and finalize visit",confirmLabel:"Finalize visit",
+      description:"Check the clinical record before finalizing. This completes the visit, saves the notes for the owner and sends the visit to reception for checkout.",
+      fields:[
+        ["Patient / owner",`${pet.name} / ${owner.name}`],
+        ["Veterinarian",me.name],
+        ["Consultation date",newRecord.date],
+        ["Subjective",newRecord.symptoms],
+        ["Objective",newRecord.objective],
+        ["Assessment",newRecord.diagnosis],
+        ["Plan",newRecord.treatment],
+        ["Weight",f.weight ? `${f.weight} kg` : "Not recorded"],
+        ["Prescription notes",newRecord.prescription],
+        ["Prescribed products",selectedItems.map(p=>`${p.name} × ${p.quantity} — ${p.instructions}`).join("\n") || "None selected"],
+        ["Performed services",serviceCatalog.filter(p=>performedServices.includes(p.id) || (f.giveVaccine && p.id === VACCINE_SERVICE[f.vaccine])).map(p=>`${p.name} — ₱${p.price.toLocaleString()}`).join("\n") || "None selected"],
+        ["Vaccine administration",newVacc ? `${newVacc.vaccine} — ${newVacc.brand}\nBatch: ${newVacc.batch} · Dose ${newVacc.doseNo} of ${newVacc.doseOf}\nApproved booster due: ${newVacc.nextDue}\n${newVacc.notes}` : "No vaccine administration recorded"],
+        ["Care status",newRecord.careStatus],
+        ["Follow-up",newRecord.followUpDate ? `${newRecord.followUpDate}: ${newRecord.followUpReason}` : "No follow-up requested"]]
+    })) return;
+    inFlight.current=true;
+    setLoading(true);
     let saved;
     try {
       saved=confirmedConsultation(await api.post("/api/consultations",request),request);
@@ -180,6 +201,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !inFlight.current && onClose()}>
       <div className="modal clinical-soap" style={{ width: "min(760px, 100%)", maxHeight: "94vh" }}>
+        {review.card}
         <style>{`.clinical-soap input[type=checkbox]{width:auto;flex:0 0 auto}.clinical-soap .service-check{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}.clinical-soap .tabs{flex-wrap:wrap}.clinical-soap .tabs button{white-space:normal;max-width:100%;min-width:0}`}</style>
         {followUpRequest && <div className="ow-note info"><b>Linked {followUpRequest.careStatus}</b><p>Target: {followUpRequest.followUpDate} · {followUpRequest.followUpReason}</p></div>}
         {(appt?.handoffs || []).length > 0 && <section className="ow-note info" aria-label="Veterinarian handoff instructions" style={{overflowWrap:'anywhere'}}>
@@ -551,7 +573,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
             <div className="row end" style={{ marginTop: "20px", gap: "10px" }}>
               <button type="button" className="btn ghost" onClick={onClose} disabled={loading}>Cancel</button>
               <button type="submit" className="btn gold" disabled={loading || stale || !serviceCatalog.length || !!catalogError} style={{ fontWeight: 700 }}>
-                {loading ? "Saving to EMR & Database..." : "Save SOAP Note & Complete Visit"}
+                {loading ? "Saving to EMR & Database..." : "Review and finalize visit"}
               </button>
             </div>
             </fieldset>

@@ -1,3 +1,4 @@
+import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { useRef, useState } from "react";
 import { addLog } from "../lib.jsx";
 import { walkInBirthWindow, validWalkInBirth, savedWalkInRegistration } from "../walkInRegistration.js";
@@ -204,6 +205,8 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
     );
   };
 
+  const review = useSubmissionReview([v,vetId,serviceCategory,specificVaccine,hasExternalHistory,priorVaccines,externalClinicNotes,existingOwner,db.vets]);
+
   const handleSubmit = async (ev) => {
     ev.preventDefault();
     if (inFlight.current) return;
@@ -211,9 +214,6 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
     f.submit();
     if (!f.valid) return;
     if (v.addToQueue && !vetId) { setSaveError("Choose a veterinarian before adding today’s arrival."); return; }
-    inFlight.current = true;
-    setLoading(true);
-
     const finalBreed = showCustomBreed && v.customBreed.trim() ? v.customBreed.trim() : v.breed;
     const finalColor = showCustomColor && v.customColor.trim() ? v.customColor.trim() : v.color;
 
@@ -245,6 +245,27 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       externalClinicNotes: hasExternalHistory ? externalClinicNotes.trim() : ""
     };
 
+    if (!await review.ask({title:"Review patient registration",confirmLabel:"Register patient and issue card",
+      description:payload.addToQueue ? "Confirm owner and patient details. This issues the patient card and saves an arrival; measured intake is still required before the doctor queue." : "Confirm owner and patient details before issuing the patient card.",
+      fields:[
+        ["Owner",payload.ownerName],
+        ["Mobile",payload.phone],
+        ["Email",payload.email],
+        ["Address",payload.address],
+        ["Patient",payload.petName],
+        ["Species",`${payload.species}${payload.speciesOther ? ` (${payload.speciesOther})` : ""}`],
+        ["Breed",payload.breed],
+        ["Sex / birth date",`${payload.sex} / ${payload.birth}`],
+        ["Weight",`${payload.weight} kg`],
+        ["Color / neutered",`${payload.color || "Not provided"} / ${payload.neutered}`],
+        ["Dental status",payload.dentalOcclusion],
+        ["Patient notes",payload.notes],
+        ["Today’s arrival",payload.addToQueue ? `${db.vets?.find(v=>v.id===vetId)?.name || "Veterinarian unavailable"}: ${payload.reason}` : "No arrival requested"],
+        ["Reported external vaccine history",payload.priorVaccines.join("\n") || "None reported"],
+        ["External clinic notes",payload.externalClinicNotes]]
+    })) return;
+    inFlight.current = true;
+    setLoading(true);
     let backendResult = null;
     try {
       backendResult = savedWalkInRegistration(await api.post("/api/walk-in", payload));
@@ -321,6 +342,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
           </div>
         ) : (
           <form onSubmit={handleSubmit} noValidate>
+            {review.card}
             {/* Section 1: Pet Owner Information */}
             {existingOwner ? (
               <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -837,7 +859,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               <button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button>
               {saveError && <p className="err" role="alert">{saveError}</p>}
               <button type="submit" className="btn gold" disabled={loading} style={{ fontWeight: 700 }}>
-                {loading ? "Registering & Issuing Card..." : "Register & Issue Vaccination Card"}
+                {loading ? "Registering & Issuing Card..." : "Review registration"}
               </button>
             </div>
           </form>

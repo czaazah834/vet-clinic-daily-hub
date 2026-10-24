@@ -1,3 +1,4 @@
+import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { confirmedPayment } from "../receptionSaves.js";
 import { ownerBill } from "../ownerBilling.js";
 import { money, paymentDate, paymentTime } from "../assistantWorkflow.js";
@@ -79,6 +80,8 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
     ? catalog.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.category.toLowerCase().includes(search.toLowerCase()))
     : catalog;
 
+  const review = useSubmissionReview([items,method,discount,cashTendered,refNo,claim.ready,claim.claimToken,db.appts.find(a=>a.id===appt.id),pet,owner]);
+
   const handlePay = async (ev) => {
     ev.preventDefault();
     setFormErr("");
@@ -106,6 +109,18 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
     }
 
     if (!claim.ready) { setFormErr("Reclaim this checkout before recording payment. Your invoice entries are preserved."); return; }
+    if (!await review.ask({title:"Review payment", confirmLabel:"Confirm payment",
+      description:"Confirm the invoice and the payment actually received. Confirming records the payment and issues the saved receipt.",
+      fields:[
+        ["Patient / owner",`${pet.name} / ${owner.name}`],
+        ["Visit",`${appt.date} at ${appt.time}`],
+        ["Invoice",items.map(i=>`${i.name} × ${i.qty} — ${money(i.price*i.qty)}`).join("\n")],
+        ["Subtotal",money(subtotal)],
+        ["Discount",money(+discount)],
+        ["Total due",money(total)],
+        ["Payment method",method],...(method === "Cash" ? [["Cash received",money(Number(cashTendered))],
+        ["Change",money(change)]] : [["Verified reference",refNo.trim()]])]
+    })) return;
     paying.current = true;
     setLoading(true);
 
@@ -151,6 +166,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !loading && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="billing-title" style={{ width: "min(620px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "22px 26px" }}>
         
+        {review.card}
         {!paid && me.role === "assistant" && !claim.ready && <div role={claim.error ? "alert" : "status"} style={{padding:12,background:"#fff7ed",marginBottom:12}}>
           {claim.error || "Reserving this checkout for you…"}
           {claim.error && <button className="btn ghost sm" onClick={claim.retry}>Retry checkout claim</button>}
@@ -487,7 +503,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             <div className="row end" style={{ gap: "10px" }}>
               <button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button>
               <button type="submit" className="btn gold" disabled={loading || !claim.ready} style={{ fontWeight: 700 }}>
-                {loading ? "Processing..." : "Settle & Process Payment"}
+                {loading ? "Processing..." : "Review payment"}
               </button>
             </div>
             </fieldset>

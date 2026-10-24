@@ -1,3 +1,4 @@
+import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import AdminStaff, { useAdminStaff, AdminAudit } from "./AdminStaff.jsx";
 import ReminderStatus from "./ReminderStatus.jsx";
 import { currentVaccinationDue } from "../vaccinationDue.js";
@@ -48,6 +49,8 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
   const [copied, setCopied] = useState(false);
   const inviting = useRef(false);
 
+  const review = useSubmissionReview(f);
+
   const submit = async (e) => {
     e.preventDefault();
     setErr("");
@@ -55,6 +58,10 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
     if (!f.name.trim()) return setErr("Staff full name is required");
     if (!f.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) return setErr("Valid staff email required");
 
+    if (!await review.ask({title:"Review staff invitation",confirmLabel:"Send invitation",description:"Check the email and role. This sends an invitation allowing the recipient to create a staff account with the selected access.",fields:[
+        ["Staff name",f.name.trim()],
+        ["Email",f.email.trim().toLowerCase()],
+        ["Role",f.role === "vet" ? "Veterinarian" : "Vet assistant"]]}))return;
     inviting.current = true;
     setLoading(true);
     try {
@@ -151,6 +158,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
           </div>
         ) : (
           <form onSubmit={submit}>
+            {review.card}
             <fieldset disabled={loading} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
             {err && (
               <div role="alert" style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: "10px", padding: "10px 14px", fontSize: "13px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
@@ -207,7 +215,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
                 style={{ display: "inline-flex", alignItems: "center", gap: "8px", padding: "10px 18px", fontWeight: 600 }}
               >
                 <Send size={15} />
-                <span>{loading ? "Sending Invitation..." : `Send ${roleName} Invitation`}</span>
+                <span>{loading ? "Sending Invitation..." : `Review ${roleName} Invitation`}</span>
               </button>
             </div>
             </fieldset>

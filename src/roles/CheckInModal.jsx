@@ -1,3 +1,4 @@
+import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { useRef, useState } from "react";
 import {
   Thermometer,
@@ -74,6 +75,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const normSpecies = normalizeSpecies(pet.species);
   const clinicalBracket = computeWeightBracket(weight, pet.species, pet.birth);
 
+  const review = useSubmissionReview([weight,temp,triage,serviceReason,notes,fasted,currentVisit,pet,owner,stale]);
+
   const submit = async (e) => {
     e.preventDefault();
     if (inFlight.current) return;
@@ -94,6 +97,19 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
     }
     setValErr("");
 
+    if (!await review.ask({title:"Review measured intake",confirmLabel:"Save intake and send to vet",
+      description:"Check the measured values and triage before saving. This places the patient in the assigned veterinarian’s waiting queue.",
+      fields:[
+        ["Patient / owner",`${pet.name} / ${owner.name}`],
+        ["Veterinarian",db.vets?.find(v=>v.id===appt.vetId)?.name],
+        ["Visit date",today()],
+        ["Weight",`${w} kg`],
+        ["Temperature",`${t}°C`],
+        ["Triage",triage],
+        ["Reason",serviceReason.trim() || appt.reason],
+        ["Fasted",fasted ? "Yes" : "No"],
+        ["Intake notes",notes.trim()]]
+    })) return;
     const arrivalDate = today(), arrivalTime = nowHM();
     const intakeVitals = {
       weight: !isNaN(w) ? w : null,
@@ -227,6 +243,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
         )}
 
         <form onSubmit={submit}>
+          {review.card}
           <div style={{ display: "grid", gap: "14px" }}>
             {/* 1. Automated Kilogram / Weight Section */}
             <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
@@ -528,7 +545,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
           <div className="row end" style={{ marginTop: "20px", gap: "10px", flexWrap: "wrap" }}>
             <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn gold" disabled={saving || stale || !pet.id || !owner.id}>
-              Complete Check-In &amp; Send to Doctor Queue
+              Review check-in
             </button>
           </div>
         </form>

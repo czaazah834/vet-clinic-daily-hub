@@ -722,3 +722,29 @@ reception's checkout task. Reception records payment; the owner sees the saved
 notes and receipt. Admin reviews these records, exceptions and audit history.
 Booking, cancellation and payment screens require matching server confirmation
 before displaying success. Admin and vet accounts cannot book visits.
+
+
+### Review before submitting
+
+Consequential forms now validate first and open a review card before saving.
+The card shows the entered details and the result of confirmation:
+
+| Team | Review cards |
+| --- | --- |
+| Owner | Booking or appointment changes; new or corrected pet registration requests |
+| Reception | Bookings and reassignment; walk-in arrivals; new patient/card registration; measured intake; invoice, discount and received payment |
+| Veterinarian | Final clinical notes, prescribed supplies, performed services, vaccine/booster details and follow-up; care transfer recipient and instructions |
+| Administrator | Staff invitation recipient and access role |
+
+**Back to edit** or Escape keeps the original form and entered values. The final
+button names the actual action (for example **Confirm payment** or **Finalize
+visit**). No save request starts before confirmation; repeated confirmation
+cannot send duplicate requests. A changed form or relevant live clinic record
+invalidates an open review and requires a fresh review. Existing cancellation,
+registration approval/decline and staff-access decision screens remain the final
+confirmation for those actions. Routine sign-in, search and filtering do not
+require another confirmation card.
+
+The review dialog traps keyboard focus, starts on Back to edit, scrolls for long
+clinical notes and uses a stacked layout on small screens. After confirmation,
+the existing pending/error/server-acknowledgment behavior still applies.
