@@ -58,7 +58,18 @@ function saveCachedUser(user) {
 }
 
 export default function App() {
-  const [db, setDb] = useState(emptyClinicState), [me, setMe] = useState(getCachedUser), [restoring, setRestoring] = useState(() => !getCachedUser()), [view, setView] = useState(getInitialView), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
+  const [db, setDb] = useState(emptyClinicState), [me, setMe] = useState(getCachedUser), [restoring, setRestoring] = useState(() => !getCachedUser()), [view, setView] = useState(getInitialView), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const q = new URLSearchParams(window.location.search);
+      return {
+        inviteToken: q.get("invite") || "",
+        token: q.get("token") || q.get("unlock") || q.get("verify") || ""
+      };
+    } catch (_) {
+      return {};
+    }
+  });
   const [clinicError, setClinicError] = useState("");
   const [loadedFor, setLoadedFor] = useState("");
   const [refreshing, setRefreshing] = useState(false);

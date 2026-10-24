@@ -46,16 +46,22 @@ export default function StaffSetup({ token, onDone, onCancel }) {
     confirmPassword: ""
   });
 
+  const activeToken = token || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("invite") : "");
+
   useEffect(() => {
-    if (!token) {
-      setErr("Missing staff invitation token.");
+    if (!activeToken) {
+      setErr("Missing staff invitation token. Please check the link from your invitation email.");
       setLoading(false);
       return;
     }
 
-    auth.staffInviteInfo(token)
+    setErr("");
+    setLoading(true);
+
+    auth.staffInviteInfo(activeToken)
       .then(res => {
         setInvInfo(res);
+        setErr(""); // Clear any previous error on successful token validation!
         const parts = (res.name || "").trim().split(/\s+/);
         setFormData(p => ({
           ...p,
@@ -68,7 +74,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
         setErr(err.message || "Invitation link is invalid or has expired. Please contact the Clinic Administrator.");
         setLoading(false);
       });
-  }, [token]);
+  }, [activeToken]);
 
   const touch = (field) => setTouched(p => ({ ...p, [field]: true }));
 
@@ -146,7 +152,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
     setSubmitting(true);
     try {
       const res = await auth.staffAcceptInvite({
-        token,
+        token: activeToken,
         firstName: tc(formData.firstName.trim()),
         lastName: tc(formData.lastName.trim()),
         middleInitial: formData.middleInitial ? formData.middleInitial.trim().toUpperCase() : null,
