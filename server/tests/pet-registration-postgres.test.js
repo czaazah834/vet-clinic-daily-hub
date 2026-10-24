@@ -141,3 +141,41 @@ test('the ten-pet account limit includes declined requests and permits correctio
  assert.equal((await call(owner,'POST','/pet-requests',{...base,name:'Eleventh'})).status,409);
  assert.equal((await call(owner,'PUT',`/pet-requests/${saved.id}`,{...base,revision:1})).status,200);
 });
+
+const walkIn = {ownerName:'Walkin Owner',phone:'09171112233',email:'',address:'',petName:'Milo Walkin',species:'Rodent',breed:'',sex:'Male',birth:'2024-01-01',weight:0.25,neutered:'Not sure',color:'',dentalOcclusion:'Not Evaluated Yet',notes:'',addToQueue:false};
+test('walk-in preserves entered measurements, dental status and missing optional contacts',async()=>{
+ const saved=await call(assistant,'POST','/walk-in',walkIn);
+ assert.equal(saved.status,200,JSON.stringify(saved.data));
+ const {owner,pet,appointment}=saved.data;
+ assert.equal(owner.email,'');assert.equal(owner.address,'');assert.equal(owner.phone,walkIn.phone);
+ assert.equal(pet.weight,0.25);assert.equal(pet.dentalOcclusion,'Not Evaluated Yet');assert.equal(appointment,null);
+ const row=(await query('SELECT * FROM pets WHERE id=$1',[pet.id])).rows[0];
+ assert.equal(row.dental_occlusion,'Not Evaluated Yet');assert.equal(Number(row.weight),0.25);
+ const weights=(await query('SELECT * FROM pet_weights WHERE pet_id=$1',[pet.id])).rows;
+ assert.equal(weights.length,1);assert.equal(Number(weights[0].kg),0.25);assert.equal(pet.weights[0].kg,0.25);
+ assert.equal((await query("SELECT COUNT(*)::int n FROM audit_logs WHERE action LIKE '%Registered walk-in%' AND action LIKE $1",[`%${pet.name}%`])).rows[0].n,1);
+});
+test('walk-in rejects missing or invalid patient facts before creating records',async()=>{
+ const before=(await query('SELECT COUNT(*)::int n FROM pets')).rows[0].n;
+ for(const change of [{weight:undefined},{weight:'5'},{weight:0},{birth:'2025-02-30'},{species:''},{sex:''},{phone:''}]) {
+  assert.equal((await call(assistant,'POST','/walk-in',{...walkIn,...change})).status,400);
+ }
+ assert.equal((await query('SELECT COUNT(*)::int n FROM pets')).rows[0].n,before);
+});
+test('walk-in audit failure rolls back owner, patient, weights, protocols and arrival',async()=>{
+ await user('walkin_vet','vet');
+ const vet=(await query("SELECT vet_id FROM users WHERE id='walkin_vet'")).rows[0].vet_id;
+ // The fixture user helper leaves vet_id empty; assign a real directory identity.
+ await query("UPDATE users SET vet_id='walkin_vet' WHERE id='walkin_vet'");
+ const body={...walkIn,phone:'09174445566',petName:'Rollback Walkin',species:'Canine',weight:5,addToQueue:true,vetId:'walkin_vet',reason:'Walk-in examination'};
+ const counts=async()=> (await query('SELECT (SELECT COUNT(*) FROM owners)::int owners,(SELECT COUNT(*) FROM pets)::int pets,(SELECT COUNT(*) FROM pet_weights)::int weights,(SELECT COUNT(*) FROM vaccinations)::int vacc,(SELECT COUNT(*) FROM appointments)::int appts')).rows[0];
+ const before=await counts();
+ await query(`CREATE FUNCTION reject_walkin_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Registered walk-in%' THEN RAISE EXCEPTION 'synthetic walk-in audit failure'; END IF; RETURN NEW; END $$`);
+ await query('CREATE TRIGGER reject_walkin_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_walkin_audit()');
+ try {assert.equal((await call(assistant,'POST','/walk-in',body)).status,500);assert.deepEqual(await counts(),before);}
+ finally {await query('DROP TRIGGER reject_walkin_audit ON audit_logs');}
+ const retry=await call(assistant,'POST','/walk-in',body);
+ assert.equal(retry.status,200,JSON.stringify(retry.data));
+ assert.equal(retry.data.appointment.status,'Scheduled');assert.equal(retry.data.appointment.intakeVitals,null);
+ assert.equal(retry.data.appointment.vetId,'walkin_vet');assert.equal(retry.data.pet.weight,5);
+});

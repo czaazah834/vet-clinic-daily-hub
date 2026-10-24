@@ -4,6 +4,7 @@ import { ensurePrescriptionSchema, normalizePrescription, prescriptionInvoice, v
 import { ensureCareSchema, validateCarePlan } from "../careWorkflow.js";
 import { priceCatalog, canonicalInvoice } from "../priceCatalog.js";
 import { adminRouter } from "./admin.js";
+import { validateWalkInRegistration } from '../walkInRegistration.js';
 import { ensurePetRegistrationSchema, validatePetRegistration, validatePetPhoto, lockRegistrationOwner, checkRegistrationCapacity, checkRequestRevision, registrationAudit, registrationError } from '../petRegistration.js';
 import { checkoutRouter } from "./checkout.js";
 import { ensureCheckoutInboxSchema, createCheckoutTask, authorizeCheckoutPayment, finishCheckoutTask } from "../checkout.js";
@@ -1750,7 +1751,10 @@ clinicRouter.post("/walk-in", async (req, res) => {
   const today = clinicClock().date;
 
   try {
+    const registration = validateWalkInRegistration(req.body);
+    const patient = registration.patient;
     await ensureSchedulingSchema();
+    await ensurePetRegistrationSchema();
     const result = await withTransaction(async (client) => {
       // 1. Insert Owner (or match existing by explicit ownerId, or by phone/email)
       let effectiveOwner = null;
@@ -1767,7 +1771,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
       if (!effectiveOwner && (email || phone)) {
         const existQ = await client.query(
           `SELECT * FROM owners WHERE (email = $1 AND $1 <> '') OR (phone = $2 AND $2 <> '') LIMIT 1`,
-          [email || "", phone || ""]
+          [registration.email, registration.phone]
         );
         if (existQ.rows.length) {
           effectiveOwner = existQ.rows[0];
@@ -1779,30 +1783,31 @@ clinicRouter.post("/walk-in", async (req, res) => {
           `INSERT INTO owners (id, name, email, phone, address)
            VALUES ($1, $2, $3, $4, $5)
            RETURNING *`,
-          [ownerId, ownerName, email || `walkin_${Date.now()}@pawcare.ph`, phone || "09170000000", address || "Metro Manila, PH"]
+          [ownerId, registration.ownerName, registration.email, registration.phone, registration.address]
         );
         effectiveOwner = insOwner.rows[0];
       }
 
       // 2. Insert Pet
       const insPet = await client.query(
-        `INSERT INTO pets (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, vaccination_card_id, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        `INSERT INTO pets (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, vaccination_card_id, notes, dental_occlusion)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING *`,
         [
           petId,
           effectiveOwner.id,
-          petName,
-          species || "Canine",
-          speciesOther || "",
-          breed || "Mixed Breed",
-          sex || "Male",
-          birth || today,
-          parseFloat(weight) || 5.0,
-          color || "",
-          neutered || "Not sure",
+          patient.name,
+          patient.species,
+          patient.speciesOther,
+          patient.breed,
+          patient.sex,
+          patient.birth,
+          patient.weight,
+          patient.color,
+          patient.neutered,
           cardId,
-          notes || ""
+          patient.notes,
+          patient.dentalOcclusion
         ]
       );
       const pet = insPet.rows[0];
@@ -1810,7 +1815,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
       // 3. Weight log
       await client.query(
         `INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1, $2, $3, $4)`,
-        [petId, today, parseFloat(weight) || 5.0, actorName || "Front Desk Walk-in"]
+        [petId, today, patient.weight, req.user.name]
       );
 
       // 4. Seed Vaccines: Record Prior External History Guide + Pre-Schedule Next Protocol
@@ -2081,6 +2086,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
         };
       }
 
+      await registrationAudit(client, req.user, `Registered walk-in owner ${effectiveOwner.name} & pet ${pet.name} (Issued Card #${cardId})`);
       return {
         owner: effectiveOwner,
         pet: {
@@ -2098,14 +2104,15 @@ clinicRouter.post("/walk-in", async (req, res) => {
           allergies: pet.allergies || [],
           vaccinationCardId: cardId,
           notes: pet.notes || "",
-          photo: ""
+          photo: "",
+          dentalOcclusion: pet.dental_occlusion || "",
+          weights: [{date:today,kg:patient.weight,by:req.user.name}]
         },
         vaccs: seeded,
         appointment: appt
       };
     });
 
-    await recordAudit(actorName || "Front Desk", actorRole || "assistant", `Registered walk-in owner ${result.owner.name} & pet ${result.pet.name} (Issued Card #${cardId})`);
     res.json({ success: true, ...result });
   } catch (err) {
     console.error("Walk-in registration error:", err.message);

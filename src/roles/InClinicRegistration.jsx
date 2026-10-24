@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { uid, TODAY, plus, addLog } from "../lib.jsx";
+import { useRef, useState } from "react";
+import { addLog } from "../lib.jsx";
+import { walkInBirthWindow, validWalkInBirth, savedWalkInRegistration } from "../walkInRegistration.js";
 import { api } from "../api.js";
 import { formatSpeciesLabel, computeAgeDetails, normalizeSpecies } from "../preventiveSchedule.js";
 import {
@@ -11,21 +12,7 @@ import {
   petText
 } from "./owner/Pets.jsx";
 import { useLive, Field, onlyDigitsPlus, onlyDecimal, petAge } from "./owner/ui.jsx";
-import { User, PawPrint, QrCode, CheckCircle2, ArrowRight, ClipboardList, Printer, Phone, Calendar, X } from "lucide-react";
-
-const getYesterday = () => {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-};
-const YESTERDAY = getYesterday();
-
-const yearsBefore = (n) => {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - n);
-  return d.toISOString().slice(0, 10);
-};
-const OLDEST = yearsBefore(40);
+import { CheckCircle2, ClipboardList, Printer, X } from "lucide-react";
 
 const NAME_RE = /^[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 .'\-]*$/;
 const LETTER_RE = /[A-Za-zÀ-ÿ]/;
@@ -33,6 +20,7 @@ const PH_MOBILE_RE = /^(09|\+639)\d{9}$/;
 const DECIMAL_RE = /^(\d{1,3}(\.\d{1,2})?|\.\d{1,2})$/;
 
 function validateWalkIn(v) {
+  const {today:TODAY,oldest:OLDEST} = walkInBirthWindow();
   const e = {};
 
   // 1. Owner Name
@@ -85,7 +73,7 @@ function validateWalkIn(v) {
 
   // 10. Birth date (Must be yesterday or earlier; never in the future)
   if (!v.birth) e.birth = "Enter the birth date (yesterday or earlier)";
-  else if (isNaN(new Date(v.birth + "T00:00:00"))) e.birth = "Enter a valid birth date";
+  else if (!validWalkInBirth(v.birth)) e.birth = "Enter a valid birth date";
   else if (v.birth >= TODAY) e.birth = "Birth date cannot be today or in the future. Please select yesterday or earlier";
   else if (v.birth < OLDEST) e.birth = "That date is too far back. Check the year";
 
@@ -119,6 +107,8 @@ function validateWalkIn(v) {
 }
 
 export default function InClinicRegistration({ db, setDb, me, onClose, onRegistered, existingOwner }) {
+  const {yesterday:YESTERDAY,oldest:OLDEST} = walkInBirthWindow();
+  const inFlight = useRef(false);
   const f = useLive(
     {
       // Owner details
@@ -128,17 +118,17 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       address: existingOwner?.address || "",
       // Pet details
       petName: "",
-      species: "Canine (Dog)",
+      species: "",
       otherSpecies: "",
-      breed: "Shih Tzu",
+      breed: "",
       customBreed: "",
-      sex: "Male",
-      birth: "2023-01-15",
-      weight: "5.0",
-      neutered: "No",
-      color: "Brown / Chocolate",
+      sex: "",
+      birth: "",
+      weight: "",
+      neutered: "Not sure",
+      color: "",
       customColor: "",
-      dentalOcclusion: "Normal / Aligned (Healthy Occlusion)",
+      dentalOcclusion: "Not Evaluated Yet",
       notes: "",
       // Queue / appointment option
       addToQueue: true,
@@ -170,12 +160,11 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
   const ageDetails = v.birth && !f.errs.birth ? computeAgeDetails(v.birth) : null;
 
   const handleSpeciesChange = (newSpecies) => {
-    const breeds = BREEDS_BY_SPECIES[newSpecies] || [];
     f.patch({
       species: newSpecies,
-      breed: breeds[0] || "Mixed Breed",
+      breed: "",
       customBreed: "",
-      dentalOcclusion: newSpecies.includes("Rodent") ? "Normal / Aligned (Healthy Occlusion)" : ""
+      dentalOcclusion: newSpecies.includes("Rodent") ? "Not Evaluated Yet" : ""
     });
     const norm = normalizeSpecies(newSpecies);
     if (norm === "Feline") {
@@ -217,11 +206,12 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
 
   const handleSubmit = async (ev) => {
     ev.preventDefault();
-    if (loading) return;
+    if (inFlight.current) return;
     setSaveError("");
     f.submit();
     if (!f.valid) return;
     if (v.addToQueue && !vetId) { setSaveError("Choose a veterinarian before adding today’s arrival."); return; }
+    inFlight.current = true;
     setLoading(true);
 
     const finalBreed = showCustomBreed && v.customBreed.trim() ? v.customBreed.trim() : v.breed;
@@ -230,15 +220,15 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
     const payload = {
       ownerName: v.ownerName.trim(),
       phone: v.phone.trim(),
-      email: v.email.trim() || `walkin_${Date.now()}@pawcare.ph`,
-      address: v.address.trim() || "Caloocan City, Metro Manila",
+      email: v.email.trim(),
+      address: v.address.trim(),
       petName: v.petName.trim(),
       species: canonicalSpecies,
       speciesOther: v.species.includes("Other") ? v.otherSpecies.trim() : "",
       breed: finalBreed,
       sex: v.sex,
       birth: v.birth,
-      weight: parseFloat(v.weight) || 5.0,
+      weight: Number(v.weight),
       color: finalColor,
       neutered: v.neutered,
       dentalOcclusion: canonicalSpecies === "Rodent" ? v.dentalOcclusion : "",
@@ -251,45 +241,21 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       ownerId: existingOwner?.id || "",
       serviceCategory,
       specificVaccine,
-      priorVaccines,
-      externalClinicNotes: externalClinicNotes.trim()
+      priorVaccines: hasExternalHistory ? priorVaccines : [],
+      externalClinicNotes: hasExternalHistory ? externalClinicNotes.trim() : ""
     };
 
     let backendResult = null;
     try {
-      backendResult = await api.post("/api/walk-in", payload);
-      if (!backendResult?.pet || !backendResult?.owner) throw new Error("The server did not confirm registration.");
+      backendResult = savedWalkInRegistration(await api.post("/api/walk-in", payload));
     } catch (err) {
       setSaveError(err.message);
+      inFlight.current = false;
       setLoading(false);
       return;
     }
 
-    const owner = backendResult?.owner || existingOwner || {
-      id: "o_" + uid(),
-      name: payload.ownerName,
-      phone: payload.phone,
-      email: payload.email,
-      address: payload.address
-    };
-
-    const pet = backendResult?.pet || {
-      id: "p_" + uid(),
-      ownerId: owner.id,
-      name: payload.petName,
-      species: payload.species,
-      breed: payload.breed,
-      sex: payload.sex,
-      birth: payload.birth,
-      weight: payload.weight,
-      color: payload.color,
-      neutered: payload.neutered,
-      vaccinationCardId: `VACC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      notes: payload.notes
-    };
-
-    const newVaccs = backendResult?.vaccs || [];
-    const newAppt = backendResult.appointment || null;
+    const {owner,pet,vacc:newVaccs,appointment:newAppt} = backendResult;
 
     setDb(p => ({
       ...p,
@@ -301,6 +267,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       log: addLog(p, me, `Registered walk-in customer ${owner.name} and pet ${pet.name} (${pet.species}). Issued Digital Card #${pet.vaccinationCardId}.${newAppt ? " Arrival created; intake vitals required." : ""}`)
     }));
 
+    inFlight.current = false;
     setLoading(false);
     setSuccessData({ owner, pet, appt: newAppt });
     onRegistered && onRegistered(pet, owner, newAppt);
@@ -339,32 +306,17 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               {successData.appt && " Arrival created. Record current vitals to complete check-in."}
             </p>
 
-            {/* Walk-in Customer Digital Access Pass */}
-            <div style={{ background: "linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)", border: "1.5px solid #93c5fd", borderRadius: "14px", padding: "16px", marginBottom: "20px", textAlign: "left" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                <b style={{ color: "#1e40af", fontSize: "14px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <QrCode size={18} /> Walk-in Pet Owner Portal Access Card
-                </b>
-                <span style={{ fontSize: "11px", background: "#dbeafe", color: "#1e40af", padding: "2px 8px", borderRadius: "99px", fontWeight: 700 }}>
-                  Instant Mobile Claim
-                </span>
-              </div>
-              <p style={{ margin: "0 0 10px", fontSize: "12.5px", color: "#334155" }}>
-                How walk-in customers access the system: Advise owner <b>{successData.owner.name}</b> to open their Pet Portal anytime on their phone using their contact number (<b>{successData.owner.phone}</b>) or email (<b>{successData.owner.email}</b>).
-              </p>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", background: "#fff", padding: "8px 12px", borderRadius: "8px", border: "1px dashed #93c5fd" }}>
-                <Phone size={18} color="#1e40af" />
-                <span style={{ fontSize: "12px", color: "#1e3a8a", wordBreak: "break-all" }}>
-                  Official Access Link: <b>{typeof window !== "undefined" ? window.location.origin : ""}/?phone={encodeURIComponent(successData.owner.phone)}</b>
-                </span>
-              </div>
-            </div>
+            <section className="ow-note" style={{textAlign:"left",marginBottom:20}}>
+              <h4>Owner registration summary</h4>
+              <p>{successData.owner.name} · Phone: {successData.owner.phone || "Not recorded"} · Email: {successData.owner.email || "Not recorded"}</p>
+              <p>This slip does not provide sign-in access. Owners with a verified account should sign in normally. If this pet does not appear, ask the clinic to check the owner record.</p>
+            </section>
 
-            <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "12px" }}>
               <button className="btn sm ghost" onClick={() => window.print()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <Printer size={15} /> Print Access Slip
+                <Printer size={15} /> Print registration slip
               </button>
-              <button className="btn sm gold" onClick={onClose}>Done &amp; View in Queue</button>
+              <button className="btn sm gold" onClick={onClose}>{successData.appt ? "Done · Continue to intake" : "Done"}</button>
             </div>
           </div>
         ) : (
@@ -432,7 +384,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                     onBlur={() => f.blur("email")}
                     error={f.show("email")}
                     valid={f.ok("email")}
-                    hint="Used for portal access & receipts"
+                    hint="Optional contact email"
                   />
 
                   <Field
@@ -484,7 +436,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                   options={SPECIES.map(s => [s, s])}
                   error={f.show("species")}
                   valid={f.ok("species")}
-                  hint="VCMS Protocols v2.0"
+                  hint="Choose the patient’s species"
                 />
 
                 {v.species.includes("Other") && (
@@ -868,7 +820,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                   </div>
 
                   <div style={{ marginTop: "10px", padding: "8px 10px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "6px", fontSize: "11.5px", color: "#166534" }}>
-                    <b>Smart Pre-Scheduling Active:</b> Selected previous shots will be saved with an &ldquo;External Clinic (Guide)&rdquo; badge on Page 2 of the Digital Card. The system will pre-schedule the remaining doses without repeating completed shots.
+                    <b>Smart Pre-Scheduling Active:</b> Selected previous shots will be saved with an &ldquo;External Clinic (Guide)&rdquo; badge on Page 2 of the Digital Card. Suggested protocols still require veterinarian review; these entries do not certify doses or approve booster dates.
                   </div>
                 </div>
               )}
