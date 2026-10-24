@@ -207,7 +207,7 @@ export function CheckEmail({ email, go }) {
 }
 
 /* ---------- 2. Mobile code (OTP) with 6 Boxes ---------- */
-export function Otp({ onDone, onBack }) {
+export function Otp({ onDone, onBack, enabled = true }) {
   const f = useLive({ code: "" }, validateCode);
   const [phone, setPhone] = useState("");
   const [ready, setReady] = useState(false);
@@ -215,6 +215,7 @@ export function Otp({ onDone, onBack }) {
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
   const [n, setN] = useState(60);
+  const verifying = useRef(false);
 
   const fail = (x) => setErr(x.offline ? OFFLINE_MSG : x.message || "Something went wrong. Please try again.");
 
@@ -223,6 +224,7 @@ export function Otp({ onDone, onBack }) {
     setInfo("");
     try {
       await auth.otpSend();
+      setReady(true);
       setN(60);
       if (!first) setInfo("A new 6-digit SMS security code was sent to your phone.");
     } catch (x) {
@@ -232,41 +234,44 @@ export function Otp({ onDone, onBack }) {
 
   const started = useRef(false);
   useEffect(() => {
-    if (started.current) return;
+    if (!enabled || started.current) return;
     started.current = true;
     (async () => {
       try {
         const i = await auth.otpInfo();
-        if (i.mobileVerified) return onDone(null); // already verified
+        if (i.mobileVerified) return onDone(); // already verified
+        if (!i.hasActiveOtp) await auth.otpSend();
         if (i.phone) setPhone(i.phone);
         setReady(true);
         setN(60);
       } catch (x) {
-        setReady(true);
-        setN(60);
+        fail(x);
+        setN(0);
       }
     })();
-  }, []); // eslint-disable-line
+  }, [enabled]); // eslint-disable-line
 
   useEffect(() => {
-    if (n <= 0) return;
+    if (!enabled || n <= 0) return;
     const t = setTimeout(() => setN((c) => c - 1), 1000);
     return () => clearTimeout(t);
-  }, [n]);
+  }, [n, enabled]);
 
   const handleVerify = async (codeToVerify) => {
     const code = (codeToVerify || f.v.code || "").trim();
-    if (code.length < 6 || busy) return;
+    if (!enabled || !ready || code.length !== 6 || verifying.current) return;
+    verifying.current = true;
     setBusy(true);
     setErr("");
     setInfo("");
     try {
-      const r = await auth.otpVerify(code);
-      onDone(r.user || null);
+      await auth.otpVerify(code);
+      await onDone();
       return;
     } catch (x) {
       fail(x);
     }
+    verifying.current = false;
     setBusy(false);
   };
 
@@ -294,7 +299,7 @@ export function Otp({ onDone, onBack }) {
           <h1>
             Security <em>Verification</em>
           </h1>
-          <p>We texted a 6-digit code to your phone to safeguard your pets’ health records.</p>
+          <p>Verify your registered mobile number to finish setting up your account.</p>
         </div>
       </aside>
 
@@ -310,7 +315,7 @@ export function Otp({ onDone, onBack }) {
           </span>
           <span className="verify-step-sep">›</span>
           <span className="verify-step-pill">
-            <Sparkles size={13} /> 3. Enter Hub
+            <Sparkles size={13} /> 3. Log in
           </span>
         </div>
 
@@ -325,7 +330,7 @@ export function Otp({ onDone, onBack }) {
 
         <h2>Enter 6-digit code</h2>
         <p className="card-subtitle">
-          Code sent to <b>{ready ? maskPhone(phone) : "your phone..."}</b>. It stays valid for 5 minutes.
+          {ready ? <>Code sent to <b>{maskPhone(phone)}</b>. It stays valid for 10 minutes.</> : "Use the 6-digit SMS code sent to your registered mobile number."}
         </p>
 
         {/* 6 Individual OTP Boxes */}
@@ -336,6 +341,7 @@ export function Otp({ onDone, onBack }) {
             setErr("");
           }}
           hasError={!!err}
+          disabled={!enabled || !ready || busy}
           autoFocus={true}
           onComplete={(fullCode) => {
             // Automatically attempt verification when all 6 digits are typed!
@@ -352,7 +358,7 @@ export function Otp({ onDone, onBack }) {
           disabled={busy || !ready || f.v.code.length < 6}
           style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", margin: "18px 0 10px" }}
         >
-          {busy ? "Verifying code..." : "Verify & Enter Portal"} <ArrowRight size={17} />
+          {busy ? "Verifying code..." : "Verify mobile number"} <ArrowRight size={17} />
         </button>
 
         <div className="auth-links" style={{ justifyContent: "space-between", marginTop: "14px" }}>
@@ -363,7 +369,7 @@ export function Otp({ onDone, onBack }) {
           <button
             type="button"
             className="lnk"
-            disabled={n > 0 || busy}
+            disabled={!enabled || n > 0 || busy}
             onClick={() => send(false)}
             style={{ fontWeight: 600, color: n > 0 ? "#94a3b8" : "#2563eb" }}
           >

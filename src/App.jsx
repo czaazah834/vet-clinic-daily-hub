@@ -20,8 +20,9 @@ function getInitialView() {
   if (typeof window === "undefined") return "landing";
   try {
     const q = new URLSearchParams(window.location.search);
-    if (q.get("verify") || q.get("token")) return "verifying";
+    if (q.get("verify") || q.get("token")) return "otp";
     if (q.get("verified") === "ok" || q.get("otp")) return "otp";
+    if (q.has("verified")) return "login";
     if (q.get("unlock")) return "unlock";
     if (q.get("invite")) return "staff-setup";
   } catch (_) {}
@@ -51,6 +52,7 @@ function saveCachedUser(user) {
 
 export default function App() {
   const [db, setDb] = useState(SEED), [me, setMe] = useState(getCachedUser), [restoring, setRestoring] = useState(() => !getCachedUser()), [view, setView] = useState(getInitialView), [role, setRole] = useState(""), [notice, setNotice] = useState(""), [bad, setBad] = useState(false), [flow, setFlow] = useState({});   // flow = { email } for "check your email", { token } for the unlock countdown
+  const [otpEnabled, setOtpEnabled] = useState(() => getInitialView() !== "otp");
   const dbRef = useRef(db); dbRef.current = db;
   useEffect(() => { bindStore(() => dbRef.current, setDb); }, []);
   // Restore an existing SERVER-VALIDATED session on reload. Never trust a saved user/role.
@@ -138,7 +140,7 @@ export default function App() {
   }, []);
   useEffect(() => { setDb(p => { const late = p.appts.filter(a => ["Scheduled", "Confirmed"].includes(a.status) && a.date < TODAY); if (!late.length) return p; return { ...p, appts: p.appts.map(a => late.includes(a) ? { ...a, status: "No-show" } : a), log: addLog(p, { name: "System" }, `${late.length} past appointment(s) marked No-show`) }; }); }, []);
   /* Log out here and on the server. A message (e.g. idle timeout) sends the person to Log in with that notice. */
-  const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } try { localStorage.removeItem("pawcare_token"); sessionStorage.removeItem("pawcare_token"); } catch (_) {} setMe(null); saveCachedUser(null); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
+  const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } try { localStorage.removeItem("pawcare_token"); sessionStorage.removeItem("pawcare_token"); } catch (_) {} setMe(null); saveCachedUser(null); setSessionUser(null); window.history.replaceState(null, "", window.location.pathname); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };
   /* Work Shift Session Timeout: 8 hours (standard full clinic shift) */
   useEffect(() => {
     if (!me) return;
@@ -153,50 +155,28 @@ export default function App() {
     return () => { clearTimeout(t); ev.forEach(e => window.removeEventListener(e, reset)); };
   }, [me]);
   const go = v => { setNotice(""); setBad(false); setView(v); };
-  const toLogin = (msg, isBad = false) => { setNotice(msg || ""); setBad(isBad); setView("login"); };
+  const enterOtp = () => { window.history.replaceState(null, "", `${window.location.pathname}?otp=1`); setOtpEnabled(true); setView("otp"); };
+  const toLogin = (msg, isBad = false) => { window.history.replaceState(null, "", window.location.pathname); setNotice(msg || ""); setBad(isBad); setView("login"); };
 
   /* Links from the emails: <site>/?verify=TOKEN, <site>/?unlock=TOKEN, and <site>/?invite=TOKEN */
   const openLink = async ({ type, token }) => {
     if (type === "invite") { setFlow({ inviteToken: token }); setNotice(""); setView("staff-setup"); return; }
     if (type === "unlock") { setFlow({ token }); setNotice(""); setView("unlock"); return; }
+    setMe(null);
+    saveCachedUser(null);
+    setSessionUser(null);
+    setOtpEnabled(false);
+    setView("otp");
     try {
       const r = await auth.verifyEmail(token);
       if (r && (r.status === "ok" || r.ok)) {
-        if (r.token) {
-          try {
-            localStorage.setItem("pawcare_token", r.token);
-            sessionStorage.setItem("pawcare_token", r.token);
-          } catch (_) {}
-        }
+        if (r.mobileVerified) return logout("Account already verified. Please log in.");
         setNotice("");
-        setView("otp");
+        enterOtp();
         return;
       }
-
-      // Check if user is already verified and waiting for OTP
-      try {
-        const i = await auth.otpInfo();
-        if (i && !i.mobileVerified) {
-          setNotice("");
-          setView("otp");
-          return;
-        } else if (i && i.mobileVerified) {
-          return toLogin("Email verified. Your mobile number is already verified, so you can log in.");
-        }
-      } catch (_) {}
-
-      return toLogin("That verification link is invalid or expired. Log in and choose “Resend verification email”.", true);
+      toLogin("That verification link is invalid or expired. Request a new verification email.", true);
     } catch (x) {
-      console.error("Verification link error:", x);
-      // Fallback: see if user is already verified and waiting for OTP
-      try {
-        const i = await auth.otpInfo();
-        if (i && !i.mobileVerified) {
-          setNotice("");
-          setView("otp");
-          return;
-        }
-      } catch (_) {}
       toLogin(x.offline ? OFFLINE_MSG : (x.message || "We couldn’t check that link. Please try again."), true);
     }
   };
@@ -206,64 +186,37 @@ export default function App() {
           u = q.get("unlock"),
           inv = q.get("invite"),
           vOk = q.get("verified") === "ok" || q.get("otp");
-    if (!v && !u && !inv && !vOk) return;
+    if (!v && !u && !inv && !vOk && !q.has("verified")) return;
     window.history.replaceState(null, "", window.location.pathname);   // the token must not stay in the address bar
+    if (q.has("verified") && q.get("verified") !== "ok") {
+      toLogin("That verification link is invalid or expired. Request a new verification email.", true);
+      return;
+    }
     if (vOk) {
       auth.otpInfo().then(i => {
         if (!i.mobileVerified) {
           setNotice("");
-          setView("otp");
+          enterOtp();
         } else {
-          toLogin("Email verified. Your mobile number is already verified, so you can log in.");
+          logout("Account already verified. Please log in.");
         }
-      }).catch(() => {
-        setNotice("");
-        setView("otp");
-      });
+      }).catch(x => toLogin(x.message || "Open your verification email to continue.", true));
       return;
     }
     if (inv) openLink({ type: "invite", token: inv });
     else if (u) openLink({ type: "unlock", token: u });
     else if (v) openLink({ type: "verify", token: v });
   }, []); // eslint-disable-line
-  const onLogin = r => { if (r.needsOtp) { setNotice(""); setView("otp"); } else { setMe(r.user); saveCachedUser(r.user); } };   // password right but mobile not verified yet: ask for the SMS code first
+  const onLogin = r => { if (r.needsOtp) { setNotice(""); enterOtp(); } else { setMe(r.user); saveCachedUser(r.user); } };   // password right but mobile not verified yet: ask for the SMS code first
 
   // Render the normal app instead of an intrusive full-screen restoring view.
   if (me) return <Portal cfg={CFG[me.role]} me={me} db={db} setDb={setDb} onLogout={() => logout()} />;
   const screen =
-    view === "verifying" ? (
-      <div className="lg auth cardl">
-        <aside className="lgl photo">
-          <div className="brandrow">
-            <Logo size={28} />
-            <span>PawCare</span>
-          </div>
-          <div className="cap">
-            <h1>Email <em>Confirmation</em></h1>
-            <p>Confirming your email address and preparing your 6-digit mobile security code.</p>
-          </div>
-        </aside>
-        <div className="auth-verify-card">
-          <div className="verifying-pulse-logo">
-            <span style={{ fontSize: "38px" }}>🐾</span>
-          </div>
-          <h2>Verifying your email...</h2>
-          <p className="card-subtitle">
-            Please wait a moment while we validate your security link and prepare your mobile security code.
-          </p>
-          <div className="verify-steps" style={{ marginTop: "16px" }}>
-            <span className="verify-step-pill done">✓ Security Link Confirmed</span>
-            <span className="verify-step-sep">›</span>
-            <span className="verify-step-pill active">Connecting Mobile Code...</span>
-          </div>
-        </div>
-      </div>
-    )
-    : view === "login" ? <Login role={role} notice={notice} bad={bad} onLogin={onLogin} onBack={() => go("landing")} go={go} />
-    : view === "staff-setup" ? <StaffSetup token={flow.inviteToken} onDone={r => { if (r.needsOtp) { setNotice(""); setView("otp"); } else { setMe(r.user); saveCachedUser(r.user); } }} onCancel={() => go("landing")} />
+    view === "login" ? <Login role={role} notice={notice} bad={bad} onLogin={onLogin} onBack={() => go("landing")} go={go} />
+    : view === "staff-setup" ? <StaffSetup token={flow.inviteToken} onDone={r => { if (r.needsOtp) { setNotice(""); enterOtp(); } else { setMe(r.user); saveCachedUser(r.user); } }} onCancel={() => go("landing")} />
     : view === "register" ? <Register onDone={email => { setFlow({ email }); setView("checkemail"); }} onBack={() => go("landing")} go={go} limited={() => toLogin("Registration limit reached. To prevent bot spam, each IP address can make at most 5 registration attempts per hour. Please try again later, or log in if you already have an account.", true)} />
     : view === "checkemail" ? <CheckEmail email={flow.email} go={go} />
-    : view === "otp" ? <Otp onDone={u => { if (u) { setMe(u); saveCachedUser(u); } else toLogin("Mobile number verified. Please log in to continue."); }} onBack={async () => { try { await auth.logout(); } catch { /* nothing to sign out */ } go("login"); }} />
+    : view === "otp" ? <Otp enabled={otpEnabled} onDone={() => logout("Account verified successfully. Please log in to continue.")} onBack={() => logout("Log in to continue verification.")} />
     : view === "unlock" ? <Unlock token={flow.token} onDone={(msg, isBad) => toLogin(msg, isBad)} />
     : view === "forgot" ? <Forgot onBack={() => go("login")} go={go} />
     : <Landing onLogin={r => { setRole(r || ""); setView("login"); }} onRegister={() => setView("register")} />;

@@ -1,5 +1,5 @@
 import express from 'express';
-import { query } from '../db.js';
+import { query, withTransaction } from '../db.js';
 import {
   hashPassword,
   verifyPassword,
@@ -105,6 +105,9 @@ export async function requireAuth(req, res, next) {
     if (!r.rows.length) return res.status(401).json({ error: 'Session expired. Please log in again.' });
 
     const user = r.rows[0];
+    if (!user.mobile_verified || (user.role === 'owner' && !user.email_verified_at)) {
+      return res.status(403).json({ error: 'Complete email and mobile verification, then log in.', needsOtp: true });
+    }
     req.user = {
       id: user.id,
       firstName: user.first_name,
@@ -247,7 +250,6 @@ router.post('/register', async (req, res) => {
       status: 'ok',
       email: em,
       message: 'Registration successful! Verification link dispatched.',
-      token: rawToken, // Convenient for local testing
     });
   } catch (err) {
     console.error('Registration failed:', err);
@@ -307,8 +309,12 @@ router.post('/login', async (req, res) => {
     // Reset login attempts on success
     await query('UPDATE users SET failed_login_attempts = 0, is_locked = false, lockout_until = NULL WHERE id = $1', [u.id]);
 
+    if (u.role === 'owner' && !u.email_verified_at) {
+      return res.status(403).json({ error: 'Please verify your email address first (check your inbox).', unverified: true });
+    }
+
     // Check mobile verification
-    if (!u.mobile_verified && u.role === 'owner') {
+    if (!u.mobile_verified) {
       const sid = randomHex(32);
       await query(
         'INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL \'7 days\')',
@@ -368,7 +374,7 @@ router.get('/me', requireAuth, (req, res) => {
 
 // 4. LOGOUT
 router.post('/logout', async (req, res) => {
-  const sid = req.cookies?.sid;
+  const sid = req.cookies?.sid || req.headers.authorization?.replace('Bearer ', '');
   if (sid) {
     await query('DELETE FROM sessions WHERE token_hash = $1', [sha256(sid)]).catch(() => {});
   }
@@ -434,58 +440,6 @@ async function handleEmailVerification(req, res) {
       [sha256(token)]
     );
     if (!r.rows.length) {
-      // Check if user is already verified and mobile OTP is still pending
-      const sid = req.cookies?.sid || (req.headers.authorization && req.headers.authorization.replace('Bearer ', ''));
-      if (sid) {
-        const s = await query(
-          `SELECT u.id, u.email, u.mobile_number, u.mobile_verified
-           FROM sessions s JOIN users u ON u.id = s.user_id
-           WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
-          [sha256(sid)]
-        );
-        if (s.rows.length) {
-          const u = s.rows[0];
-          if (req.headers.accept?.includes('text/html') && !req.xhr) {
-            return res.redirect('/?verified=ok');
-          }
-          return res.json({
-            status: 'ok',
-            ok: true,
-            message: 'Email address already verified.',
-            token: sid,
-            phone: u.mobile_number
-          });
-        }
-      }
-
-      // Fallback: Check if any recent user verified email in the last 2 hours and mobile is pending
-      const recent = await query(
-        `SELECT u.id, u.email, u.mobile_number, u.mobile_verified
-         FROM users u
-         WHERE u.email_verified_at > NOW() - INTERVAL '2 hours' AND u.mobile_verified = false
-         ORDER BY u.email_verified_at DESC LIMIT 1`
-      );
-      if (recent.rows.length) {
-        const u = recent.rows[0];
-        const newSid = randomHex(32);
-        await query(
-          `INSERT INTO sessions (token_hash, user_id, expires_at)
-           VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
-          [sha256(newSid), u.id]
-        );
-        res.cookie('sid', newSid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
-        if (req.headers.accept?.includes('text/html') && !req.xhr) {
-          return res.redirect('/?verified=ok');
-        }
-        return res.json({
-          status: 'ok',
-          ok: true,
-          message: 'Email address verified.',
-          token: newSid,
-          phone: u.mobile_number
-        });
-      }
-
       if (req.headers.accept?.includes('text/html')) {
         return res.redirect('/?verified=invalid');
       }
@@ -495,6 +449,11 @@ async function handleEmailVerification(req, res) {
     const tok = r.rows[0];
     await query('UPDATE users SET email_verified_at = NOW() WHERE id = $1', [tok.user_id]);
     await query('DELETE FROM verification_tokens WHERE id = $1', [tok.id]);
+
+    if (tok.mobile_verified) {
+      if (req.headers.accept?.includes('text/html') && !req.xhr) return res.redirect('/?verified=ok');
+      return res.json({ status: 'ok', mobileVerified: true });
+    }
 
     // Create session cookie so subsequent OTP requests are authenticated
     const sid = randomHex(32);
@@ -530,8 +489,7 @@ async function handleEmailVerification(req, res) {
       status: 'ok',
       message: 'Email address successfully verified!',
       token: sid,
-      phone: tok.mobile_number,
-      devCode: otpCode
+      phone: tok.mobile_number
     });
   } catch (err) {
     console.error('Email verify error:', err);
@@ -545,172 +503,64 @@ async function handleEmailVerification(req, res) {
 router.get('/verify-email', handleEmailVerification);
 router.post('/verify-email', handleEmailVerification);
 
-// 6.5 OTP INFO (Resilient session lookup)
+// OTP endpoints only operate on the account identified by the verification session.
+async function verificationUser(req) {
+  const sid = req.cookies?.sid || req.headers.authorization?.replace('Bearer ', '');
+  if (!sid) return null;
+  const r = await query(
+    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
+    [sha256(sid)]
+  );
+  const user = r.rows[0];
+  return user?.email_verified_at ? user : null;
+}
+
 router.get(['/otp/info', '/otp-info'], async (req, res) => {
-  const sid = req.cookies?.sid || (req.headers.authorization && req.headers.authorization.replace('Bearer ', ''));
-  let userId = null;
-  let phone = '';
-  let mobileVerified = false;
-
-  if (sid) {
-    try {
-      const r = await query(
-        `SELECT u.id, u.mobile_number, u.mobile_verified, u.mobile_verified_at
-         FROM sessions s JOIN users u ON u.id = s.user_id
-         WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
-        [sha256(sid)]
-      );
-      if (r.rows.length) {
-        const u = r.rows[0];
-        userId = u.id;
-        phone = u.mobile_number || '';
-        mobileVerified = !!u.mobile_verified || !!u.mobile_verified_at;
-      }
-    } catch (_) {}
+  try {
+    const user = await verificationUser(req);
+    if (!user) return res.status(401).json({ error: 'Open your email verification link or log in to continue.' });
+    const tok = await query(
+      `SELECT id FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp' AND expired_at > NOW()`,
+      [user.id]
+    );
+    return res.json({ mobileVerified: !!user.mobile_verified, phone: user.mobile_number || '', hasActiveOtp: tok.rows.length > 0 });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not check mobile verification. Please try again.' });
   }
-  if (!userId) {
-    try {
-      const r = await query(
-        `SELECT u.id, u.mobile_number, u.mobile_verified, u.mobile_verified_at
-         FROM verification_tokens t JOIN users u ON u.id = t.user_id
-         WHERE t.type = 'mobile_otp' AND t.expired_at > NOW()
-         ORDER BY t.created_at DESC LIMIT 1`
-      );
-      if (r.rows.length) {
-        const u = r.rows[0];
-        userId = u.id;
-        phone = u.mobile_number || '';
-        mobileVerified = !!u.mobile_verified || !!u.mobile_verified_at;
-      }
-    } catch (_) {}
-  }
-
-  let hasActiveOtp = false;
-  if (userId) {
-    try {
-      const tok = await query(
-        `SELECT id FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp' AND expired_at > NOW()`,
-        [userId]
-      );
-      hasActiveOtp = tok.rows.length > 0;
-    } catch (_) {}
-  }
-
-  return res.json({
-    mobileVerified,
-    phone,
-    hasActiveOtp
-  });
 });
 
-// 7. SEND / RESEND MOBILE OTP
 router.post(['/otp/resend', '/send-otp'], async (req, res) => {
-  const sid = req.cookies?.sid || (req.headers.authorization && req.headers.authorization.replace('Bearer ', ''));
-  let userId = null;
-  let phone = null;
-
-  if (sid) {
-    try {
-      const r = await query(
-        `SELECT u.id, u.mobile_number FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
-        [sha256(sid)]
-      );
-      if (r.rows.length) {
-        userId = r.rows[0].id;
-        phone = r.rows[0].mobile_number;
-      }
-    } catch (_) {}
-  }
-
-  if (!userId) {
-    try {
-      const r = await query(
-        `SELECT t.user_id, u.mobile_number FROM verification_tokens t JOIN users u ON u.id = t.user_id WHERE t.type = 'mobile_otp' AND t.created_at > NOW() - INTERVAL '15 minutes' ORDER BY t.created_at DESC LIMIT 1`
-      );
-      if (r.rows.length) {
-        userId = r.rows[0].user_id;
-        phone = r.rows[0].mobile_number;
-      }
-    } catch (_) {}
-  }
-
-  if (!userId) {
-    return res.status(401).json({ error: 'Session expired. Please log in again.' });
-  }
-
   try {
+    const user = await verificationUser(req);
+    if (!user) return res.status(401).json({ error: 'Open your email verification link or log in to continue.' });
+    if (user.mobile_verified) return res.status(409).json({ error: 'Mobile number already verified. Please log in.' });
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await query(`DELETE FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp'`, [userId]);
+    await query(`DELETE FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp'`, [user.id]);
     await query(
       `INSERT INTO verification_tokens (user_id, token_hash, type, expired_at) VALUES ($1, $2, 'mobile_otp', NOW() + INTERVAL '10 minutes')`,
-      [userId, sha256(code)]
+      [user.id, sha256(code)]
     );
-
-    if (phone) {
-      await sendSms(phone.trim(), `PawCare Security: Your verification code is ${code}. Valid for 10 minutes.`);
-    }
-    res.json({ status: 'ok', ok: true, message: `Verification code sent to ${phone || 'your phone'}.`, devCode: code });
+    if (user.mobile_number) await sendSms(user.mobile_number.trim(), `PawCare Security: Your verification code is ${code}. Valid for 10 minutes.`);
+    res.json({ status: 'ok', ok: true, message: 'Verification code sent to your registered phone.' });
   } catch (err) {
-    console.error('Send OTP error:', err);
     res.status(500).json({ error: 'Failed to send OTP.' });
   }
 });
 
-// 8. VERIFY MOBILE OTP (Session + Code token fallback)
 router.post(['/otp/verify', '/verify-otp'], async (req, res) => {
   const code = String(req.body?.code ?? '').trim();
-  if (!code) return res.status(400).json({ error: 'Code is required.' });
-
-  const sid = req.cookies?.sid || (req.headers.authorization && req.headers.authorization.replace('Bearer ', ''));
-  let userId = null;
-  let userObj = null;
-
-  if (sid) {
-    try {
-      const s = await query(
-        `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
-        [sha256(sid)]
-      );
-      if (s.rows.length) {
-        userId = s.rows[0].id;
-        userObj = s.rows[0];
-      }
-    } catch (_) {}
-  }
-
+  if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: 'Enter the 6-digit code.' });
   try {
-    let tok = null;
-    if (userId) {
-      const r = await query(
-        `SELECT * FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp' AND expired_at > NOW() ORDER BY created_at DESC LIMIT 1`,
-        [userId]
-      );
-      if (r.rows.length) {
-        tok = r.rows[0];
-      }
-    }
-
-    // If no token by userId or code doesn't match, check directly by code hash
-    if (!tok || tok.token_hash !== sha256(code)) {
-      const byCode = await query(
-        `SELECT t.*, u.id as uid, u.email, u.first_name, u.last_name, u.role, u.mobile_number
-         FROM verification_tokens t
-         JOIN users u ON u.id = t.user_id
-         WHERE t.type = 'mobile_otp' AND t.token_hash = $1 AND t.expired_at > NOW()
-         ORDER BY t.created_at DESC LIMIT 1`,
-        [sha256(code)]
-      );
-      if (byCode.rows.length) {
-        tok = byCode.rows[0];
-        userId = tok.uid;
-        userObj = tok;
-      }
-    }
-
-    if (!tok) {
-      return res.status(400).json({ error: 'Code has expired or is invalid. Request a new one.' });
-    }
-
+    const user = await verificationUser(req);
+    if (!user) return res.status(401).json({ error: 'Open your email verification link or log in to continue.' });
+    if (user.mobile_verified) return res.status(409).json({ error: 'Mobile number already verified. Please log in.' });
+    const r = await query(
+      `SELECT * FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp' AND expired_at > NOW() ORDER BY created_at DESC LIMIT 1`,
+      [user.id]
+    );
+    const tok = r.rows[0];
+    if (!tok) return res.status(400).json({ error: 'Code has expired or is invalid. Request a new one.' });
     if (tok.token_hash !== sha256(code)) {
       const attempts = (tok.attempts || 0) + 1;
       if (attempts >= 3) {
@@ -720,61 +570,22 @@ router.post(['/otp/verify', '/verify-otp'], async (req, res) => {
       await query('UPDATE verification_tokens SET attempts = $1 WHERE id = $2', [attempts, tok.id]);
       return res.status(400).json({ error: `Incorrect code. ${3 - attempts} attempt(s) remaining.` });
     }
-
-    await query('UPDATE users SET mobile_verified = true, mobile_verified_at = NOW() WHERE id = $1', [userId]);
-    await query('DELETE FROM verification_tokens WHERE id = $1', [tok.id]);
-
-    // Issue fresh 7-day session token
-    const newSid = randomHex(32);
-    await query(
-      `INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
-      [sha256(newSid), userId]
-    );
-    res.cookie('sid', newSid, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 86400 * 1000 });
-
-    const fullURes = await query(
-      `SELECT u.*, a.house_street, a.country, a.city, a.state, a.zip_code
-       FROM users u
-       LEFT JOIN addresses a ON a.user_id = u.id
-       WHERE u.id = $1`,
-      [userId]
-    );
-    if (fullURes.rows.length) {
-      userObj = fullURes.rows[0];
-    }
-
-    const safeUser = {
-      id: userId,
-      email: userObj?.email || '',
-      name: `${userObj?.first_name || ''}${userObj?.middle_initial ? ' ' + userObj.middle_initial + '.' : ''} ${userObj?.last_name || ''}`.trim(),
-      firstName: userObj?.first_name || '',
-      lastName: userObj?.last_name || '',
-      middleInitial: userObj?.middle_initial || '',
-      role: userObj?.role || 'owner',
-      vetId: userObj?.vet_id,
-      ownerId: userObj?.owner_id || userId,
-      phone: userObj?.mobile_number || '',
-      birthday: userObj?.birthday ? String(userObj.birthday).slice(0, 10) : '',
-      houseStreet: userObj?.house_street || '',
-      country: userObj?.country || '',
-      state: userObj?.state || '',
-      city: userObj?.city || '',
-      zipCode: userObj?.zip_code || '',
-      address: userObj?.house_street ? `${userObj.house_street}, ${userObj.city}, ${userObj.state} ${userObj.zip_code}, ${userObj.country}` : '',
-      mobileVerified: true,
-      mobile_verified: true,
-      emailVerified: true
-    };
-
-    res.json({
-      status: 'ok',
-      ok: true,
-      message: 'Mobile number verified successfully!',
-      token: newSid,
-      user: safeUser
+    const completed = await withTransaction(async client => {
+      const consumed = await client.query(
+        `DELETE FROM verification_tokens WHERE id = $1 AND token_hash = $2 AND expired_at > NOW() RETURNING user_id`,
+        [tok.id, sha256(code)]
+      );
+      if (!consumed.rows.length) return false;
+      await client.query('UPDATE users SET mobile_verified = true, mobile_verified_at = NOW() WHERE id = $1', [user.id]);
+      await client.query(`DELETE FROM verification_tokens WHERE user_id = $1 AND type = 'mobile_otp'`, [user.id]);
+      // Verification completes registration; a password login must create the next session.
+      await client.query('DELETE FROM sessions WHERE user_id = $1', [user.id]);
+      return true;
     });
+    if (!completed) return res.status(400).json({ error: 'Code has expired or was already used. Request a new one.' });
+    res.clearCookie('sid', { path: '/' });
+    return res.json({ status: 'ok', ok: true, requiresLogin: true, message: 'Account verified. Please log in.' });
   } catch (err) {
-    console.error('Verify OTP error:', err);
     res.status(500).json({ error: 'Code verification failed.' });
   }
 });

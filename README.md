@@ -34,3 +34,14 @@ Replace the `db`/`setDb` state in `src/App.jsx` and the add/edit/delete handlers
 | Reports | yes | yes | no | no |
 
 Rules live in each entity's `perm` in `src/lib.jsx`. Buttons are hidden in the UI, and `src/EntityPage.jsx` re-checks them on save and delete.
+
+## Account activation
+
+Sign up → verify the email link → enter the SMS OTP → log in with your password.
+Email links open the OTP screen directly. Verification sessions cannot open the
+portal; completing OTP clears them and returns to login. Reloading the OTP screen
+resumes the same account's pending verification.
+
+Run `npm run test:auth` with Node.js 24+ for the HTTP authentication regression
+checks. Tests isolate database and message delivery dependencies with Node's
+experimental module mocking; they do not send real email/SMS or use a live database.
