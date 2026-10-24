@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import "./account.css";
 import { accountProfile, saveAccountProfile, formatAccountAddress } from "../../accountProfile.js";
 import { PW_RULES, pwStrength, validatePasswordChange, clean, normEmail, normPhone } from "../../validate.js";
@@ -56,6 +56,10 @@ function Contact({ o, me, setDb, say }) {
   const [country, setCountry] = useState(o.country ?? "Philippines");
   const [zipCode, setZipCode] = useState(o.zipCode || "");
 
+  const submitting = useRef(false);
+  const [pending, setPending] = useState(null);
+  const [emailCode, setEmailCode] = useState("");
+  const [phoneCode, setPhoneCode] = useState("");
   const [srv, setSrv] = useState({});
   const [busy, setBusy] = useState(false);
   const [top, setTop] = useState("");
@@ -71,15 +75,18 @@ function Contact({ o, me, setDb, say }) {
 
   const save = async e => {
     e.preventDefault();
+    if (submitting.current) return;
     setTop("");
+    setSrv({});
     if (!email) return setTop("Email is required.");
     if (!phone) return setTop("Mobile number is required.");
+    submitting.current = true;
     setBusy(true);
 
     const fullAddr = formatAccountAddress({ houseStreet, city, state, zipCode, country });
 
     try {
-      const r = await auth.updateContact({
+      const r = pending ? await auth.verifyContact({id:pending.id,emailCode,phoneCode}) : await auth.updateContact({
         email: normEmail(email),
         phone: normPhone(phone),
         address: fullAddr,
@@ -89,14 +96,22 @@ function Contact({ o, me, setDb, say }) {
         country,
         zipCode
       });
-      setDb(p => saveAccountProfile(p, me.id, r.profile));
-      say("Contact & address details saved successfully!");
+      if (r.pending) {
+        setPending(r.pending);
+        setEmailCode("");setPhoneCode("");
+      } else {
+        if (!r.profile || r.profile.id !== me.id) throw new Error("The server did not confirm your saved profile. Refresh your profile before continuing.");
+        setDb(p => saveAccountProfile(p, me.id, r.profile));
+        setPending(null);setEmailCode("");setPhoneCode("");
+        say("Contact & address details saved successfully!");
+      }
     } catch (x) {
       const m = explain(x);
       if (m.fields) setSrv(m.fields);
       else setTop(m.top);
       if (x.expired) say(x.message);
     }
+    submitting.current = false;
     setBusy(false);
   };
 
@@ -104,6 +119,7 @@ function Contact({ o, me, setDb, say }) {
 
   return (
     <form className="ow-card" onSubmit={save} noValidate>
+      <fieldset disabled={busy || !!pending} style={{border:0,padding:0,margin:0,minWidth:0}}>
       <h3>Registration & Account Details</h3>
       <p>Verified profile information from your registration.</p>
 
@@ -148,10 +164,22 @@ function Contact({ o, me, setDb, say }) {
         {formatAccountAddress({ houseStreet, city, state, zipCode, country }) || "No address on file"}
       </div>
 
+      </fieldset>
+      {pending && <section aria-label="Verify new contact details" style={{marginTop:16}}>
+        <h4>Verify your new contact details</h4>
+        <p>Your current email and mobile stay active until you verify and save. Codes expire in 10 minutes.</p>
+        <p><b>Email:</b> {pending.email}<br/><b>Mobile:</b> {pending.phone}</p>
+        {(!pending.emailSent || !pending.phoneSent) && <p className="err" role="alert">We could not confirm delivery of all codes. Your details have not changed. Wait one minute, then go back and request new codes.</p>}
+        <fieldset disabled={busy} style={{border:0,padding:0,margin:0,minWidth:0}}>
+          {pending.requireEmail && <Field id="contact-email-code" label="Code sent to new email" value={emailCode} onChange={v=>setEmailCode(v.replace(/\D/g,""))} inputMode="numeric" maxLen={6} autoComplete="one-time-code" />}
+          {pending.requirePhone && <Field id="contact-phone-code" label="Code sent to new mobile" value={phoneCode} onChange={v=>setPhoneCode(v.replace(/\D/g,""))} inputMode="numeric" maxLen={6} autoComplete="one-time-code" />}
+          <button type="button" className="btn ghost" onClick={()=>{setPending(null);setEmailCode("");setPhoneCode("");setTop("");}}>Back to edit / request new codes</button>
+        </fieldset>
+      </section>}
       {top && <p className="err" role="alert" style={{ marginTop: 12 }}>{top}</p>}
       <div className="row end" style={{ marginTop: 16 }}>
-        <button className="btn gold" disabled={!dirty || busy}>
-          {busy ? "Saving…" : dirty ? "Save changes" : "No changes yet"}
+        <button className="btn gold" disabled={busy || (pending ? !pending.emailSent || !pending.phoneSent || pending.requireEmail && emailCode.length!==6 || pending.requirePhone && phoneCode.length!==6 : !dirty)}>
+          {busy ? "Saving…" : pending ? "Verify and save changes" : dirty ? "Save changes" : "No changes yet"}
         </button>
       </div>
     </form>

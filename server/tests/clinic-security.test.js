@@ -366,3 +366,11 @@ test('one visit connects owner booking, reception intake, assigned vet care, che
   for(const role of ['owner','assistant','vet'])assert.ok(admin.log.some(l=>l.role===role),role+' audit retained');
   assert.ok(!owner.appts.some(a=>a.petId==='p2'));assert.deepEqual(owner.log,[]);
 });
+
+test('obsolete registration and vaccine writes are retired without mutations',async()=>{
+ for(const [role,path,body]of [['assistant','/owners',{name:''}],['assistant','/pets',{ownerId:'o1',name:'',weight:-5}],['vet','/vaccinations',{petId:'p1',done:true,date:'2099-01-01',doseNo:-2}]]){
+  calls=[];const before=structuredClone(db);
+  assert.equal((await request(role,'POST',path,body)).status,410);
+  assert.deepEqual(db,before);assert.ok(!calls.some(c=>/^(INSERT|UPDATE|DELETE) /.test(c.sql)));
+ }
+});

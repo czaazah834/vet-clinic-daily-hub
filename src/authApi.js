@@ -18,6 +18,7 @@ export const auth = {
   profile: () => api.get("/api/auth/profile"),
   profilePhoto: (photo) => api.post("/api/auth/profile/photo", { photo }),
   changePassword: (d) => api.post("/api/auth/password", d),
+  verifyContact: (d) => api.post("/api/auth/profile/contact/verify", d),
   updateContact: (d) => api.post("/api/auth/profile/contact", d),
   petPhoto: (id, photo) => api.post(`/api/owner/pets/${id}/photo`, { photo }),
   petAllergy: (id, d) => api.post(`/api/owner/pets/${id}/allergies`, d),

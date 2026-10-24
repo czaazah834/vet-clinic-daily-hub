@@ -205,7 +205,7 @@ export default function EntityPage({ ent, db, setDb, me, say }) {
             <button
               className="btn gold"
               onClick={() => {
-                if (ent === "owners" && me.role === "assistant") {
+                if (["owners", "pets"].includes(ent) && me.role === "assistant") {
                   setModal({ walkIn: true });
                 } else {
                   setModal({});

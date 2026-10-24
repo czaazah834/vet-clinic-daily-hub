@@ -77,22 +77,23 @@ test('photo storage errors return a failure instead of success', async () => {
   assert.equal((await request('/profile/photo', { photo: png })).status, 500);
 });
 for (const role of ['owner', 'assistant', 'vet', 'admin']) {
-  test(`${role} saves contact and address without requiring an owner row`, async () => {
-    steps = [session(role), { sql: /UPDATE users SET email/, params: ['new@example.test', '+639170000002', `test-${role}`] }, { sql: /SELECT id FROM addresses/, rows: [] }, { sql: /INSERT INTO addresses/, params: ['12 Test Street', 'Philippines', 'Test City', 'Test State', '1000', `test-${role}`] }];
-    if (role === 'owner') steps.push({ sql: /UPDATE owners SET email/, check: p => assert.equal(p[3], 'test-owner') });
-    const result = await request('/profile/contact', { email: 'New@example.test', phone: '+63 917 000 0002', houseStreet: '12 Test Street', city: 'Test City', state: 'Test State', country: 'Philippines', zipCode: '1000', userId: 'someone-else' });
-    assert.equal(result.status, 200);
-    assert.equal(result.data.profile.email, 'new@example.test');
-    assert.equal(result.data.profile.id, `test-${role}`);
+  test(`${role} saves address without changing trusted contacts`, async () => {
+    steps = [session(role), ...(role === 'owner' ? [{sql:/CREATE TABLE IF NOT EXISTS account_contact_changes/}] : []),
+      {sql:/SELECT \* FROM users WHERE id=.*FOR UPDATE/,rows:[user(role)]},
+      {sql:/UPDATE users SET email=/,params:[`${role}@example.test`,'+639170000001',`test-${role}`,false,false]},
+      {sql:/SELECT id FROM addresses/,rows:[]},
+      {sql:/INSERT INTO addresses/,params:['12 Test Street','Philippines','Test City','Test State','1000',`test-${role}`]}];
+    if(role==='owner')steps.push({sql:/UPDATE owners SET email=/,check:p=>assert.equal(p[3],'test-owner')});
+    steps.push({sql:/DELETE FROM account_contact_changes/,params:[`test-${role}`]},{sql:/INSERT INTO audit_logs/});
+    const result = await request('/profile/contact', {email:`${role}@example.test`,phone:'+63 917 000 0001',houseStreet:'12 Test Street',city:'Test City',state:'Test State',country:'Philippines',zipCode:'1000',userId:'someone-else'});
+    assert.equal(result.status,200);assert.equal(result.data.profile.email,`${role}@example.test`);assert.equal(result.data.profile.id,`test-${role}`);
   });
 }
-test('invalid contact fields and duplicate email report field errors', async () => {
-  steps = [session()];
-  assert.equal((await request('/profile/contact', { email: 'bad', phone: 'abc' })).status, 400);
-  steps = [session(), { sql: /UPDATE users SET email/, error: { code: '23505' } }];
-  const duplicate = await request('/profile/contact', { email: 'duplicate@example.test', phone: '+639170000002' });
-  assert.equal(duplicate.status, 409);
-  assert.ok(duplicate.data.errors.email);
+test('invalid contact fields and duplicate email report field errors',async()=>{
+ steps=[session()];assert.equal((await request('/profile/contact',{email:'bad',phone:'abc'})).status,400);
+ steps=[session(),{sql:/SELECT \* FROM users WHERE id=.*FOR UPDATE/,rows:[user('vet')]},{sql:/SELECT id FROM users WHERE LOWER\(email\)=/,rows:[{id:'other'}]}];
+ const duplicate=await request('/profile/contact',{email:'duplicate@example.test',phone:'+639170000002'});
+ assert.equal(duplicate.status,409);assert.ok(duplicate.data.errors.email);
 });
 test('weak, unchanged and mismatched passwords are rejected', async () => {
   for (const body of [{ cur: 'old', next: 'weak', conf: 'weak' }, { cur: 'SamePassword12!', next: 'SamePassword12!', conf: 'SamePassword12!' }, { cur: 'old', next: 'NewPassword12!', conf: 'different' }]) {
