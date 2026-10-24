@@ -1,3 +1,4 @@
+import { confirmedPayment } from "../receptionSaves.js";
 import { ownerBill } from "../ownerBilling.js";
 import { money, paymentDate, paymentTime } from "../assistantWorkflow.js";
 import { useCheckoutClaim } from "../useCheckoutClaim.js";
@@ -26,11 +27,12 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
   const [method, setMethod] = useState(appt.paymentMethod?.trim() || (appt.billingStatus === "Paid" ? "Not recorded" : "Cash"));
   const [discount, setDiscount] = useState(String(appt.discount || 0));
-  const [cashTendered, setCashTendered] = useState(String(appt.cashTendered ?? appt.amount ?? 600));
+  const [cashTendered, setCashTendered] = useState("");
   const [refNo, setRefNo] = useState(appt.paymentReference || "");
   const [formErr, setFormErr] = useState("");
   const [paid, setPaid] = useState(appt.billingStatus === "Paid");
   const [loading, setLoading] = useState(false);
+  const paying = useRef(false);
   const claim = useCheckoutClaim(appt.id, paid, me.role === "assistant");
   const loadedInvoice = useRef(false);
   const prescribed = claim.prescriptionItems || record.prescriptionItems || [];
@@ -73,13 +75,6 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   const total = Math.max(0, subtotal - (+discount || 0));
   const change = method === "Cash" ? Math.max(0, (+cashTendered || 0) - total) : 0;
 
-  // Keep cash tendered in sync when total changes if untouched
-  useEffect(() => {
-    if (method === "Cash" && (+cashTendered < total || +cashTendered === 600)) {
-      setCashTendered(String(total));
-    }
-  }, [total, method]);
-
   const filteredCatalog = search.trim()
     ? catalog.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.category.toLowerCase().includes(search.toLowerCase()))
     : catalog;
@@ -87,9 +82,9 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   const handlePay = async (ev) => {
     ev.preventDefault();
     setFormErr("");
-    if (loading || me.role !== "assistant") return;
+    if (paying.current || me.role !== "assistant") return;
 
-    if (!items.length) {
+    if (!items.length || !Number.isFinite(total) || total <= 0) {
       setFormErr("At least one billable procedure or product is required.");
       return;
     }
@@ -98,8 +93,8 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
       return;
     }
     if (method === "Cash") {
-      const tendered = +cashTendered || 0;
-      if (tendered < total) {
+      const tendered = Number(cashTendered);
+      if (!cashTendered.trim() || !Number.isFinite(tendered) || tendered < total) {
         setFormErr(`Cash received (₱${tendered.toLocaleString()}) must be equal to or greater than the total amount due (₱${total.toLocaleString()}).`);
         return;
       }
@@ -111,6 +106,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
     }
 
     if (!claim.ready) { setFormErr("Reclaim this checkout before recording payment. Your invoice entries are preserved."); return; }
+    paying.current = true;
     setLoading(true);
 
     const payload = {
@@ -120,7 +116,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
       billingStatus: "Paid",
       paymentMethod: method,
       paymentReference: method !== "Cash" ? refNo.trim() : `CASH-${Date.now().toString().slice(-6)}`,
-      cashTendered: method === "Cash" ? (+cashTendered || total) : total,
+      cashTendered: method === "Cash" ? Number(cashTendered) : total,
       changeAmount: change,
       invoiceItems: items,
       actorName: me.name,
@@ -130,10 +126,11 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
     let payment;
     try {
       const response = await api.post(`/api/appointments/${appt.id}/billing`, payload);
-      payment = response.appointment;
+      payment = confirmedPayment(response, appt, payload);
     } catch (err) {
       setFormErr(err.message);
       setLoading(false);
+      paying.current = false;
       return;
     }
 
@@ -144,30 +141,31 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
     }));
 
     setPaymentRecord(payment);
+    paying.current = false;
     setLoading(false);
     setPaid(true);
     onPaid && onPaid(payment.amount);
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
-      <div className="modal" style={{ width: "min(620px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "22px 26px" }}>
+    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !loading && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="billing-title" style={{ width: "min(620px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "22px 26px" }}>
         
-        {!paid && me.role === "assistant" && !claim.ready && <div role="alert" style={{padding:12,background:"#fff7ed",marginBottom:12}}>
+        {!paid && me.role === "assistant" && !claim.ready && <div role={claim.error ? "alert" : "status"} style={{padding:12,background:"#fff7ed",marginBottom:12}}>
           {claim.error || "Reserving this checkout for you…"}
           {claim.error && <button className="btn ghost sm" onClick={claim.retry}>Retry checkout claim</button>}
         </div>}
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #f1f5f9", paddingBottom: "12px" }}>
           <div>
-            <h3 style={{ margin: 0, color: "var(--navy)", fontSize: "1.25rem", display: "flex", alignItems: "center", gap: "8px" }}>
+            <h3 id="billing-title" style={{ margin: 0, color: "var(--navy)", fontSize: "1.25rem", display: "flex", alignItems: "center", gap: "8px" }}>
               <Receipt size={22} color="#0284c7" /> Front Desk Checkout &amp; Billing
             </h3>
             <span style={{ fontSize: "12px", color: "#64748b" }}>
               Search clinical services, procedures &amp; medication prices from official database
             </span>
           </div>
-          <button type="button" className="btn sm ghost" onClick={onClose} aria-label="Close" style={{ padding: "6px 10px" }}><X size={16} aria-hidden="true" /></button>
+          <button type="button" className="btn sm ghost" onClick={onClose} disabled={loading} aria-label="Close" style={{ padding: "6px 10px" }}><X size={16} aria-hidden="true" /></button>
         </div>
 
         {paid ? (
@@ -220,6 +218,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
           </div>
         ) : (
           me.role !== "assistant" ? <p role="status">This visit is awaiting front desk checkout. Financial records are available for review after payment.</p> : <form onSubmit={handlePay}>
+            <fieldset disabled={loading || !claim.ready} style={{border:0,padding:0,margin:0,minWidth:0}}>
             {/* Patient Context Card */}
             <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "10px", marginBottom: "14px", border: "1px solid #e2e8f0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
@@ -404,10 +403,12 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             {/* Discount & Payment Method */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
               <div className="fld" style={{ margin: 0 }}>
-                <label style={{ fontSize: "12px" }}>Discount / Senior (₱)</label>
+                <label htmlFor="billing-discount" style={{ fontSize: "12px" }}>Discount / Senior (₱)</label>
                 <input
                   type="number"
                   min="0"
+                  id="billing-discount"
+                  step="0.01"
                   value={discount}
                   onChange={e => setDiscount(e.target.value)}
                   placeholder="0"
@@ -430,10 +431,13 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             {method === "Cash" ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px", background: "#f8fafc", padding: "10px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
                 <div className="fld" style={{ margin: 0 }}>
-                  <label style={{ fontSize: "12px", fontWeight: 600 }}>Cash Received (₱) *</label>
+                  <label htmlFor="billing-cash" style={{ fontSize: "12px", fontWeight: 600 }}>Cash Received (₱) *</label>
                   <input
                     type="number"
                     min="0"
+                    id="billing-cash"
+                    step="0.01"
+                    placeholder="Enter actual cash received"
                     value={cashTendered}
                     onChange={e => setCashTendered(e.target.value)}
                     style={{ padding: "6px 10px", fontSize: "13px", fontWeight: 700 }}
@@ -453,6 +457,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                 <input
                   type="text"
                   placeholder="e.g. GCASH-98213894 or POS-4412"
+                  maxLength={100}
                   value={refNo}
                   onChange={e => setRefNo(e.target.value)}
                   style={{ padding: "6px 10px", fontSize: "13px" }}
@@ -485,6 +490,8 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                 {loading ? "Processing..." : "Settle & Process Payment"}
               </button>
             </div>
+            </fieldset>
+            {loading && <p role="status">Saving payment… Please wait for confirmation.</p>}
           </form>
         )}
 

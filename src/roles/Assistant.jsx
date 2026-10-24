@@ -177,8 +177,8 @@ function Dash({ db, setDb, me, go, say }) {
                         <div className="sf-reason">{a.reason}</div>
                         {iv && (
                           <div className="sf-chips">
-                            <span className={`sf-chip ${tempTone(iv.tempAnalysis?.status)}`}><Thermometer size={12} aria-hidden="true" />{iv.temp}&deg;C, {iv.tempAnalysis?.label || "Normal"}</span>
-                            <span className={`sf-chip ${iv.weightAnalysis?.status === "ideal" ? "" : "wa"}`}><Scale size={12} aria-hidden="true" />{iv.weight} kg, {iv.weightAnalysis?.label || "Normal"}</span>
+                            <span className={`sf-chip ${tempTone(iv.tempAnalysis?.status)}`}><Thermometer size={12} aria-hidden="true" />{iv.temp}&deg;C, {iv.tempAnalysis?.label || "Assessment not recorded"}</span>
+                            <span className={`sf-chip ${iv.weightAnalysis?.status === "ideal" ? "" : "wa"}`}><Scale size={12} aria-hidden="true" />{iv.weight} kg, {iv.weightAnalysis?.label || "Assessment not recorded"}</span>
                             {iv.weightAnalysis?.trend && <span className="sf-chip mu">{iv.weightAnalysis.trend}</span>}
                           </div>
                         )}

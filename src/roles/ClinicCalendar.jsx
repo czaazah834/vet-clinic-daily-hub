@@ -1,3 +1,4 @@
+import { confirmedBooking } from "../receptionSaves.js";
 import { completedVisitRecord } from "../vetQueue.js";
 import { ConsultationDetailModal } from "./ConsultationsPage.jsx";
 import { canBookAppointments } from "../appointmentPermissions.js";
@@ -200,38 +201,12 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
     if (!canBook) throw new Error("Only owners and reception can book visits.");
     const newApptId = "a_" + uid();
     const reason = serviceName ? `${SERVICES[serviceName]?.label || serviceName}: ${reasonText}` : reasonText;
-    const newAppt = {
-      id: newApptId,
-      followUpId: followUpId || null,
-      petId,
-      vetId: targetVetId,
-      date: targetDate,
-      time: targetTime,
-      service: serviceName, durationMinutes: SERVICES[serviceName]?.dur,
-      reason,
-      status: "Scheduled",
-      billingStatus: "Unbilled",
-      amount: 600,
+    const payload = {
+      id: newApptId, followUpId: followUpId || null, petId, vetId: targetVetId,
+      date: targetDate, time: targetTime, service: serviceName, reason,
+      actorName: me.name, actorRole: me.role,
     };
-
-    try {
-      await api.post("/api/appointments", {
-        id: newApptId,
-        followUpId: followUpId || null,
-        petId,
-        vetId: targetVetId,
-        date: targetDate,
-        time: targetTime,
-        service: serviceName,
-        reason,
-        amount: 600,
-        actorName: me.name,
-        actorRole: me.role
-      });
-    } catch (err) {
-      say && say(err.message);
-      return;
-    }
+    const newAppt = confirmedBooking(await api.post("/api/appointments", payload), payload);
 
     setDb(p => ({
       ...p,
@@ -1040,6 +1015,9 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
   const [reason, setReason] = useState(slot.reason || "");
   const [followUpId, setFollowUpId] = useState(slot.followUpId || "");
   const [dateErr, setDateErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const bookingFlight = useRef(false);
 
   const curYear = new Date().getFullYear();
   const maxBookingDate = lastDay();
@@ -1065,8 +1043,10 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
     setDateErr(validateDate(val));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (bookingFlight.current) return;
+    setSaveError("");
     if (!petId) return;
     if (!availability.slots.includes(time)) { setDateErr("Choose an available time from the list."); availability.refresh(); return; }
     const err = validateDate(date);
@@ -1079,28 +1059,39 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
       setDateErr(`${selectedPet.name || "Patient"} already has a scheduled visit at ${time} on this date.`);
       return;
     }
-    onBook(petId, service, reason || "General visit", vetId, date, time, followUpId);
+    bookingFlight.current = true;
+    setSaving(true);
+    try {
+      await onBook(petId, service, reason.trim() || "General visit", vetId, date, time, followUpId);
+    } catch (error) {
+      setSaveError(error.message);
+      availability.refresh();
+    } finally {
+      bookingFlight.current = false;
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ width: "min(540px, 100%)" }}>
+    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !saving && onClose()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="quick-book-title" style={{ width: "min(540px, 100%)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px", marginBottom: "16px" }}>
-          <h3 style={{ margin: 0, fontSize: "18px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <h3 id="quick-book-title" style={{ margin: 0, fontSize: "18px", display: "flex", alignItems: "center", gap: "8px" }}>
             <Calendar size={20} color="var(--navy)" />
             <span>Book Clinic Visit</span>
           </h3>
-          <button className="btn ghost sm" onClick={onClose}>
+          <button className="btn ghost sm" disabled={saving} onClick={onClose} aria-label="Close booking">
             <X size={16} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit}>
+          <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
           {slot.vaccineDueDate && <p className="ow-note">Approved booster due: {slot.vaccineDueDate}. Choose an available clinic visit; this does not change the approved due date.</p>}
           <div style={{ display: "grid", gap: "12px" }}>
             <div className="fld">
-              <label>Select Patient (Pet &amp; Owner)</label>
-              <select value={petId} onChange={e => { setPetId(e.target.value); setFollowUpId(""); }} required>
+              <label htmlFor="quick-book-pet">Select Patient (Pet &amp; Owner)</label>
+              <select id="quick-book-pet" value={petId} onChange={e => { setPetId(e.target.value); setFollowUpId(""); }} required>
                 {db.pets.map(p => {
                   const o = db.owners.find(x => x.id === p.ownerId) || {};
                   return (
@@ -1116,8 +1107,8 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
             {followUp && <section aria-label="Selected follow-up instructions" className="ow-note"><b>{followUp.careStatus} · Target: {followUp.followUpDate}</b><p style={{whiteSpace:"pre-wrap"}}>{followUp.followUpReason}</p><small>Select an available visit time. Booking does not change the vet's target date.</small></section>}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div className="fld">
-                <label>Veterinarian</label>
-                <select value={vetId} onChange={e => setVetId(e.target.value)}>
+                <label htmlFor="quick-book-vetId">Veterinarian</label>
+                <select id="quick-book-vetId" value={vetId} onChange={e => setVetId(e.target.value)}>
                   {doctors.map(([id, name]) => (
                     <option key={id} value={id}>{name}</option>
                   ))}
@@ -1125,8 +1116,8 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
               </div>
 
               <div className="fld">
-                <label>Service Category</label>
-                <select value={service} onChange={e => setService(e.target.value)}>
+                <label htmlFor="quick-book-service">Service Category</label>
+                <select id="quick-book-service" value={service} onChange={e => setService(e.target.value)}>
                   {Object.entries(SERVICES).map(([key, item]) => <option key={key} value={key}>{item.label} ({item.dur} min)</option>)}
                 </select>
               </div>
@@ -1134,8 +1125,9 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div className="fld">
-                <label>Date *</label>
+                <label htmlFor="quick-book-date">Date *</label>
                 <input
+                  id="quick-book-date"
                   type="date"
                   value={date}
                   min={TODAY}
@@ -1152,10 +1144,10 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
               </div>
 
               <div className="fld">
-                <label>Time Slot</label>
+                <label htmlFor="quick-book-time">Time Slot</label>
                 {availability.error && <p role="alert">{availability.error} <button type="button" onClick={availability.refresh}>Retry</button></p>}
                 {availability.loading && <small>Checking availability…</small>}
-                <select value={availability.slots.includes(time) ? time : ""} onChange={e => setTime(e.target.value)}>
+                <select id="quick-book-time" value={availability.slots.includes(time) ? time : ""} onChange={e => setTime(e.target.value)}>
                   <option value="">Choose an available time</option>
                   {availability.slots.map(t => (
                     <option key={t} value={t}>{t}</option>
@@ -1165,9 +1157,11 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
             </div>
 
             <div className="fld">
-              <label>Reason / Owner Symptoms</label>
+              <label htmlFor="quick-book-reason">Reason / Owner Symptoms</label>
               <input
+                id="quick-book-reason"
                 type="text"
+                maxLength={300}
                 value={reason}
                 onChange={e => setReason(e.target.value)}
                 placeholder="e.g. Annual booster, lethargy, skin itching..."
@@ -1177,11 +1171,14 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
 
           <div className="row end" style={{ marginTop: "18px", gap: "10px" }}>
             <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn gold" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <button type="submit" disabled={saving || availability.loading || !!availability.error || !availability.slots.includes(time)} className="btn gold" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <Check size={16} />
-              <b>Confirm Booking</b>
+              <b>{saving ? "Saving booking…" : "Confirm Booking"}</b>
             </button>
           </div>
+          </fieldset>
+          {saving && <p role="status">Saving booking… Please wait for confirmation.</p>}
+          {saveError && <p role="alert" className="err">{saveError}</p>}
         </form>
       </div>
     </div>

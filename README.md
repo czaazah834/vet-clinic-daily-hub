@@ -686,3 +686,17 @@ errors. Staff polling waits for pending requests; access changes reload the
 current revisions. Audit results identify their saved search and do not append
 pages from a failed new search. Invitation fields remain fixed while sending,
 and the created activation link stays visible while staff lists refresh.
+
+### Reception booking and checkout confirmation
+
+Calendar booking locks the form while saving, keeps failed entries visible with
+an inline error, and uses the exact server-confirmed visit. Checkout shows an
+initial loading state and retains loaded tasks on a failed refresh; reads do not
+overlap and obsolete responses cannot replace newer inbox data.
+
+Cash received is entered by reception and is never filled from a booking amount
+or increased when invoice items change. Payment fields lock while saving. A
+receipt opens only after the response confirms the same completed visit, paid
+amount, itemized invoice and payment details. Server role, claim and invoice
+validation remain authoritative. Missing intake assessments are shown as
+unrecorded rather than normal.
