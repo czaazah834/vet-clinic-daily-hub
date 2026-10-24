@@ -95,39 +95,16 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
   const owners = db.owners || [];
   const vaccs = db.vacc || db.vaccs || [];
 
-  const handleCheckInPet = async (pet) => {
-    let appt = (db.appts || []).find(a => a.petId === pet.id && a.date === TODAY && a.status !== "Cancelled");
-    if (!appt) {
-      const timeStr = new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" });
-      const newApptPayload = {
-        id: "a_" + uid(),
-        petId: pet.id,
-        vetId: "v1",
-        date: TODAY,
-        time: timeStr,
-        reason: "Walk-in Consultation & Check-in",
-        status: "Scheduled",
-        billingStatus: "Unbilled",
-        amount: 600,
-        actorName: me?.name || "Staff",
-        actorRole: me?.role || "assistant"
-      };
-      try {
-        await api.post("/api/appointments", newApptPayload);
-      } catch (err) {
-        console.warn("Backend appointment fallback:", err);
-      }
-      appt = newApptPayload;
-      setDb(p => ({
-        ...p,
-        appts: [appt, ...(p.appts || [])],
-        log: addLog(p, me, `Initiated walk-in arrival check-in for ${pet.name}.`)
-      }));
-    }
-    setCheckInAppt(appt);
-  };
+  // Front desk priority: patients who already hold an appointment today. Walk-ins are registered from the Front Desk dashboard instead.
+  const canCheckIn = me?.role === "assistant" || me?.role === "admin";
+  const todayApptByPet = {};
+  (db.appts || [])
+    .filter(a => a.date === TODAY && !["Cancelled", "No-show"].includes(a.status))
+    .sort((x, y) => (x.time || "").localeCompare(y.time || ""))
+    .forEach(a => { if (!todayApptByPet[a.petId]) todayApptByPet[a.petId] = a; });
+  const isArrivable = a => !!a && ["Scheduled", "Confirmed"].includes(a.status);
 
-  // Filtered Pets
+  // Filtered Pets (patients with an appointment today first, in time order)
   const filteredPets = pets.filter(p => {
     const o = owners.find(x => x.id === p.ownerId || x.userId === p.ownerId) || {};
     const norm = normalizeSpecies(p.species);
@@ -148,6 +125,12 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
       (o.phone && o.phone.includes(q)) ||
       (o.email && o.email.toLowerCase().includes(q))
     );
+  });
+  filteredPets.sort((x, y) => {
+    const ax = todayApptByPet[x.id], ay = todayApptByPet[y.id];
+    if (!!ax !== !!ay) return ax ? -1 : 1;
+    if (ax && ay) return (ax.time || "").localeCompare(ay.time || "");
+    return (x.name || "").localeCompare(y.name || "");
   });
 
   // Filtered Owners
@@ -324,18 +307,20 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                     const o = owners.find(x => x.id === p.ownerId || x.userId === p.ownerId) || {};
                     const age = p.birth ? petAge(p.birth) : "";
                     const vs = getPetVaccState(p.id, vaccs);
+                    const rowBg = isArrivable(todayApptByPet[p.id]) ? "#fffbea" : "transparent";
 
                     return (
                       <tr
                         key={p.id}
                         onClick={() => setCardPetId(p.id)}
                         style={{
+                          background: rowBg,
                           borderBottom: "1px solid #f1f5f9",
                           cursor: "pointer",
                           transition: "background 0.15s ease",
                         }}
                         onMouseEnter={e => (e.currentTarget.style.background = "#f0f9ff")}
-                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                        onMouseLeave={e => (e.currentTarget.style.background = rowBg)}
                         title="Click row to open Digital Vaccination Card"
                       >
                         {/* Patient info */}
@@ -348,8 +333,13 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                               <b style={{ color: "var(--navy)", fontSize: "14px", textDecoration: "underline" }}>
                                 {p.name}
                               </b>
+                              {todayApptByPet[p.id] && (
+                                <span className={`sf-pill ${isArrivable(todayApptByPet[p.id]) ? "wa" : "ok"}`} style={{ marginLeft: 8 }}>
+                                  {isArrivable(todayApptByPet[p.id]) ? `Appointment ${todayApptByPet[p.id].time}` : todayApptByPet[p.id].status}
+                                </span>
+                              )}
                               <div style={{ fontSize: "12px", color: "#64748b" }}>
-                                {formatSpeciesLabel(p.species)} &bull; {p.breed || "Mixed"} {age ? `&bull; ${age}` : ""}
+                                {formatSpeciesLabel(p.species)} &bull; {p.breed || "Mixed"} {age ? `\u2022 ${age}` : ""}
                               </div>
                             </div>
                           </div>
@@ -407,23 +397,16 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                         {/* Action link */}
                         <td style={{ padding: "12px 14px", textAlign: "right" }}>
                           <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }} onClick={e => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              className="btn sm"
-                              onClick={() => handleCheckInPet(p)}
-                              style={{
-                                padding: "4px 8px",
-                                fontSize: "11.5px",
-                                background: "#f0fdf4",
-                                color: "#166534",
-                                border: "1px solid #86efac",
-                                fontWeight: 700,
-                                borderRadius: "6px"
-                              }}
-                              title="Check in for today's visit with vitals"
-                            >
-                              Check In
-                            </button>
+                            {canCheckIn && isArrivable(todayApptByPet[p.id]) && (
+                              <button
+                                type="button"
+                                className="btn sm gold"
+                                onClick={() => setCheckInAppt(todayApptByPet[p.id])}
+                                title="Arrival check-in and vitals for today's appointment"
+                              >
+                                Check in
+                              </button>
+                            )}
                             <button
                               type="button"
                               className="btn sm ghost"
@@ -609,7 +592,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
           setDb={setDb}
           me={me}
           onClose={() => setCardPetId(null)}
-          onCheckIn={() => setCardPetId(null)}
+          onCheckIn={a => { setCardPetId(null); if (a) setCheckInAppt(a); }}
           onBill={() => setCardPetId(null)}
         />
       )}
