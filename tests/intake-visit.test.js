@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {intakeVisitSnapshot,sameIntakeVisit,savedIntakeVisit} from '../src/intakeVisit.js';
+import {checkInDateError,intakeVisitSnapshot,sameIntakeVisit,savedIntakeVisit} from '../src/intakeVisit.js';
 const visit={id:'visit',petId:'pet',vetId:'vet',date:'2026-10-24',time:'09:00',reason:'Examination',status:'Checked-in',intakeVitals:{weight:5.25,temp:38.6,notes:'Saved observations',fasted:false}};
 test('database and browser intake snapshots agree regardless of JSON property order',()=>{
  const raw={id:'visit',pet_id:'pet',vet_id:'vet',date:visit.date,time:visit.time,reason:visit.reason,status:visit.status,intake_vitals:{notes:'Saved observations',temp:38.6,fasted:false,weight:5.25}};
@@ -18,4 +18,12 @@ test('intake acknowledgment retains server values and rejects incomplete or wron
  assert.equal(savedIntakeVisit(response,visit).time,'09:03');
  assert.equal(savedIntakeVisit(response,visit).bookingKind,'walk-in');
  for(const result of [{success:true},{success:false,appointment:visit},{success:true,appointment:{...visit,id:'wrong'}},{success:true,appointment:{...visit,petId:'wrong'}},{success:true,appointment:{...visit,status:'Scheduled'}},{success:true,appointment:{...visit,intakeVitals:{weight:'5',temp:38}}}]) assert.throws(()=>savedIntakeVisit(result,visit),/did not confirm/);
+});
+
+test('initial intake requires the scheduled day while ongoing intake survives midnight',()=>{
+ for(const status of ['Scheduled','Confirmed']) {
+   assert.equal(checkInDateError({...visit,status},visit.date),null);
+   for(const date of ['2026-10-23','2026-10-25',undefined]) assert.match(checkInDateError({...visit,status,date},visit.date),/scheduled day/);
+ }
+ assert.equal(checkInDateError(visit,'2026-10-25'),null);
 });

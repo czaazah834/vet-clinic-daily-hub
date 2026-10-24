@@ -1,3 +1,5 @@
+import { checkInDateError } from '../src/intakeVisit.js';
+import { clinicClock } from './scheduling.js';
 import { query } from './db.js';
 
 const fail = (res, status, error) => res.status(status).json({ error });
@@ -129,10 +131,13 @@ export function validateStatusChange(row, body, user) {
   const remeasure = user.role === 'assistant' && row.status === 'Checked-in' && body.status === 'Checked-in';
   if (!remeasure && !(transitions[row.status] || []).includes(body.status)) return 'The visit has changed. Refresh and use its current next action.';
   if (user.role === 'vet' && !assignedTo(row, user)) return 'This visit is assigned to another veterinarian.';
+  if (body.date !== undefined || body.time !== undefined) return 'Use rescheduling to change the appointment date or time.';
   if (body.billingStatus !== undefined) return 'Billing changes require the checkout workflow.';
   if (user.role !== 'assistant' && ['intakeVitals', 'date', 'time', 'reason'].some(k => body[k] !== undefined)) return 'Only reception can record intake or change arrival details.';
   if (body.intakeVitals !== undefined && body.status !== 'Checked-in') return 'Vitals must be recorded during check-in.';
   if (body.status === 'Checked-in') {
+    const dateError = checkInDateError(row, clinicClock().date);
+    if (dateError) return dateError;
     const v = body.intakeVitals;
     if (!v || typeof v.weight !== 'number' || !Number.isFinite(v.weight) || v.weight < 0.05 || v.weight > 120 || typeof v.temp !== 'number' || !Number.isFinite(v.temp) || v.temp < 33 || v.temp > 45) return 'Record a valid measured weight (0.05–120 kg) and temperature (33–45°C).';
   }

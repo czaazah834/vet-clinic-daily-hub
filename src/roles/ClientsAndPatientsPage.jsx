@@ -1,3 +1,4 @@
+import { today as bookingToday } from "../booking.js";
 import { canBookAppointments } from "../appointmentPermissions.js";
 import { useState } from "react";
 import {
@@ -101,7 +102,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
   const canCheckIn = me?.role === "assistant";
   const todayApptByPet = {};
   (db.appts || [])
-    .filter(a => a.date === TODAY && !["Cancelled", "No-show"].includes(a.status))
+    .filter(a => a.date === bookingToday() && !["Cancelled", "No-show"].includes(a.status))
     .sort((x, y) => (x.time || "").localeCompare(y.time || ""))
     .forEach(a => { if (!todayApptByPet[a.petId]) todayApptByPet[a.petId] = a; });
   const isArrivable = a => !!a && ["Scheduled", "Confirmed"].includes(a.status);

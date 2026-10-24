@@ -1,3 +1,11 @@
+// Initial arrivals must use their reserved clinic day; ongoing intake can cross midnight.
+export function checkInDateError(visit, clinicDate) {
+  if (visit?.status !== 'Checked-in' && visit?.date !== clinicDate) {
+    return `Check-in is only available on the scheduled day (${visit?.date || 'date missing'}). Today in Manila is ${clinicDate}. Reschedule the appointment first if the day is incorrect.`;
+  }
+  return null;
+}
+
 // Both the browser and the locked database row use this intake-edit baseline.
 export function intakeVisitSnapshot(visit) {
   if (!visit) return null;

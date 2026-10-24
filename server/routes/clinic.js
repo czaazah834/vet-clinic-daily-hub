@@ -1563,10 +1563,9 @@ clinicRouter.put("/appointments/:id", (req, res) => saveBooking(req, res, true))
 
 clinicRouter.patch("/appointments/:id/status", async (req, res) => {
   const apptId = req.params.id;
-  const { status, intakeVitals, cancelReason, billingStatus, date, time, reason, actorName, actorRole } = req.body;
+  const { status, intakeVitals, cancelReason, billingStatus, reason, actorName, actorRole } = req.body;
 
   try {
-    if (date !== undefined || time !== undefined) await ensureSchedulingSchema();
     const result = await withTransaction(async (client) => {
       const current = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
       if (!current) throw Object.assign(new Error("Appointment not found."), { status: 404 });
@@ -1580,20 +1579,6 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
       const params = [status];
       let pIdx = 2;
 
-      if (date !== undefined || time !== undefined) {
-        if (status !== "Checked-in") throw bookingError("Use rescheduling to change a reserved slot.");
-        const clock = clinicClock();
-        if ((date !== undefined && date !== clock.date) || (time !== undefined && time !== clock.time)) throw bookingError("Arrivals must use the current clinic date and time.");
-      }
-      if (date !== undefined || time !== undefined) q += ", booking_kind = 'walk-in'";
-      if (date !== undefined) {
-        q += `, date = $${pIdx++}`;
-        params.push(date);
-      }
-      if (time !== undefined) {
-        q += `, time = $${pIdx++}`;
-        params.push(time);
-      }
       if (intakeVitals !== undefined) {
         q += `, intake_vitals = $${pIdx++}`;
         params.push(JSON.stringify(intakeVitals));

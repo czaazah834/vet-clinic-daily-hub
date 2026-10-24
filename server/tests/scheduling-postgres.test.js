@@ -310,7 +310,7 @@ test('confirmed services, vaccine schedule and Rx persist atomically and mandato
  assert.equal((await pay(lines)).status,200);
 });
 
-test('follow-up links enforce ownership and pet, survive reschedule/cancellation, prevent races and complete explicitly',async()=>{
+test('follow-up links enforce ownership and pet, survive reschedule/cancellation, prevent races and complete explicitly',async(t)=>{
  // Existing care-followup belongs to p8/o2; the signed-in owner owns o1.
  assert.equal((await req('owner','POST','/appointments',booking({petId:'p1',followUpId:'care-followup'}))).status,400);
  assert.equal((await req('owner','POST','/appointments',booking({petId:'p8',followUpId:'care-followup'}))).status,404);
@@ -326,7 +326,8 @@ test('follow-up links enforce ownership and pet, survive reschedule/cancellation
  assert.equal((await req('assistant','PATCH',`/appointments/${saved.id}/status`,{status:'Cancelled',cancelReason:'Synthetic schedule change'})).status,200);
  const rebook=await req('assistant','POST','/appointments',{...b,time:'13:00'});assert.equal(rebook.status,200,JSON.stringify(rebook));
  const id=rebook.data.appointment.id;
- // Exercise normal clinical transition; only this linked encounter completes the request.
+ // Reach the reserved clinic day before initial arrival. Only this encounter completes the request.
+ t.mock.timers.enable({apis:['Date'],now:new Date(`${target}T13:00:00+08:00`)});
  assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',intakeVitals:{weight:10,temp:38}})).status,200);
  assert.equal((await req('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation'})).status,200);
  const note={...consultation(id),petId:'p8'};
@@ -455,4 +456,36 @@ test('SOAP finalization checks displayed visit, acknowledges persisted clinical 
  assert.equal(reloaded.consults.find(c=>c.id===body.id).followUpReason,saved.consultation.follow_up_reason);assert.equal(reloaded.vaccs.find(v=>v.id==='soap-safe-dose').vetId,'v1');
  assert.equal((await query("SELECT COUNT(*)::int n FROM consultations WHERE appt_id='soap-safe'")).rows[0].n,1);assert.equal((await query("SELECT COUNT(*)::int n FROM audit_logs WHERE action LIKE 'Finalized consultation note_soap-safe %'")).rows[0].n,1);
  assert.equal((await query("SELECT COUNT(*)::int n FROM pet_weights WHERE pet_id='p7'")).rows[0].n,weightsBefore+1);
+});
+
+test('locked saved day gates initial arrival, rejects slot rewrites and preserves overnight care',async(t)=>{
+ const {intakeVisitSnapshot}=await import('../../src/intakeVisit.js');
+ t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-24T16:05:00Z')});
+ const id='scheduled_day_intake',today=clinicClock().date;
+ assert.equal(today,'2026-10-25'); // Manila has crossed midnight; UTC has not.
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,'p6','v1',$2,'16:30','Scheduled-day check','Scheduled')",[id,today]);
+ const saved=async()=>(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
+ const weights=async()=>(await query("SELECT COUNT(*)::int n FROM pet_weights WHERE pet_id='p6'")).rows[0].n;
+ const audits=async()=>(await query('SELECT COUNT(*)::int n FROM audit_logs WHERE action LIKE $1',[`%${id}%`])).rows[0].n;
+ const initialWeights=await weights(),initialAudits=await audits();
+ for(const status of ['Scheduled','Confirmed'])for(const offset of [-1,1]){
+   await query('UPDATE appointments SET date=$1,status=$2 WHERE id=$3',[shiftDate(today,offset),status,id]);
+   const original=await saved();
+   for(const override of [{},{date:today,time:clinicClock().time}]){
+     const response=await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',expectedVisit:intakeVisitSnapshot(original),intakeVitals:{weight:6,temp:38.6},...override});
+     assert.equal(response.status,409,JSON.stringify(response));
+     assert.deepEqual(await saved(),original);
+     assert.equal(await weights(),initialWeights);assert.equal(await audits(),initialAudits);
+   }
+ }
+ await query("UPDATE appointments SET date=$1,status='Confirmed' WHERE id=$2",[today,id]);
+ for(const override of [{date:today},{time:'00:05'}])assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',intakeVitals:{weight:6,temp:38.6},...override})).status,409);
+ const original=await saved();
+ const arrival=await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',expectedVisit:intakeVisitSnapshot(original),intakeVitals:{weight:6,temp:38.6}});
+ assert.equal(arrival.status,200);assert.equal(arrival.data.appointment.date,today);assert.equal(arrival.data.appointment.time,original.time);assert.equal(arrival.data.appointment.booking_kind,original.booking_kind);
+ assert.equal(await weights(),initialWeights+1);assert.equal(await audits(),initialAudits+1);
+ t.mock.timers.setTime(new Date('2026-10-25T16:05:00Z').getTime());
+ const remeasure=await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',expectedVisit:intakeVisitSnapshot(await saved()),intakeVitals:{weight:6.1,temp:38.5}});
+ assert.equal(remeasure.status,200);assert.equal(remeasure.data.appointment.date,today);assert.equal(remeasure.data.appointment.time,original.time);
+ assert.equal((await req('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation'})).status,200);
 });
