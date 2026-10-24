@@ -91,8 +91,11 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
     setIsFlipped(false);
   };
   const movePet = step => {
-    const idx = Math.max(0, Math.min(pets.length - 1, petIndex + step));
-    if (pets[idx] && pets[idx].id !== sel) selectPet(pets[idx].id);
+    if (pets.length <= 1) return;
+    let nextIdx = petIndex + step;
+    if (nextIdx < 0) nextIdx = pets.length - 1;
+    if (nextIdx >= pets.length) nextIdx = 0;
+    selectPet(pets[nextIdx].id);
   };
 
   return (
@@ -111,22 +114,27 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
       )}
 
       {p && (
-        <section className="ow-vc vc-card-shell" style={{ border: "none", background: "transparent", overflow: "visible" }} aria-label={`${p.name}’s vaccination card`}>
+        <section className="ow-vc vc-card-shell" style={{ border: "none", background: "transparent", overflow: "visible", width: "100%" }} aria-label={`${p.name}’s vaccination card`}>
           <div className="vc-toolbar vc-noprint">
+            {/* Prominent Pet Navigation Toolbar: < PET NAME VACCINATION CARD > */}
             <div className="vc-pet-pager" role="group" aria-label="Pet card navigation">
               <button
                 type="button"
                 className="vc-pager-btn"
                 onClick={() => movePet(-1)}
-                disabled={petIndex <= 0}
+                disabled={pets.length <= 1}
                 aria-label="Previous pet"
-                title="Previous pet"
+                title={pets.length > 1 ? "Switch to previous pet" : "Only 1 pet on account"}
               >
                 ‹
               </button>
 
               <div className="vc-pager-center">
-                <div className="vc-pager-title">{String(p.name || "Pet").toUpperCase()}’S VACCINATION CARD</div>
+                <div className="vc-pager-title">
+                  {pets.length > 1 && <span className="vc-pager-bracket">&lt;&nbsp;</span>}
+                  {String(p.name || "PET").toUpperCase()} VACCINATION CARD
+                  {pets.length > 1 && <span className="vc-pager-bracket">&nbsp;&gt;</span>}
+                </div>
                 <div className="vc-pager-sub">
                   <span>{pets.length > 1 ? `Pet ${petIndex + 1} of ${pets.length}` : formatSpeciesLabel(p.species)}</span>
                   <span className="vc-pager-sep">•</span>
@@ -138,9 +146,9 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                 type="button"
                 className="vc-pager-btn"
                 onClick={() => movePet(1)}
-                disabled={petIndex >= pets.length - 1}
+                disabled={pets.length <= 1}
                 aria-label="Next pet"
-                title="Next pet"
+                title={pets.length > 1 ? "Switch to next pet" : "Only 1 pet on account"}
               >
                 ›
               </button>
@@ -155,13 +163,46 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
                 title="Switch between Page 1 and Page 2"
               >
-                {isFlipped ? "View Page 1" : "View Page 2"}
+                🔄 {isFlipped ? "Flip to Page 1" : "Flip Card (Page 1 ➜ Page 2)"}
               </button>
               <button className="btn ghost sm" onClick={() => window.print()}>
                 <Icon n="print" size={14} /> Print Card
               </button>
             </div>
           </div>
+
+          {/* Quick Pet Switcher Pills (If owner has multiple pets) */}
+          {pets.length > 1 && (
+            <div className="vc-pet-pills vc-noprint" style={{ display: "flex", gap: "8px", justifyContent: "flex-start", marginBottom: "14px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "12px", color: "#64748b", alignSelf: "center", fontWeight: 600 }}>Your Pets:</span>
+              {pets.map((x) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  onClick={() => selectPet(x.id)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "4px 12px",
+                    borderRadius: "99px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                    border: x.id === sel ? "2px solid #2563eb" : "1.5px solid #cbd5e1",
+                    background: x.id === sel ? "#eff6ff" : "#ffffff",
+                    color: x.id === sel ? "#1e40af" : "#475569",
+                    boxShadow: x.id === sel ? "0 2px 8px rgba(37,99,235,0.15)" : "none"
+                  }}
+                >
+                  <span>🐾</span>
+                  <span>{x.name}</span>
+                  {x.id === sel && <span style={{ fontSize: "10px", background: "#2563eb", color: "#fff", padding: "1px 5px", borderRadius: "6px" }}>Active</span>}
+                </button>
+              ))}
+            </div>
+          )}
 
             {/* =========================================================================
                 AUTHENTIC 3D FLIP PHYSICAL VACCINATION CARD BOOKLET
@@ -550,7 +591,6 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
             </div>
           </section>
         )}
-      </div>
 
       {/* Modal for detailed record inspection */}
       {det && (

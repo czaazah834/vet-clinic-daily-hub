@@ -46,6 +46,7 @@
 .vc-pager-btn:disabled{opacity:.45;cursor:not-allowed}
 .vc-pager-center{flex:1;min-width:0;background:#fff;border:2px solid var(--ln);border-radius:18px;padding:10px 16px;text-align:center;box-shadow:0 4px 12px rgba(15,23,42,.05)}
 .vc-pager-title{font-size:1.05rem;font-weight:800;letter-spacing:.04em;color:var(--navy);text-transform:uppercase}
+.vc-pager-bracket{color:var(--blue);font-weight:900}
 .vc-pager-sub{margin-top:4px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;color:var(--mu);font-size:.92rem}
 .vc-pager-sub .badge,.vc-pager-sub small{margin:0}
 .vc-pager-sep{color:#94a3b8}
