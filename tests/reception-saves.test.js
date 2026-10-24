@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { confirmedBooking, confirmedPayment } from '../src/receptionSaves.js';
+import { confirmedBooking, confirmedPayment, confirmedCancellation } from '../src/receptionSaves.js';
 
 const booking = {id:'visit',petId:'pet',vetId:'doctor',date:'2026-10-25',time:'10:00',service:'checkup',followUpId:'care-plan'};
 const savedVisit = {...booking,status:'Scheduled',durationMinutes:60,bookingKind:'scheduled',reason:'Saved reason',amount:600};
@@ -26,4 +26,18 @@ test('missing, unrelated or financially inconsistent receipts remain unconfirmed
   assert.throws(()=>confirmedPayment({success:true,appointment:{...payment,...patch}},booking,submitted),/did not confirm/);
  }
  for(const response of [{},{success:true},{success:false,appointment:payment}])assert.throws(()=>confirmedPayment(response,booking,submitted),/did not confirm/);
+});
+
+
+test('unchanged confirmed bookings retain confirmation, changed slots require Scheduled', () => {
+  const confirmed = {...savedVisit,status:'Confirmed'};
+  assert.equal(confirmedBooking({success:true,appointment:confirmed},{...booking,status:'Confirmed'}),confirmed);
+  assert.throws(()=>confirmedBooking({success:true,appointment:confirmed},booking),/did not confirm/);
+});
+test('cancellation requires the saved matching visit and retains the server reason', () => {
+  const appointment={id:'visit',pet_id:'pet',vet_id:'doctor',date:booking.date,time:booking.time,status:'Cancelled',cancel_reason:'Saved cancellation reason'};
+  const result=confirmedCancellation({success:true,appointment},booking);
+  assert.equal(result.petId,'pet');assert.equal(result.vetId,'doctor');assert.equal(result.cancelReason,'Saved cancellation reason');
+  for(const patch of [{id:'other'},{pet_id:'other'},{vet_id:'other'},{date:'2026-10-26'},{time:'12:00'},{status:'Scheduled'},{reason:'Unrelated reason'}])assert.throws(()=>confirmedCancellation({success:true,appointment:{...appointment,...patch}},booking),/did not confirm/);
+  for(const response of [{},{success:true},{success:false,appointment}])assert.throws(()=>confirmedCancellation(response,booking),/did not confirm/);
 });

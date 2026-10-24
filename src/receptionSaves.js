@@ -1,8 +1,9 @@
+import { intakeVisitSnapshot, sameIntakeVisit } from './intakeVisit.js';
 import { ownerBill } from './ownerBilling.js';
 
 export function confirmedBooking(response, expected) {
   const visit = response?.appointment;
-  if (response?.success !== true || !visit || visit.status !== 'Scheduled'
+  if (response?.success !== true || !visit || visit.status !== (expected.status || 'Scheduled')
       || ['id', 'petId', 'vetId', 'date', 'time', 'service'].some(key => visit[key] !== expected[key])
       || (visit.followUpId || null) !== (expected.followUpId || null)) {
     throw Error('The server did not confirm this booking. Refresh the calendar to check whether it was saved before retrying.');
@@ -24,4 +25,12 @@ export function confirmedPayment(response, visit, submitted) {
     throw Error('The server did not confirm this payment. Refresh the visit to check whether payment was saved before retrying.');
   }
   return payment;
+}
+
+export function confirmedCancellation(response, expected) {
+  const saved = intakeVisitSnapshot(response?.appointment);
+  if (response?.success !== true || !sameIntakeVisit(saved, {...expected,status:'Cancelled'})) {
+    throw Error('The server did not confirm this cancellation. Refresh your appointments before retrying.');
+  }
+  return {...saved, cancelReason: response.appointment.cancelReason ?? response.appointment.cancel_reason ?? ''};
 }

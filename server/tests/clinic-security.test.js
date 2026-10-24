@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { sha256 } from '../security.js';
+import { applyClinicState, emptyClinicState } from '../../src/clinicState.js';
 
 let db, calls, failSql, rollbacks;
 const roles = ['owner', 'assistant', 'vet', 'admin'];
@@ -46,7 +47,7 @@ const fakeQuery = async (sql, params = []) => {
   if (sql.startsWith('INSERT INTO checkout_tasks')) { if (!db.tasks.some(t=>t.appointment_id===params[0])) db.tasks.push({appointment_id:params[0],status:'pending'}); return rows([]); }
   if (sql.startsWith('UPDATE checkout_tasks')) { const t=db.tasks.find(t=>t.appointment_id===params[0]);t.status='completed';t.completed_by=params[1];return rows([t]); }
   if (sql.startsWith('INSERT INTO audit_logs')) { const row = { user_name: params[0], user_role: params[1], action: params[2] }; db.logs.push(row); return rows([row]); }
-  if (sql.startsWith('INSERT INTO appointments')) { const row = { id: params[0], pet_id: params[1], vet_id: params[2], date: params[3], time: params[4], reason: params[5], status: 'Scheduled', amount: params[6] }; db.appts.push(row); return rows([row]); }
+  if (sql.startsWith('INSERT INTO appointments')) { const row = { id: params[0], pet_id: params[1], vet_id: params[2], date: params[3], time: params[4], reason: params[5], status: 'Scheduled', amount: params[6], service:params[7],duration_minutes:params[8],booking_kind:params[9],notes:params[10],billing_status:'Unbilled' }; db.appts.push(row); return rows([row]); }
   if (sql.startsWith('INSERT INTO consultations')) { const row = Object.fromEntries(['id', 'pet_id', 'vet_id', 'appt_id', 'date', 'symptoms', 'objective', 'diagnosis', 'treatment', 'prescription'].map((k, i) => [k, params[i]])); db.consults.push(row); return rows([row]); }
   if (sql.startsWith('UPDATE consultations SET care_status')) { const row = db.consults.find(c => c.id === params[3]); Object.assign(row, {care_status:params[0], follow_up_date:params[1], follow_up_reason:params[2]}); return rows([row]); }
   if (sql.startsWith('UPDATE consultations SET performed_services')) { const row = db.consults.find(c => c.id === params[1]); row.performed_services=JSON.parse(params[0]); return rows([row]); }
@@ -54,11 +55,20 @@ const fakeQuery = async (sql, params = []) => {
   if (sql.startsWith('INSERT INTO vaccinations')) { const row = { id: params[0], pet_id: params[1], card_id: params[2], vaccine: params[3], brand: params[4], batch: params[5], done: true, vet_id: params[9], recorded_by: params[10] }; db.vaccs.push(row); return rows([row]); }
   if (sql.startsWith('INSERT INTO pet_requests')) { const row = { id: params[12], owner_id: params[13], name: params[0], status: 'Pending',revision:0 }; db.requests.push(row); return rows([row]); }
   if (sql.startsWith('UPDATE appointments')) {
+    if (sql.startsWith('UPDATE appointments SET pet_id=$2')) {
+      const row=db.appts.find(a=>a.id===params[0]);
+      for(const [i,key] of ['id','pet_id','vet_id','date','time','reason','amount','service','duration_minutes','booking_kind','notes','status'].entries())row[key]=params[i];
+      return rows([row]);
+    }
     if (sql.includes("status = 'Completed'")) { const row = db.appts.find(a => a.id === params[0]); row.status = 'Completed'; row.billing_status = 'Unbilled'; if(params[1]) row.invoice_items=JSON.parse(params[1]); return rows([row]); }
-    if (sql.includes('paid_at')) { const row = db.appts.find(a => a.id === params[4]); Object.assign(row, { amount: params[0], payment_method: params[1], invoice_items: JSON.parse(params[2]), payment_details: JSON.parse(params[3]), billing_status: 'Paid' }); return rows([row]); }
+    if (sql.includes('paid_at')) { const row = db.appts.find(a => a.id === params[4]); Object.assign(row, { amount: params[0], payment_method: params[1], invoice_items: JSON.parse(params[2]), payment_details: JSON.parse(params[3]), billing_status: 'Paid', paid_at:'2026-10-24T10:30:00Z' }); return rows([row]); }
     const row = db.appts.find(a => a.id === params.at(-1));
+    if(sql.includes("booking_kind = 'walk-in'"))row.booking_kind='walk-in';
     row.status = params[0];
-    if (sql.includes('intake_vitals')) row.intake_vitals = JSON.parse(params[1]);
+    for (const field of ['intake_vitals','cancel_reason','reason','date','time']) {
+      const position=sql.match(new RegExp(`${field} = \\$([0-9]+)`));
+      if(position)row[field]=field==='intake_vitals' ? JSON.parse(params[Number(position[1])-1]) : params[Number(position[1])-1];
+    }
     return rows([row]);
   }
   if (sql.startsWith('UPDATE pets') || sql.startsWith('INSERT INTO pet_weights') || sql.startsWith('DELETE FROM vaccinations')) return rows([]);
@@ -276,4 +286,41 @@ test('state tags never bypass session checks or current role scope', async () =>
   assert.deepEqual((await owner.json()).data.pets.map(p=>p.id),['p1']);
   db.appts[0].status='Checked-in';const changed=await load('admin',etag);assert.equal(changed.status,200);
   assert.equal((await changed.json()).data.appts[0].status,'Checked-in');
+});
+
+
+test('reception reassigns an upcoming visit to a live doctor, retaining ID and owner notes', async () => {
+  const date=futureDate();Object.assign(db.appts[0],{vet_id:'inactive-doctor',date,status:'Confirmed',service:'checkup',notes:'Call owner before visit'});
+  const result=await request('assistant','PUT','/appointments/a1',{petId:'p1',vetId:'v1',date,time:'11:00',service:'checkup',reason:'Annual exam',notes:db.appts[0].notes});
+  assert.equal(result.status,200);assert.equal(result.data.appointment.id,'a1');assert.equal(result.data.appointment.vetId,'v1');
+  assert.equal(result.data.appointment.status,'Scheduled');assert.equal(result.data.appointment.notes,'Call owner before visit');
+  const owner=await request('owner','GET','/state');assert.equal(owner.data.data.appts.find(a=>a.id==='a1').vetId,'v1');
+  db.appts[0].status='Checked-in';
+  assert.equal((await request('assistant','PUT','/appointments/a1',{vetId:'v1'})).status,409);
+});
+
+test('one visit connects owner booking, reception intake, assigned vet care, checkout and admin audit', async () => {
+  const date=futureDate(),id='connected-visit';
+  const booking=await request('owner','POST','/appointments',{id,petId:'p1',vetId:'v1',date,time:'11:00',service:'checkup',reason:'Owner reports appetite change',notes:'Call before visit'});
+  assert.equal(booking.status,200);assert.equal(booking.data.appointment.id,id);assert.equal(booking.data.appointment.status,'Scheduled');
+  const state=async role=>{const result=await request(role,'GET','/state');assert.equal(result.status,200);return applyClinicState(emptyClinicState(),result.data.data);};
+  const visit=(data)=>data.appts.find(a=>a.id===id);
+  assert.equal(visit(await state('assistant')).notes,'Call before visit');
+  assert.equal((await request('assistant','PATCH',`/appointments/${id}/status`,{status:'Confirmed'})).status,200);
+  assert.equal(visit(await state('owner')).status,'Confirmed');
+  assert.equal((await request('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',date:clinicClock().date,time:clinicClock().time,intakeVitals:{weight:5.2,temp:38.6,triageLevel:'Priority'},reason:'Measured intake complaint'})).status,200);
+  const queued=visit(await state('vet'));assert.equal(queued.status,'Checked-in');assert.equal(queued.date,clinicClock().date);assert.equal(queued.intakeVitals.weight,5.2);assert.equal(queued.reason,'Measured intake complaint');
+  assert.equal((await request('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation'})).status,200);
+  const clinical={...soap(),id:'connected-notes',apptId:id,date:clinicClock().date,vaccination:undefined};
+  assert.equal((await request('vet','POST','/consultations',clinical)).status,200);
+  assert.equal(visit(await state('assistant')).status,'Completed');
+  assert.equal(db.tasks.find(t=>t.appointment_id===id).status,'pending');
+  const payment=await request('assistant','POST',`/appointments/${id}/billing`,bill());assert.equal(payment.status,200);
+  const owner=await state('owner'),saved=owner.records.find(r=>r.apptId===id);
+  assert.equal(saved.id,'connected-notes');assert.equal(saved.diagnosis,clinical.diagnosis);assert.equal(saved.vetId,'v1');
+  assert.equal(visit(owner).billingStatus,'Paid');assert.equal(visit(owner).amount,450);assert.equal(visit(owner).paidAt,'2026-10-24T10:30:00Z');
+  assert.equal(db.tasks.find(t=>t.appointment_id===id).status,'completed');
+  const admin=await state('admin');assert.equal(visit(admin).billingStatus,'Paid');
+  for(const role of ['owner','assistant','vet'])assert.ok(admin.log.some(l=>l.role===role),role+' audit retained');
+  assert.ok(!owner.appts.some(a=>a.petId==='p2'));assert.deepEqual(owner.log,[]);
 });
