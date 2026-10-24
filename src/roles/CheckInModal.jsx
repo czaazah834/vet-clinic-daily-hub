@@ -32,9 +32,14 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const [weight, setWeight] = useState(lastWeight ? String(lastWeight) : "5.0");
   const [temp, setTemp] = useState(String(speciesConfig.normalTempPreset || "38.5"));
   const [triage, setTriage] = useState("Routine");
-  const [notes, setNotes] = useState(appt?.reason ? `Reason: ${appt.reason}` : "");
+  const [serviceReason, setServiceReason] = useState(appt?.reason || "Routine Consultation & Exam");
+  const [notes, setNotes] = useState("");
   const [fasted, setFasted] = useState(false);
   const [valErr, setValErr] = useState("");
+
+  const externalVaccs = (db.vacc || db.vaccs || []).filter(v => 
+    v.petId === pet.id && (v.recorded_by?.includes("External") || v.brand?.includes("External") || v.protocol_type?.includes("External") || v.protocolType?.includes("External"))
+  );
 
   const weightAnalysis = assessWeight(weight, species, pet.breed || "", lastWeight);
   const tempAnalysis = assessTemp(temp, species);
@@ -87,6 +92,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
     const patchPayload = {
       status: "Checked-in",
+      reason: serviceReason.trim() || appt.reason,
       intakeVitals,
       actorName: me?.name || "Assistant",
       actorRole: me?.role || "assistant"
@@ -112,6 +118,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
               date: isEarlyArrival ? TODAY : a.date,
               time: isEarlyArrival ? arrivalTime : a.time,
               status: "Checked-in",
+              reason: serviceReason.trim() || a.reason,
               intakeVitals,
             }
           : a
@@ -389,6 +396,61 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Visit Purpose Confirmation & External Guide Indicator */}
+            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", padding: "12px 14px", borderRadius: "10px", marginBottom: "14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                <label style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--navy)", margin: 0 }}>
+                  Confirmed Reason / Purpose for Today&rsquo;s Visit
+                </label>
+                {externalVaccs.length > 0 && (
+                  <span style={{ fontSize: "11px", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", padding: "2px 7px", borderRadius: "6px", fontWeight: 700 }} title="Has prior records from outside clinic">
+                    📋 {externalVaccs.length} External Dose(s) on File
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
+                {[
+                  "Routine Consultation & Exam",
+                  normSpecies === "Feline" ? "Vaccination: FVRCP (4-in-1)" : "Vaccination: DHPP (5-in-1)",
+                  "Vaccination: Anti-Rabies Core",
+                  "Routine Deworming",
+                  "Flea & Tick Prevention",
+                  "Grooming & Sanitary",
+                  "Emergency / Critical"
+                ].map(preset => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => {
+                      setServiceReason(preset);
+                      if (preset.includes("Emergency")) setTriage("Emergency");
+                    }}
+                    style={{
+                      fontSize: "11.5px",
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      border: serviceReason === preset ? "1.5px solid #2563eb" : "1px solid #cbd5e1",
+                      background: serviceReason === preset ? "#eff6ff" : "#fff",
+                      color: serviceReason === preset ? "#1e40af" : "#475569",
+                      fontWeight: serviceReason === preset ? 700 : 500,
+                      cursor: "pointer"
+                    }}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+
+              <input
+                type="text"
+                value={serviceReason}
+                onChange={e => setServiceReason(e.target.value)}
+                placeholder="Confirm or clarify what patient needs today..."
+                style={{ width: "100%", padding: "7px 10px", fontSize: "13px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+              />
             </div>
 
             {/* 3. Triage Level & Quick Intake Notes */}

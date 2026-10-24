@@ -503,16 +503,30 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                             <td style={{ padding: "8px 6px", whiteSpace: "nowrap" }}>{v.date || "—"}</td>
                             <td style={{ padding: "8px 6px", whiteSpace: "nowrap", fontWeight: 600 }}>{v.nextDue || "Annual"}</td>
                             <td style={{ padding: "8px 6px" }}>
-                              <span style={{
-                                padding: "2px 8px",
-                                borderRadius: "6px",
-                                fontSize: "11px",
-                                fontWeight: 700,
-                                background: st === "Completed" ? "#ecfdf5" : st === "Overdue" ? "#fef2f2" : st === "Due soon" ? "#fffbeb" : "#eff6ff",
-                                color: st === "Completed" ? "#047857" : st === "Overdue" ? "#b91c1c" : st === "Due soon" ? "#b45309" : "#1d4ed8"
-                              }}>
-                                {st}
-                              </span>
+                              {v.recorded_by?.includes("External") || v.recordedBy?.includes("External") || v.brand?.includes("External") ? (
+                                <span style={{
+                                  padding: "2px 8px",
+                                  borderRadius: "6px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  background: "#fef3c7",
+                                  color: "#92400e",
+                                  border: "1px solid #fde68a"
+                                }} title="External clinic record; used as baseline guide for scheduling">
+                                  📋 External Guide
+                                </span>
+                              ) : (
+                                <span style={{
+                                  padding: "2px 8px",
+                                  borderRadius: "6px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  background: st === "Completed" ? "#ecfdf5" : st === "Overdue" ? "#fef2f2" : st === "Due soon" ? "#fffbeb" : "#eff6ff",
+                                  color: st === "Completed" ? "#047857" : st === "Overdue" ? "#b91c1c" : st === "Due soon" ? "#b45309" : "#1d4ed8"
+                                }}>
+                                  {st === "Completed" ? "✓ Certified" : st}
+                                </span>
+                              )}
                             </td>
                           </tr>
                         );

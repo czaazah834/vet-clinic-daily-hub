@@ -51,7 +51,14 @@ const rel = d => {
   const n = daysTo(d);
   return n === 0 ? "Today" : n > 0 ? `in ${plural(n, "day")}` : `${plural(-n, "day")} overdue`;
 };
-const vetOf = v => { const n = v.vetName || (VETS.find(x => x[0] === v.vetId) || [])[1]; return n ? `${/^dr\.?\s/i.test(n) ? "" : "Dr. "}${n}${v.vetLicense ? ` · Lic. ${v.vetLicense}` : ""}` : "Dr. Ana Cruz · Lic. 04821"; };
+const vetOf = v => {
+  if (!v) return "PawCare Clinic";
+  if (v.isExternal || v.recorded_by?.includes("External") || v.recordedBy?.includes("External") || v.brand?.includes("External") || v.protocolType?.includes("External") || v.notes?.includes("External")) {
+    return "External Clinic (Guide)";
+  }
+  const n = v.vetName || (VETS.find(x => x[0] === v.vetId) || [])[1];
+  return n ? `${/^dr\.?\s/i.test(n) ? "" : "Dr. "}${n}${v.vetLicense ? ` · Lic. ${v.vetLicense}` : ""}` : "Dr. Ana Cruz · Lic. 04821";
+};
 const tone = s => s === "Overdue" ? "er" : s === "Due soon" ? "wa" : "";
 
 export function OwnerVacc({ db, setDb, me, go, say }) {
@@ -521,7 +528,18 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                   </div>
                                 </td>
                                 <td style={{ padding: "8px" }}>
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0", padding: "2px 6px", borderRadius: "6px", fontSize: "11px", fontWeight: 700 }}>
+                                  <span style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    background: vetOf(v).includes("External") ? "#fef3c7" : "#ecfdf5",
+                                    color: vetOf(v).includes("External") ? "#92400e" : "#065f46",
+                                    border: vetOf(v).includes("External") ? "1px solid #fde68a" : "1px solid #a7f3d0",
+                                    padding: "2px 6px",
+                                    borderRadius: "6px",
+                                    fontSize: "11px",
+                                    fontWeight: 700
+                                  }}>
                                     {vetOf(v)}
                                   </span>
                                 </td>

@@ -1591,6 +1591,10 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
         q += `, billing_status = $${pIdx++}`;
         params.push(billingStatus);
       }
+      if (reason !== undefined) {
+        q += `, reason = $${pIdx++}`;
+        params.push(reason);
+      }
 
       q += ` WHERE id = $${pIdx} RETURNING *`;
       params.push(apptId);
@@ -1705,7 +1709,9 @@ clinicRouter.post("/walk-in", async (req, res) => {
   const {
     ownerName, phone, email, address,
     petName, species, speciesOther, breed, sex, birth, weight, color, neutered, dentalOcclusion, notes,
-    addToQueue, reason, actorName, actorRole
+    addToQueue, reason, actorName, actorRole,
+    serviceCategory, specificVaccine,
+    priorVaccines, externalClinicNotes
   } = req.body;
 
   const ownerId = "o_" + Math.random().toString(36).slice(2, 8);
@@ -1766,9 +1772,10 @@ clinicRouter.post("/walk-in", async (req, res) => {
         [petId, today, parseFloat(weight) || 5.0, actorName || "Front Desk Walk-in"]
       );
 
-      // 4. Seed core vaccines
+      // 4. Seed Vaccines: Record Prior External History Guide + Pre-Schedule Next Protocol
       const sp = (species || "").toLowerCase();
       const isDog = sp.includes("dog") || sp.includes("canine");
+      const isCat = sp.includes("cat") || sp.includes("feline");
       const addDays = (dStr, days) => {
         const d = new Date(dStr);
         d.setDate(d.getDate() + days);
@@ -1776,21 +1783,84 @@ clinicRouter.post("/walk-in", async (req, res) => {
       };
 
       const seeded = [];
+      const priorList = Array.isArray(priorVaccines) ? priorVaccines : [];
+
+      // A) Save Prior External Vaccines as Official Guide (done: true, recorded_by: Previous Vet)
+      const hasPriorDHPP1 = priorList.some(x => /dhpp.*1|dose.*1|puppy.*1/i.test(String(x)));
+      const hasPriorDHPP2 = priorList.some(x => /dhpp.*2|dose.*2|puppy.*2/i.test(String(x)));
+      const hasPriorDHPP3 = priorList.some(x => /dhpp.*3|dose.*3|puppy.*3/i.test(String(x)));
+      const hasPriorDHPPRoutine = priorList.some(x => /annual.*5-in-1|completed puppy|adult 5-in-1/i.test(String(x)));
+      const hasPriorRabies = priorList.some(x => /rabies/i.test(String(x)));
+      const hasPriorDeworm = priorList.some(x => /deworm/i.test(String(x)));
+      const hasPriorFVRCP1 = priorList.some(x => /fvrcp.*1|feline.*1/i.test(String(x)));
+      const hasPriorFVRCP2 = priorList.some(x => /fvrcp.*2|feline.*2/i.test(String(x)));
+
+      for (const pItem of priorList) {
+        const pLabel = typeof pItem === "string" ? pItem : pItem.name || "External Vaccine";
+        const extV = {
+          id: "v_ext_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: pLabel,
+          brand: "External Clinic Record",
+          batch: "EXTERNAL-HIST",
+          date: today,
+          next_due: null,
+          dose_no: 1,
+          dose_of: 1,
+          done: true,
+          automated: false,
+          protocol_type: "External History (Guide)",
+          recorded_by: "Previous Vet (External Guide)"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+          [...Object.values(extV), externalClinicNotes ? `Previous clinic note: ${externalClinicNotes}` : "Administered at external clinic; recorded as reference guide for schedule calibration."]
+        );
+        seeded.push(extV);
+      }
+
+      // B) Pre-Schedule Next Upcoming Protocol Based on What Was Given
       if (isDog) {
+        // DHPP Logic
+        let nextDHPP = "DHPP (5-in-1 Core Vaccine)";
+        let dhppDoseNo = 1;
+        let dhppDoseOf = 3;
+        let dhppDueDays = 21;
+
+        if (hasPriorDHPP1 && hasPriorDHPP2) {
+          nextDHPP = "DHPP (5-in-1 Core Vaccine - Dose 3)";
+          dhppDoseNo = 3;
+          dhppDoseOf = 3;
+          dhppDueDays = 21;
+        } else if (hasPriorDHPP1) {
+          nextDHPP = "DHPP (5-in-1 Core Vaccine - Dose 2)";
+          dhppDoseNo = 2;
+          dhppDoseOf = 3;
+          dhppDueDays = 21;
+        } else if (hasPriorDHPP3 || hasPriorDHPPRoutine) {
+          nextDHPP = "DHPP (5-in-1 Adult Core Booster)";
+          dhppDoseNo = 1;
+          dhppDoseOf = 1;
+          dhppDueDays = 365;
+        }
+
+        const isDHPPToday = serviceCategory === "vaccination" && (specificVaccine || "").toLowerCase().includes("5-in-1");
         const v1 = {
           id: "v_" + Math.random().toString(36).slice(2, 8),
           pet_id: petId,
           card_id: cardId,
-          vaccine: "DHPP (5-in-1 Core Vaccine)",
+          vaccine: isDHPPToday ? (specificVaccine || nextDHPP) : nextDHPP,
           brand: "Nobivac DHPP",
           batch: "WALK-DHPP",
           date: today,
-          next_due: addDays(today, 365),
-          dose_no: 1,
-          dose_of: 1,
+          next_due: isDHPPToday ? addDays(today, dhppDoseNo === 3 ? 365 : 21) : addDays(today, dhppDueDays),
+          dose_no: dhppDoseNo,
+          dose_of: dhppDoseOf,
           done: false,
           automated: true,
-          protocol_type: "Core Immunization",
+          protocol_type: dhppDoseOf === 1 ? "Adult Core Immunization" : "Core Puppy Protocol",
           recorded_by: actorName || "Front Desk"
         };
         await client.query(
@@ -1800,15 +1870,17 @@ clinicRouter.post("/walk-in", async (req, res) => {
         );
         seeded.push(v1);
 
+        // Rabies Logic
+        const isRabiesToday = serviceCategory === "vaccination" && (specificVaccine || "").toLowerCase().includes("rabies");
         const v2 = {
           id: "v_" + Math.random().toString(36).slice(2, 8),
           pet_id: petId,
           card_id: cardId,
-          vaccine: "Anti-Rabies (RA 9482 Compliance)",
+          vaccine: isRabiesToday ? (specificVaccine || "Anti-Rabies (RA 9482 Compliance)") : (hasPriorRabies ? "Annual Anti-Rabies Core Booster" : "Anti-Rabies (RA 9482 Compliance)"),
           brand: "Defensor 3",
           batch: "WALK-RAB",
           date: today,
-          next_due: addDays(today, 365),
+          next_due: (hasPriorRabies || isRabiesToday) ? addDays(today, 365) : addDays(today, 30),
           dose_no: 1,
           dose_of: 1,
           done: false,
@@ -1822,13 +1894,123 @@ clinicRouter.post("/walk-in", async (req, res) => {
           Object.values(v2)
         );
         seeded.push(v2);
+
+        // Parasiticide & Deworming Pre-scheduling
+        const isDewormToday = serviceCategory === "deworming" || (serviceCategory === "vaccination" && (specificVaccine || "").toLowerCase().includes("deworm"));
+        const v3 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "Broad-Spectrum Deworming",
+          brand: "Canex Multi-Spectrum",
+          batch: "WALK-DEW",
+          date: today,
+          next_due: isDewormToday ? addDays(today, 90) : (hasPriorDeworm ? addDays(today, 90) : addDays(today, 14)),
+          dose_no: 1,
+          dose_of: 4,
+          done: false,
+          automated: true,
+          protocol_type: "Parasiticide Protocol",
+          recorded_by: actorName || "Front Desk"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(v3)
+        );
+        seeded.push(v3);
+      } else if (isCat) {
+        // Feline FVRCP & Rabies
+        let fvrcpName = "FVRCP (4-in-1 Feline Core)";
+        let fvrcpDoseNo = 1;
+        let fvrcpDoseOf = 2;
+        let fvrcpDueDays = 21;
+
+        if (hasPriorFVRCP1) {
+          fvrcpName = "FVRCP (4-in-1 Feline Core - Dose 2)";
+          fvrcpDoseNo = 2;
+          fvrcpDueDays = 21;
+        } else if (hasPriorFVRCP2) {
+          fvrcpName = "FVRCP Annual Booster";
+          fvrcpDoseNo = 1;
+          fvrcpDoseOf = 1;
+          fvrcpDueDays = 365;
+        }
+
+        const isFVRCPToday = serviceCategory === "vaccination" && (specificVaccine || "").toLowerCase().includes("fvrcp");
+        const cv1 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: isFVRCPToday ? (specificVaccine || fvrcpName) : fvrcpName,
+          brand: "Nobivac Feline 1-HCP",
+          batch: "WALK-FVRCP",
+          date: today,
+          next_due: isFVRCPToday ? addDays(today, 365) : addDays(today, fvrcpDueDays),
+          dose_no: fvrcpDoseNo,
+          dose_of: fvrcpDoseOf,
+          done: false,
+          automated: true,
+          protocol_type: "Core Feline Immunization",
+          recorded_by: actorName || "Front Desk"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(cv1)
+        );
+        seeded.push(cv1);
+
+        const isRabiesCatToday = serviceCategory === "vaccination" && (specificVaccine || "").toLowerCase().includes("rabies");
+        const cv2 = {
+          id: "v_" + Math.random().toString(36).slice(2, 8),
+          pet_id: petId,
+          card_id: cardId,
+          vaccine: "Anti-Rabies (1-Year Feline Core)",
+          brand: "Defensor 3",
+          batch: "WALK-RAB-CAT",
+          date: today,
+          next_due: (hasPriorRabies || isRabiesCatToday) ? addDays(today, 365) : addDays(today, 30),
+          dose_no: 1,
+          dose_of: 1,
+          done: false,
+          automated: true,
+          protocol_type: "Core Rabies Protocol",
+          recorded_by: actorName || "Front Desk"
+        };
+        await client.query(
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, dose_no, dose_of, done, automated, protocol_type, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          Object.values(cv2)
+        );
+        seeded.push(cv2);
       }
 
-      // 5. If addToQueue: create Checked-in appointment
+      // 5. If addToQueue: create Checked-in appointment with exact visit reason
       let appt = null;
       if (addToQueue) {
         const apptId = "a_walk_" + Math.random().toString(36).slice(2, 8);
         const timeNow = new Date().toLocaleTimeString("en-PH", { hour12: false, hour: "2-digit", minute: "2-digit" });
+        
+        let visitReason = (reason || "").trim();
+        if (!visitReason) {
+          if (serviceCategory === "vaccination") {
+            visitReason = `Vaccination: ${specificVaccine || "Core Vaccine Booster"}`;
+          } else if (serviceCategory === "deworming") {
+            visitReason = "Routine Deworming (Parasiticide)";
+          } else if (serviceCategory === "flea_tick") {
+            visitReason = "Flea & Tick Prevention (Chewable / Spot-on)";
+          } else if (serviceCategory === "grooming") {
+            visitReason = "Grooming & Sanitary Care";
+          } else if (serviceCategory === "emergency") {
+            visitReason = "Urgent / Emergency Clinical Triage";
+          } else {
+            visitReason = "Walk-in Consultation & Routine Exam";
+          }
+        }
+
+        const triageLvl = serviceCategory === "emergency" ? "Emergency" : "Routine";
+
         const insAppt = await client.query(
           `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount, intake_vitals)
            VALUES ($1, $2, $3, $4, $5, $6, 'Checked-in', 'Unbilled', 600, $7)
@@ -1839,10 +2021,24 @@ clinicRouter.post("/walk-in", async (req, res) => {
             "v1",
             today,
             timeNow,
-            reason || "Walk-in Consultation / Exam",
-            JSON.stringify({ weight: parseFloat(weight) || 5.0, triageLevel: "Routine" })
+            visitReason,
+            JSON.stringify({ weight: parseFloat(weight) || 5.0, triageLevel: triageLvl })
           ]
         );
+        const aRow = insAppt.rows[0];
+        appt = {
+          id: aRow.id,
+          petId: aRow.pet_id,
+          vetId: aRow.vet_id,
+          date: toDateStr(aRow.date),
+          time: aRow.time,
+          reason: aRow.reason,
+          status: aRow.status,
+          billingStatus: aRow.billing_status,
+          amount: parseFloat(aRow.amount),
+          intakeVitals: aRow.intake_vitals
+        };
+      }
         const aRow = insAppt.rows[0];
         appt = {
           id: aRow.id,

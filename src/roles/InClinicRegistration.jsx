@@ -151,6 +151,13 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
   const [loading, setLoading] = useState(false);
   const [successData, setSuccessData] = useState(null);
 
+  // Clinical service needed today & prior history guide states
+  const [serviceCategory, setServiceCategory] = useState("consultation");
+  const [specificVaccine, setSpecificVaccine] = useState("DHPP (5-in-1 Core Vaccine)");
+  const [hasExternalHistory, setHasExternalHistory] = useState(false);
+  const [priorVaccines, setPriorVaccines] = useState([]);
+  const [externalClinicNotes, setExternalClinicNotes] = useState("");
+
   const availableBreeds = BREEDS_BY_SPECIES[v.species] || [];
   const canonicalSpecies = normalizeSpecies(v.species);
   const showCustomBreed = v.species.includes("Other") || (v.breed && v.breed.startsWith("Other"));
@@ -168,6 +175,42 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       customBreed: "",
       dentalOcclusion: newSpecies.includes("Rodent") ? "Normal / Aligned (Healthy Occlusion)" : ""
     });
+    const norm = normalizeSpecies(newSpecies);
+    if (norm === "Feline") {
+      setSpecificVaccine("FVRCP (4-in-1 Feline Core)");
+    } else {
+      setSpecificVaccine("DHPP (5-in-1 Core Vaccine)");
+    }
+  };
+
+  const handleServiceChange = (cat) => {
+    setServiceCategory(cat);
+    if (cat === "consultation") {
+      f.set("reason", "Walk-in Consultation & Routine Exam");
+    } else if (cat === "vaccination") {
+      f.set("reason", `Vaccination: ${specificVaccine}`);
+    } else if (cat === "deworming") {
+      f.set("reason", "Routine Deworming (Parasiticide)");
+    } else if (cat === "flea_tick") {
+      f.set("reason", "Monthly Flea & Tick Prevention Chewable");
+    } else if (cat === "grooming") {
+      f.set("reason", "Grooming & Sanitary Care");
+    } else if (cat === "emergency") {
+      f.set("reason", "Urgent / Emergency Clinical Triage");
+    }
+  };
+
+  const handleVaccineChange = (vac) => {
+    setSpecificVaccine(vac);
+    if (serviceCategory === "vaccination") {
+      f.set("reason", `Vaccination: ${vac}`);
+    }
+  };
+
+  const togglePriorVaccine = (vacName) => {
+    setPriorVaccines(prev => 
+      prev.includes(vacName) ? prev.filter(x => x !== vacName) : [...prev, vacName]
+    );
   };
 
   const handleSubmit = async (ev) => {
@@ -198,7 +241,11 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       addToQueue: v.addToQueue,
       reason: v.reason.trim(),
       actorName: me?.name || "Vet Assistant",
-      actorRole: me?.role || "assistant"
+      actorRole: me?.role || "assistant",
+      serviceCategory,
+      specificVaccine,
+      priorVaccines,
+      externalClinicNotes: externalClinicNotes.trim()
     };
 
     let backendResult = null;
@@ -607,9 +654,13 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               </div>
             </div>
 
-            {/* Section 3: Add to Doctor Arrival Queue */}
-            <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", padding: "12px 16px", borderRadius: "10px", marginBottom: "16px" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 700, color: "var(--navy)", fontSize: "13px" }}>
+            {/* Section 3: Today's Clinical Purpose & Arrival Queue */}
+            <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px" }}>
+              <b style={{ display: "block", color: "var(--navy)", fontSize: "13.5px", marginBottom: "8px" }}>
+                🎯 3. Today&rsquo;s Visit Purpose &amp; Queue Admission
+              </b>
+
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 700, color: "var(--navy)", fontSize: "13px", marginBottom: "12px" }}>
                 <input
                   type="checkbox"
                   checked={v.addToQueue}
@@ -619,10 +670,71 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               </label>
 
               {v.addToQueue && (
-                <div style={{ marginTop: "10px" }}>
+                <div style={{ display: "grid", gap: "10px" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#1e3a8a", marginBottom: "4px" }}>
+                      What does the patient need today? *
+                    </label>
+                    <select
+                      value={serviceCategory}
+                      onChange={e => handleServiceChange(e.target.value)}
+                      style={{ width: "100%", padding: "8px 10px", fontSize: "13px", borderRadius: "8px", border: "1.5px solid #93c5fd", fontWeight: 600, background: "#fff" }}
+                    >
+                      <option value="consultation">🩺 General Consultation &amp; Routine Check-up</option>
+                      <option value="vaccination">💉 Vaccination / Immunization Booster</option>
+                      <option value="deworming">💊 Routine Deworming (Parasiticide)</option>
+                      <option value="flea_tick">🛡️ Flea, Tick &amp; Heartworm Prevention</option>
+                      <option value="grooming">✂️ Grooming &amp; Sanitary Care</option>
+                      <option value="emergency">🚨 Urgent / Emergency Clinical Triage</option>
+                    </select>
+                  </div>
+
+                  {serviceCategory === "vaccination" && (
+                    <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "8px", border: "1.5px solid #60a5fa" }}>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#1e40af", marginBottom: "4px" }}>
+                        Select Specific Vaccine Needed Today: *
+                      </label>
+                      <select
+                        value={specificVaccine}
+                        onChange={e => handleVaccineChange(e.target.value)}
+                        style={{ width: "100%", padding: "7px 10px", fontSize: "13px", borderRadius: "6px", border: "1px solid #93c5fd", fontWeight: 600 }}
+                      >
+                        {canonicalSpecies === "Canine" ? (
+                          <>
+                            <option value="DHPP (5-in-1 Core Vaccine)">DHPP (5-in-1 Core Vaccine - Standard)</option>
+                            <option value="Anti-Rabies (RA 9482 Compliance)">Anti-Rabies (Mandatory Core RA 9482)</option>
+                            <option value="6-in-1 Core Combination">6-in-1 Core Combination Vaccine</option>
+                            <option value="Bordetella (Kennel Cough Prophylaxis)">Bordetella (Kennel Cough Prophylaxis)</option>
+                            <option value="Puppy DHPP Dose 1">Puppy Foundation DHPP Dose 1</option>
+                            <option value="Puppy DHPP Dose 2">Puppy Foundation DHPP Dose 2</option>
+                            <option value="Puppy DHPP Dose 3">Puppy Foundation DHPP Dose 3</option>
+                            <option value="Annual 5-in-1 Core Booster">Annual 5-in-1 Adult Core Booster</option>
+                          </>
+                        ) : canonicalSpecies === "Feline" ? (
+                          <>
+                            <option value="FVRCP (4-in-1 Feline Core)">FVRCP (4-in-1 Feline Core)</option>
+                            <option value="Anti-Rabies (1-Year Feline Core)">Anti-Rabies (1-Year Feline Core)</option>
+                            <option value="Feline Leukemia (FeLV)">Feline Leukemia (FeLV)</option>
+                            <option value="FVRCP Dose 1">FVRCP Dose 1 (Kitten Foundation)</option>
+                            <option value="FVRCP Dose 2">FVRCP Dose 2 (Kitten Foundation)</option>
+                            <option value="FVRCP Annual Booster">FVRCP Annual Adult Booster</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="Routine Preventive Care">Species-Specific Routine Preventive</option>
+                            <option value="General Health Consultation">General Health Consultation &amp; Care</option>
+                          </>
+                        )}
+                      </select>
+                      <small style={{ color: "#0369a1", display: "block", marginTop: "4px", fontSize: "11.5px" }}>
+                        💡 This will be set as today&rsquo;s clinical visit reason for the veterinarian to examine and administer.
+                      </small>
+                    </div>
+                  )}
+
                   <Field
                     id="reason"
-                    label="Arrival / Visit Reason"
+                    label="Arrival Reason for Queue &amp; Doctor Notes"
                     req
                     value={v.reason}
                     filter={petText}
@@ -631,8 +743,107 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                     onBlur={() => f.blur("reason")}
                     error={f.show("reason")}
                     valid={f.ok("reason")}
-                    hint="e.g. Walk-in Consultation & Routine Exam, Vaccination Booster"
+                    hint="Auto-filled from service selection; feel free to customize"
                   />
+                </div>
+              )}
+            </div>
+
+            {/* Section 4: Prior Vaccines from Other Vets (Clinical Guide & Schedule Calibrator) */}
+            <div style={{ background: "#fefce8", border: "1.5px solid #fde047", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
+                <div>
+                  <b style={{ color: "#854d0e", fontSize: "13.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    💉 4. Prior Vaccinations from Previous Vet Clinics (Reference Guide)
+                  </b>
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#713f12" }}>
+                    Since records from external clinics are not automatically transferred, record past shots here as a clinical guide to calibrate the upcoming schedule.
+                  </p>
+                </div>
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 700, color: "#854d0e", fontSize: "13px", marginTop: "8px" }}>
+                <input
+                  type="checkbox"
+                  checked={hasExternalHistory}
+                  onChange={e => {
+                    setHasExternalHistory(e.target.checked);
+                    if (!e.target.checked) setPriorVaccines([]);
+                  }}
+                />
+                This pet received prior vaccinations or deworming at another clinic
+              </label>
+
+              {hasExternalHistory && (
+                <div style={{ marginTop: "12px", background: "#fff", padding: "12px", borderRadius: "10px", border: "1px solid #fef08a" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#854d0e", marginBottom: "8px" }}>
+                    Select vaccines already given by previous veterinarians:
+                  </div>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "12px" }}>
+                    {(canonicalSpecies === "Canine" ? [
+                      "Puppy Dose 1 (5-in-1)",
+                      "Puppy Dose 2 (5-in-1)",
+                      "Puppy Dose 3 (5-in-1)",
+                      "Completed Puppyhood Series (Adult)",
+                      "Anti-Rabies Vaccine",
+                      "Kennel Cough (Bordetella)",
+                      "Prior Deworming",
+                      "Prior Flea & Tick Preventative"
+                    ] : canonicalSpecies === "Feline" ? [
+                      "FVRCP 4-in-1 Dose 1",
+                      "FVRCP 4-in-1 Dose 2",
+                      "Anti-Rabies Vaccine",
+                      "Prior Deworming",
+                      "Prior Flea & Tick Preventative"
+                    ] : [
+                      "Prior Parasite Clearance",
+                      "Prior Prophylactic Injection"
+                    ]).map(item => {
+                      const isChecked = priorVaccines.includes(item);
+                      return (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => togglePriorVaccine(item)}
+                          style={{
+                            padding: "5px 10px",
+                            fontSize: "12px",
+                            borderRadius: "6px",
+                            border: isChecked ? "1.5px solid #d97706" : "1px solid #cbd5e1",
+                            background: isChecked ? "#fef3c7" : "#f8fafc",
+                            color: isChecked ? "#92400e" : "#334155",
+                            fontWeight: isChecked ? 700 : 500,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            transition: "all 0.15s ease"
+                          }}
+                        >
+                          <span>{isChecked ? "✓" : "+"}</span>
+                          <span>{item}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ marginTop: "8px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                      Previous Clinic Name &amp; External Notes (Optional):
+                    </label>
+                    <input
+                      type="text"
+                      value={externalClinicNotes}
+                      onChange={e => setExternalClinicNotes(e.target.value)}
+                      placeholder="e.g. Previous vet clinic name, date of last rabies, booklet presented..."
+                      style={{ width: "100%", padding: "7px 10px", fontSize: "12.5px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                    />
+                  </div>
+
+                  <div style={{ marginTop: "10px", padding: "8px 10px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "6px", fontSize: "11.5px", color: "#166534" }}>
+                    ✨ <b>Smart Pre-Scheduling Active:</b> Selected previous shots will be saved with an &ldquo;External Clinic (Guide)&rdquo; badge on Page 2 of the Digital Card. The system will pre-schedule the remaining doses without repeating completed shots.
+                  </div>
                 </div>
               )}
             </div>
