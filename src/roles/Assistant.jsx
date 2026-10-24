@@ -1,3 +1,4 @@
+import { assistantQueue, dailyCollections, pendingCheckout, money } from "../assistantWorkflow.js";
 import CareFollowUps from "./CareFollowUps.jsx";
 import CheckoutInbox from "./CheckoutInbox.jsx";
 import ReminderStatus from "./ReminderStatus.jsx";
@@ -28,6 +29,7 @@ const tempTone = s => (s === "normal" ? "" : s === "high_fever" || s === "hypoth
 
 function Dash({ db, setDb, me, go, say }) {
   const TODAY = today();
+  const [queueStage, setQueueStage] = useState("waiting");
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [showExistingWalkIn, setShowExistingWalkIn] = useState(false);
   const [billingAppt, setBillingAppt] = useState(null);
@@ -38,13 +40,13 @@ function Dash({ db, setDb, me, go, say }) {
   const [logCallTarget, setLogCallTarget] = useState(null);
 
   const pendingReqs = (db.petRequests || []).filter(r => r.status === "Pending");
-  const q = db.appts.filter(a => a.date === TODAY && a.status !== "Cancelled").sort((a, b) => a.time.localeCompare(b.time));
-  const waiting = q.filter(a => a.status === "Checked-in");
-  const inConsult = q.filter(a => a.status === "In consultation");
+  const queue = assistantQueue(db.appts, TODAY);
+  const q = queue[queueStage];
+  const waiting = queue.waiting, inConsult = queue.consultation;
   const calls = currentVaccinationDue(db.vacc).filter(v => v.nextDue <= plus(30));
-  const todayPaid = q.filter(a => a.billingStatus === "Paid");
-  const todayRevenue = todayPaid.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
-  const unbilledCompleted = q.filter(a => a.status === "Completed" && a.billingStatus !== "Paid");
+  const collections = dailyCollections(db.appts, TODAY);
+  const todayPaid = collections.paid, todayRevenue = collections.total;
+  const unbilledCompleted = pendingCheckout(db.appts, TODAY).visits;
 
   const openCard = (petId, appt = null) => { setCardPetId(petId); setCardAppt(appt); };
   const closeCard = () => { setCardPetId(null); setCardAppt(null); };
@@ -69,8 +71,8 @@ function Dash({ db, setDb, me, go, say }) {
 
       <Stats
         items={[
-          ["calendar", q.length, "Total visits today"],
-          ["receipt", `₱${todayRevenue.toLocaleString()}`, `Today's sales (${todayPaid.length} paid)`],
+          ["calendar", queue.visits.length, "Total visits today"],
+          ["receipt", money(todayRevenue), `Today's collections (${todayPaid.length} paid)`],
           ["bell", waiting.length, "Checked in (queue)"],
           ["stethoscope", inConsult.length, "In consultation"],
           ["phone", calls.length, "Vaccine reminders due"],
@@ -89,11 +91,11 @@ function Dash({ db, setDb, me, go, say }) {
           <span className="sf-banner-ic"><Receipt size={22} aria-hidden="true" /></span>
           <div>
             <div className="sf-title-row">
-              <b>Today&rsquo;s collections: ₱{todayRevenue.toLocaleString()}</b>
+              <b>Today&rsquo;s collections: {money(todayRevenue)}</b>
               <span className="sf-pill ok">{todayPaid.length} settled</span>
               {unbilledCompleted.length > 0 && <span className="sf-pill wa">{unbilledCompleted.length} ready for checkout</span>}
             </div>
-            <small>Daily sales ledger, receipts, payment methods (cash, GCash, card) and the closing report.</small>
+            <small>Collections by payment date in Philippine time. {collections.undated.length > 0 && <>{collections.undated.length} undated payment(s) excluded; review in daily sales. </>}{collections.missingAmounts > 0 && <>{collections.missingAmounts} payment(s) missing an amount; excluded from totals.</>}</small>
           </div>
         </div>
         <button className="btn ghost sm" onClick={() => go("sales")}>Open daily sales<ArrowRight size={15} aria-hidden="true" /></button>
@@ -137,10 +139,14 @@ function Dash({ db, setDb, me, go, say }) {
       <div className="two" style={{ marginTop: 16 }}>
         <section className="card">
           <div className="sf-section-hd">
-            <h3>Arrival queue ({q.length})</h3>
+            <h3>Patient flow ({q.length})</h3>
             <span className="sf-sub">{TODAY}</span>
           </div>
 
+          <div className="row" style={{flexWrap:"wrap",gap:6,marginBottom:12}} aria-label="Patient flow stages">
+            {[["arrivals","Expected arrivals"],["waiting","Waiting for vet"],["consultation","In consultation"],["completed","Completed"],["missed","Missed"]].map(([key,label]) => <button key={key} className={`btn sm ${queueStage === key ? "gold" : "ghost"}`} aria-pressed={queueStage === key} onClick={() => setQueueStage(key)}>{label} ({queue[key].length})</button>)}
+          </div>
+          {queueStage === "waiting" && <p className="sf-sub">Emergency and priority patients appear first. The veterinarian decides the clinical response.</p>}
           {q.length ? (
             <div className="sf-grid">
               {q.map(a => {
@@ -198,7 +204,7 @@ function Dash({ db, setDb, me, go, say }) {
               })}
             </div>
           ) : (
-            <div className="empty sm">No appointments or walk-ins scheduled today.</div>
+            <div className="empty sm">No patients in this stage today.</div>
           )}
         </section>
 

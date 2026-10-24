@@ -411,3 +411,30 @@ measurements; adjustment buttons cannot supply invented starting values.
 Booster actions prefill the exact patient, service, vaccine and approved due date
 in the clinic calendar, with available times still selected by staff. Only an
 active appointment for the same vaccine family marks a recall as booked.
+
+### Assistant collections and patient flow
+
+Daily collections and the assistant dashboard use the saved payment timestamp
+(`paidAt`) in Asia/Manila. The visit date does not determine when money was
+collected. Legacy missing, invalid or time-only payment dates remain visible
+in an undated ledger and are excluded from daily totals. Missing amounts are
+flagged and excluded without substituting invoice totals. Missing methods are
+shown as “Not recorded”; Cash, GCash, Maya, card, other and unrecorded method
+totals use separate categories. Historical paid amounts stay unchanged.
+
+Completed visits on the selected visit date remain available for checkout.
+Pending charge totals come only from saved invoice lines minus saved discounts,
+are labelled drafts, and exclude appointments still awaiting an invoice.
+Checkout retains the server-returned payment snapshot, including the timestamp,
+so collections update immediately without needing a page reload.
+
+The assistant patient flow separates expected arrivals, patients waiting for
+the vet, consultations, completed visits and missed visits. The waiting display
+shows recorded Emergency and Priority triage first, then appointment time.
+This does not assign clinical treatment or change veterinarian assignments.
+Staff follow-up actions retain the exact consultation and pet, use clinic dates
+and the booking window, and show the vet's target and instructions in booking.
+A target beyond the booking window requires selecting a visit date; it is not
+silently changed to today.
+
+Check: `node --test tests/assistant-workflow.test.js`; `npm run build`.
