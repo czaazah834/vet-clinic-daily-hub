@@ -1,10 +1,11 @@
+import { ensurePrescriptionSchema } from "../prescriptions.js";
 import express from 'express';
 import { query, withTransaction } from '../db.js';
 import { sha256 } from '../security.js';
 import { ensureCheckoutInboxSchema, lockCheckout, ownsClaim, checkoutError } from '../checkout.js';
 export const checkoutRouter = express.Router();
 checkoutRouter.use(async (req,res,next) => {
-  try { await ensureCheckoutInboxSchema(); next(); }
+  try { await ensureCheckoutInboxSchema(); await ensurePrescriptionSchema(); next(); }
   catch { res.status(500).json({ error:'Unable to load the checkout inbox. Please retry.' }); }
 });
 checkoutRouter.get('/', async (req,res) => {
@@ -32,13 +33,13 @@ checkoutRouter.post('/:id/:action', async (req,res) => {
   if (!['claim','renew','release'].includes(action)) return res.status(404).json({ error:'Checkout action not found.' });
   try {
     const result=await withTransaction(async client=>{
-      const {task}=await lockCheckout(client,id);
+      const {task,appointment,consultation}=await lockCheckout(client,id);
       if (action==='claim') {
         if (task.status==='completed' || task.status==='claimed' && task.active && task.claimed_by) throw checkoutError('This visit is already open in another checkout session.');
         const token=crypto.randomUUID();
         const row=(await client.query("UPDATE checkout_tasks SET status='claimed',claimed_by=$2,claim_hash=$3,lease_until=NOW()+INTERVAL '5 minutes' WHERE appointment_id=$1 RETURNING lease_until",[id,req.user.id,sha256(token)])).rows[0];
         await client.query('INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)',[req.user.name,req.user.role,`Claimed checkout ${id}`]);
-        return {claimToken:token,leaseUntil:row.lease_until};
+        return {claimToken:token,leaseUntil:row.lease_until,invoiceItems:appointment.invoice_items || [],prescriptionItems:consultation.prescription_items || [],prescription:consultation.prescription || ""};
       }
       if (!ownsClaim(task,req.user,req.body.claimToken)) throw checkoutError('Your checkout claim is no longer active. Reclaim it before continuing.');
       if (action==='renew') {

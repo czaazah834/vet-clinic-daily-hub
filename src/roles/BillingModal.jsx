@@ -1,8 +1,8 @@
 import { useCheckoutClaim } from "../useCheckoutClaim.js";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { petName, ownerName, addLog } from "../lib.jsx";
 import { api } from "../api.js";
-import { Search, Plus, Trash2, Receipt, CheckCircle2, Printer, Pill, X } from "lucide-react";
+import { Search, Trash2, Receipt, CheckCircle2, Printer, Pill, X } from "lucide-react";
 
 export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   const pet = db.pets.find(p => p.id === appt.petId) || {};
@@ -28,6 +28,14 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   const [paid, setPaid] = useState(appt.billingStatus === "Paid");
   const [loading, setLoading] = useState(false);
   const claim = useCheckoutClaim(appt.id, paid, me.role === "assistant");
+  const loadedInvoice = useRef(false);
+  const prescribed = claim.prescriptionItems || record.prescriptionItems || [];
+  useEffect(() => {
+    if (!paid && claim.ready && Array.isArray(claim.invoiceItems) && !loadedInvoice.current) {
+      setItems(claim.invoiceItems);
+      loadedInvoice.current = true;
+    }
+  }, [paid, claim.ready, claim.invoiceItems]);
 
   // Load official clinic price catalog from backend
   useEffect(() => {
@@ -39,17 +47,12 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   }, [catalogAttempt]);
 
   const addItem = (item) => {
-    setItems(prev => [
-      ...prev,
-      {
-        id: "line_" + Math.random().toString(36).slice(2, 7),
-        catalogId: item.id,
-        name: item.name,
-        category: item.category,
-        price: item.price,
-        qty: 1
-      }
-    ]);
+    setItems(prev => {
+      const existing = prev.find(p => p.catalogId === item.id);
+      const limit = item.requiresPrescription ? prescribed.find(p => p.catalogId === item.id)?.quantity || 0 : 1000;
+      if (!limit || (existing?.qty || 0) >= limit) return prev;
+      return existing ? prev.map(p => p.catalogId === item.id ? {...p, qty:p.qty + 1} : p) : [...prev, {catalogId:item.id,name:item.name,category:item.category,price:item.price,qty:1}];
+    });
     setSearch("");
   };
 
@@ -286,6 +289,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                       <button
                         key={catItem.id}
                         type="button"
+                        disabled={catItem.requiresPrescription && !prescribed.some(p => p.catalogId === catItem.id)}
                         onClick={() => addItem(catItem)}
                         style={{
                           width: "100%",
@@ -309,7 +313,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                         </div>
                         <div style={{ textAlign: "right", marginLeft: "12px" }}>
                           <b style={{ color: "#047857", fontSize: "13px" }}>₱{catItem.price.toLocaleString()}</b>
-                          <span style={{ display: "block", fontSize: "11px", color: "#2563eb" }}>+ Add</span>
+                          <span style={{ display: "block", fontSize: "11px", color: "#2563eb" }}>{catItem.requiresPrescription && !prescribed.some(p => p.catalogId === catItem.id) ? "Vet prescription required" : "+ Add"}</span>
                         </div>
                       </button>
                     ))
@@ -324,6 +328,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
             {catalogError && <p role="alert">{catalogError} <button type="button" onClick={() => { setCatalogError(""); setCatalogAttempt(x => x + 1); }}>Retry prices</button></p>}
             <p>Choose services and other products from the clinic catalog. Unit prices are fixed.</p>
+            {!!prescribed.length && <div style={{padding:12,background:"#eff6ff",borderRadius:8,marginBottom:12}}><b>Veterinarian-prescribed products loaded</b><p>Confirm the actual product form, package size and supply before dispensing. Reduce or remove items that are not dispensed; the signed prescription is retained.</p>{prescribed.map(p => <p key={p.catalogId}><b>{p.name}</b> · {p.quantity} item(s)/package(s)<br />{p.instructions}</p>)}</div>}
             {/* Bill Line Items Table */}
             <div style={{ border: "1px solid #cbd5e1", borderRadius: "10px", overflow: "hidden", marginBottom: "16px" }}>
               <table style={{ width: "100%", fontSize: "12.5px", borderCollapse: "collapse" }}>
@@ -388,14 +393,6 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
               </table>
 
               <div style={{ padding: "8px 12px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="btn sm ghost"
-                  onClick={() => addItem({ name: "Custom Clinical Service / Supply", category: "Other", price: 300 })}
-                  style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}
-                >
-                  <Plus size={14} /> Add Custom Line Item
-                </button>
                 <div style={{ fontSize: "13px" }}>
                   Subtotal: <b style={{ color: "var(--navy)" }}>₱{subtotal.toLocaleString()}</b>
                 </div>

@@ -259,11 +259,15 @@ must be rebuilt from the catalog before payment.
 Configure additional fixed products using the server environment variable
 `CLINIC_PRODUCTS_JSON`, a JSON array of `{id,name,category,price}`. IDs must start
 with `product_` and contain lowercase letters, digits or underscores. Categories
-are `Pet shampoo`, `Pet vitamins`, `Pet medicine`, and `Pet accessories`.
+are `Pet shampoo`, `Pet vitamins`, `Pet medicine`, `Pet accessories`,
+`Prescription diet`, and `Dental & ear care`.
 Prices must be positive PHP amounts with at most two decimals. Use the clinic's
 approved product names, sizes and prices; none are invented by the application.
-An absent array adds no products; invalid configuration fails closed. Restart the
-API after configuration changes. The same catalog serves owners and checkout.
+The built-in catalog contains all 31 products from the supplied Vet Clinic Product
+Selection Guide (pages 1–4), using its listed estimated amounts as fixed clinic
+prices per the requested pricing policy. An absent array adds no extra products;
+invalid configuration or IDs colliding with built-in products fail closed. Restart
+the API after configuration changes. The same catalog serves owners and checkout.
 
 Apply `server/database/care-workflow.sql` to existing databases before deployment.
 New database initialization includes it; endpoints also initialize it when DDL
@@ -287,3 +291,44 @@ arrival into the receiving queue; they do not reserve another appointment slot.
 Regression checks: `node --test server/tests/care-workflow.test.js`,
 `npm run test:clinic`, `npm run test:scheduling`, and the PostgreSQL scheduling
 suite, which includes handoff and care-plan persistence tests.
+
+
+### Structured prescriptions and automatic billing
+
+Apply `server/database/prescriptions.sql` after `schema.sql` on existing databases.
+`npm run db:init` includes it; state, consultation and checkout endpoints also
+initialize it when DDL permission is available. No old prescriptions or receipts
+are rewritten. Legacy prescription text remains readable; new billing of medicines
+or prescription diets requires a structured product order for that visit.
+
+The assigned veterinarian selects catalog products in the SOAP prescription
+builder, enters directions and confirms a whole item/package supply quantity.
+The optional calculator uses the vet-entered dose, unit, route, doses/day, days
+and units per billed item/package. It rounds required packages up and generates
+directions. It does not select drugs, infer doses from weight/diagnosis, convert
+strengths, or infer package sizes. This replaces the former generic dose presets
+and their fallback 5 kg weight. Product forms grouped in the PDF (tablets/drops,
+liquid/capsules, wet/kibble, etc.) still need confirmation against the actual
+product dispensed. The guide supplies no antibiotic/painkiller/dewormer prices
+or drug strength/package data, so no such entries are invented.
+
+Additional home-care or external-prescription text is saved without a clinic
+charge. Selected products, canonical prices, directions and quantities are saved
+as a structured prescription. The prescription, generated text, invoice products,
+visit completion and checkout task commit in one transaction. Checkout claims
+return the persisted invoice directly, avoiding dependence on browser polling.
+The owner history and printed EMR/Rx use the generated prescription text.
+
+Reception confirms products actually dispensed, can reduce/remove invoice items,
+and can add services and retail products at fixed catalog prices. The signed
+prescription stays intact. Pet medicines, existing catalog antiparasitic tablets,
+and prescription diets require a structured order on the same visit; the server
+rejects unprescribed products and total quantities above the ordered supply,
+including quantities split across duplicate invoice lines. This enforces the
+provided guide's medicine/diet dispensing process. Dose/unit choices remain the
+veterinarian's responsibility. Inventory counts and stock deductions are not
+implemented by this workflow.
+
+Checks: `node --test server/tests/care-workflow.test.js server/tests/prescriptions.test.js`,
+`npm run test:clinic`, `npm run test:scheduling:postgres` with a disposable local
+database, and `npm run build`.

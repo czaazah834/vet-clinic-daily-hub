@@ -1,3 +1,5 @@
+import PrescriptionBuilder from "./PrescriptionBuilder.jsx";
+import { calculateSupply } from "../prescription.js";
 import { useState } from "react";
 import { Stethoscope, Activity, AlertTriangle, X, Calendar, Pill } from "lucide-react";
 import { TODAY, plus, uid, INTERVAL, petName, ownerName, addLog, ICON, I } from "../lib.jsx";
@@ -39,6 +41,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     followUpReason: `Clinical Follow-up & Post-treatment Re-check for ${pet.name}`,
   });
 
+  const [prescriptionItems, setPrescriptionItems] = useState([]);
   const [errs, setErrs] = useState({});
 
   const set = (k, v) => {
@@ -61,13 +64,6 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     }));
   };
 
-  const appendRxPreset = (text) => {
-    setF(p => ({
-      ...p,
-      prescription: p.prescription ? `${p.prescription.trim()}\n${text}` : text
-    }));
-  };
-
   const getBoosterDate = (vaccineName) => {
     const days = INTERVAL[vaccineName] || 365;
     const d = new Date();
@@ -81,6 +77,14 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     ev.preventDefault();
     if (loading) return;
     const e = {};
+    let selectedItems;
+    try {
+      selectedItems = prescriptionItems.map(p => {
+        if (p.dose) { const supply = calculateSupply(p.dose); return {...p, quantity:supply.quantity, instructions:supply.directions}; }
+        if (!Number.isInteger(p.quantity) || p.quantity < 1 || p.quantity > 1000 || !p.instructions.trim()) throw new Error('Complete the directions and supply quantity for each selected product.');
+        return p;
+      });
+    } catch (err) { e.prescription = err.message; }
     if (!f.diagnosis.trim()) e.diagnosis = "Assessment / Diagnosis is required";
     if (!f.treatment.trim()) e.treatment = "Plan / Treatment is required";
     if (f.giveVaccine) {
@@ -113,6 +117,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       diagnosis: f.diagnosis.trim(),
       treatment: f.treatment.trim(),
       prescription: f.prescription.trim(),
+      prescriptionItems: selectedItems,
       careStatus: f.scheduleFollowUp ? f.careStatus : "Routine care",
       followUpDate: f.scheduleFollowUp ? f.followUpDate : null,
       followUpReason: f.scheduleFollowUp ? f.followUpReason.trim() : "",
@@ -138,8 +143,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     const followUpNote = f.scheduleFollowUp
       ? `\nFollow-up requested for ${f.followUpDate}: ${f.followUpReason.trim()}. Reception to confirm scheduling.` : "";
     newRecord.treatment += followUpNote;
+    let saved;
     try {
-      await api.post("/api/consultations", {
+      saved = await api.post("/api/consultations", {
         ...newRecord,
         ...(f.weight ? { weight: Number(f.weight) } : {}),
         vaccination: newVacc,
@@ -149,6 +155,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       setLoading(false);
       return;
     }
+
+    newRecord.prescription = saved.prescription;
+    newRecord.prescriptionItems = saved.prescriptionItems;
 
     // 5. Update In-Memory / React State
     setDb(p => {
@@ -176,7 +185,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       }
 
       let nextAppts = (p.appts || []).map(a =>
-        appt && a.id === appt.id ? { ...a, status: "Completed", billingStatus: "Unbilled" } : a
+        appt && a.id === appt.id ? { ...a, status: "Completed", billingStatus: "Unbilled", invoiceItems: saved.invoiceItems } : a
       );
 
       return {
@@ -398,64 +407,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                 {errs.treatment && <span className="err">{errs.treatment}</span>}
               </div>
 
-              <div className="fld full" style={{ gridColumn: "1/-1" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "4px" }}>
-                  <label style={{ margin: 0 }}>
-                    <b>Prescription &amp; Home Care Medication</b>
-                  </label>
-                  <span style={{ fontSize: "11px", color: "#64748b" }}>
-                    Dosages calibrated for <b>{parseFloat(f.weight) || parseFloat(pet.weight) || 5.0} kg</b>
-                  </span>
-                </div>
-
-                {/* Quick Dosage Presets */}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
-                  {(() => {
-                    const w = parseFloat(f.weight) || parseFloat(pet.weight) || 5.0;
-                    const presets = [
-                      {
-                        name: "Co-Amoxiclav (15 mg/kg)",
-                        text: `Co-Amoxiclav: ${Math.round(w * 15)}mg PO BID x 7 days with food.`
-                      },
-                      {
-                        name: "Meloxicam (0.1 mg/kg)",
-                        text: `Meloxicam: ${(w * 0.1).toFixed(2)}mg PO SID x 3 days with meal (NSAID).`
-                      },
-                      {
-                        name: "Carprofen (2.2 mg/kg)",
-                        text: `Carprofen: ${Math.round(w * 2.2)}mg PO BID x 5 days with food.`
-                      },
-                      {
-                        name: "Metronidazole (10 mg/kg)",
-                        text: `Metronidazole: ${Math.round(w * 10)}mg PO BID x 5 days.`
-                      },
-                      {
-                        name: "Broad Dewormer",
-                        text: `Broad-spectrum Dewormer: ${Math.max(0.5, (w / 10).toFixed(1))} tablet PO single dose. Repeat in 14 days if indicated.`
-                      }
-                    ];
-                    return presets.map(p => (
-                      <button
-                        key={p.name}
-                        type="button"
-                        onClick={() => appendRxPreset(p.text)}
-                        className="btn ghost sm"
-                        style={{ fontSize: "11px", padding: "3px 8px", background: "#f1f5f9", borderColor: "#cbd5e1", borderRadius: "14px" }}
-                        title={`Click to append dosage for ${w}kg`}
-                      >
-                        + {p.name}
-                      </button>
-                    ));
-                  })()}
-                </div>
-
-                <textarea
-                  rows={3}
-                  value={f.prescription}
-                  onChange={e => set("prescription", e.target.value)}
-                  placeholder="Medications, dosage, frequency, days supply, follow-up advice..."
-                />
-              </div>
+              <div style={{gridColumn: "1/-1"}}><PrescriptionBuilder items={prescriptionItems} onChange={setPrescriptionItems} notes={f.prescription} onNotes={v => set("prescription", v)} error={errs.prescription} /></div>
 
               {/* Vaccine Administration During Consultation */}
               <div style={{ gridColumn: "1/-1", background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "14px", borderRadius: "12px", marginTop: "4px" }}>
