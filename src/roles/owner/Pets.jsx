@@ -1,3 +1,4 @@
+import { useSubmissionReview } from "../../components/SubmissionReview.jsx";
 import { useRef, useState } from "react";
 import { TODAY, scope, uid, addLog, ICON } from "../../lib.jsx";
 import { useLive, Field, Modal, petAge, fmt12, onlyDecimal, Icon, PhotoUpload } from "./ui.jsx";
@@ -334,6 +335,8 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
     f.set("color", text);
   };
 
+  const review = useSubmissionReview([v,photo,uploading,editing,db.petRequests,db.pets,me.ownerId]);
+
   const submit = async ev => {
     ev.preventDefault();
     if (savingRef.current || uploading) return;
@@ -361,6 +364,20 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
       photo
     };
 
+    if (!await review.ask({title:"Review pet registration request",confirmLabel:editing ? "Resubmit to clinic" : "Submit to clinic",
+      description:"Check your pet’s details. Reception will review this request before activating the patient and issuing a card.",
+      fields:[
+        ["Patient",data.name],
+        ["Species",`${data.speciesLabel}${data.speciesOther ? ` (${data.speciesOther})` : ""}`],
+        ["Breed",data.breed],
+        ["Sex / birth date",`${data.sex} / ${data.birth}`],
+        ["Weight",`${data.weight} kg`],
+        ["Neutered",data.neutered],
+        ["Color",data.color],
+        ["Dental status",data.dentalOcclusion],
+        ["Notes",data.notes],
+        ["Photo",photo ? <img src={photo} alt="Patient photo to submit" /> : "No photo selected"]]
+    })) return;
     savingRef.current = true;
     setSaving(true);
     try {
@@ -406,6 +423,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
   return (
     <Modal title={editing ? "Edit pet request" : "Add my pet"} onClose={() => {if (!savingRef.current) onClose();}}>
       <form onSubmit={submit} noValidate aria-busy={saving}>
+        {review.card}
         <p className="ow-note info">The clinic front desk reviews each patient registration before activating it in the clinical system.</p>
 
         {v.species && GUIDANCE_BY_SPECIES[v.species] && (
@@ -479,7 +497,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
         </fieldset>
         {top && <p className="err" role="alert">{top}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
-        <div className="row end"><button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Close</button><button className="btn" disabled={saving || uploading}>{saving ? "Sending…" : uploading ? "Preparing picture…" : editing ? "Save and resend" : "Send to clinic"}</button></div>
+        <div className="row end"><button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Close</button><button className="btn" disabled={saving || uploading}>{saving ? "Sending…" : uploading ? "Preparing picture…" : editing ? "Review and resend" : "Review request"}</button></div>
       </form>
     </Modal>
   );

@@ -1,3 +1,4 @@
+import { useSubmissionReview } from "../../components/SubmissionReview.jsx";
 import { confirmedBooking, confirmedCancellation } from "../../receptionSaves.js";
 import { intakeVisitSnapshot } from "../../intakeVisit.js";
 import { currentVaccinationDue, vaccinationAppointment, vaccinationBooking, vaccinationStatus } from "../../ownerVaccination.js";
@@ -57,6 +58,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   const ready = S && v.vetId && v.date;
   const nextDay = null;
   const timeHint = availability.error || (availability.loading && !times.length ? "Checking available times…" : "") || (!S ? "Choose a service first" : !ready ? "Choose a veterinarian and date to see open times" : times.length ? `${times.length} open time${times.length > 1 ? "s" : ""} for ${S.label.toLowerCase()} (${durText(S.dur)}) with ${vetName}` : holidayName(v.date) ? `Closed for ${holidayName(v.date)}.` : `No open times for ${S.label.toLowerCase()} (${durText(S.dur)}) that day.`);
+  const review = useSubmissionReview([v, editing, db.appts.find(a => a.id === editing?.id), db.vets, pets]);
   const moved = editing && editing.status === "Confirmed" && (editing.date !== v.date || editing.time !== v.time || editing.vetId !== v.vetId || editing.petId !== v.petId || editing.service !== v.service);
   const submit = async e => {
     e.preventDefault(); if (bookingFlight.current) return; f.submit(); if (!f.valid) return;
@@ -82,6 +84,17 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
       actorRole: "owner"
     };
 
+    if (!await review.ask({title:editing ? "Review appointment changes" : "Review your booking", confirmLabel:editing ? "Save appointment changes" : "Confirm booking",
+      description:editing ? "Check the patient, veterinarian and schedule. Changed assignments return to reception for confirmation." : "Check these details before sending your booking to reception for confirmation.",
+      fields:[
+        ["Patient",petName(db,v.petId)],
+        ["Veterinarian",vetName],
+        ["Service",S.label],
+        ["Date and time",`${v.date} at ${fmt12(v.time)}`],
+        ["Reason",reason],
+        ["Note for the clinic",notes],
+        ["Follow-up request",followUp ? `${followUp.followUpDate}: ${followUp.followUpReason}` : "Regular visit"]]
+    })) return;
     let saved;
     bookingFlight.current = true;
     setSaving(true);
@@ -107,6 +120,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   return (
     <Modal title={editing ? "Edit appointment" : "Book a visit"} onClose={() => { if (!bookingFlight.current) onClose(); }}>
       <form onSubmit={submit} noValidate>
+        {review.card}
         <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
         {start && (start.fromVaccineCard || start.vaccineName) && (
           <div className="ow-banner ok" style={{ marginBottom: 12 }}>
@@ -131,7 +145,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
         <p className="ow-hint" style={{ marginTop: 10 }}>The clinic will reach you at {owner.phone || "your number on file"}. You can update it in My Profile.</p>
         {saveError && <p className="err" role="alert">{saveError}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
-        <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Close</button><button className="btn" disabled={!pets.length || saving}>{saving ? "Saving…" : editing ? "Save changes" : "Book visit"}</button></div>
+        <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Close</button><button className="btn" disabled={!pets.length || saving}>{saving ? "Saving…" : editing ? "Review changes" : "Review booking"}</button></div>
         </fieldset>
       </form>
     </Modal>

@@ -1,3 +1,4 @@
+import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { confirmedBooking } from "../receptionSaves.js";
 import { completedVisitRecord } from "../vetQueue.js";
 import { ConsultationDetailModal } from "./ConsultationsPage.jsx";
@@ -1034,6 +1035,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
   const maxBookingDate = lastDay();
   const availability = useAvailability({ vetId, date, service, excludeId:slot.editing ? slot.id : undefined });
 
+  const review = useSubmissionReview([petId,vetId,date,time,service,reason,followUpId,slot,db.appts.find(a => a.id === slot.id),doctors]);
   const selectedPet = db.pets.find(p => p.id === petId) || {};
   const owner = db.owners.find(o => o.id === selectedPet.ownerId) || {};
   const followUp = db.records.find(r => r.id === followUpId && r.petId === petId);
@@ -1071,6 +1073,18 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
       setDateErr(`${selectedPet.name || "Patient"} already has a scheduled visit at ${time} on this date.`);
       return;
     }
+    if (!await review.ask({title:slot.editing ? "Review appointment changes" : "Review clinic booking", confirmLabel:slot.editing ? "Save appointment changes" : "Confirm booking",
+      description:"Check the patient and assignment. Reception must confirm changed appointments with the owner.",
+      fields:[
+        ["Patient",selectedPet.name],
+        ["Owner",owner.name],
+        ["Veterinarian",doctors.find(([id]) => id === vetId)?.[1]],
+        ["Date and time",`${date} at ${time}`],
+        ["Service",SERVICES[service]?.label],
+        ["Reason",reason.trim() || "General visit"],
+        ["Saved owner note",slot.notes],
+        ["Follow-up request",followUp ? `${followUp.followUpDate}: ${followUp.followUpReason}` : "Regular visit"]]
+    })) return;
     bookingFlight.current = true;
     setSaving(true);
     try {
@@ -1098,6 +1112,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
         </div>
 
         <form onSubmit={handleSubmit}>
+          {review.card}
           <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
           {slot.editing && <p className="ow-note">Change the veterinarian or schedule here. A changed assignment returns to Scheduled for reception to confirm with the owner. Saved owner notes and linked follow-up instructions are retained.</p>}
           {slot.vaccineDueDate && <p className="ow-note">Approved booster due: {slot.vaccineDueDate}. Choose an available clinic visit; this does not change the approved due date.</p>}
@@ -1187,7 +1202,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
             <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
             <button type="submit" disabled={saving || availability.loading || !!availability.error || !availability.slots.includes(time)} className="btn gold" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <Check size={16} />
-              <b>{saving ? "Saving booking…" : slot.editing ? "Save changes" : "Confirm Booking"}</b>
+              <b>{saving ? "Saving booking…" : slot.editing ? "Review changes" : "Review booking"}</b>
             </button>
           </div>
           </fieldset>

@@ -1,3 +1,4 @@
+import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { useRef, useState } from "react";
 import { UserCheck, X, ArrowRight } from "lucide-react";
 import { today, nowHM } from "../booking.js";
@@ -30,6 +31,8 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
   const activeVisits = (db.appts || []).filter(a => a.petId === selectedPetId && a.date === TODAY && !["Cancelled", "Completed", "No-show"].includes(a.status));
   const alreadyToday = activeVisits.length > 0;
 
+  const review = useSubmissionReview([selectedPet,selectedOwner,vetId,reason,activeVisits,doctors]);
+
   const handleSubmit = async e => {
     e.preventDefault();
     if (inFlight.current) return;
@@ -38,6 +41,12 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
     if (alreadyToday) { setSaveError("Open today's existing visit below to continue intake."); return; }
     if (!doctors.some(([id]) => id === vetId)) { setSaveError("Choose an available veterinarian."); return; }
     if (reason.trim().length < 3 || reason.length > 300) { setSaveError("Enter a visit reason between 3 and 300 characters."); return; }
+    if (!await review.ask({title:"Review walk-in arrival",confirmLabel:"Save arrival",description:"Confirm the patient and assigned veterinarian. You will record measured intake next before the patient joins the doctor queue.",fields:[
+        ["Patient",selectedPet.name],
+        ["Owner",selectedOwner.name],
+        ["Veterinarian",doctors.find(([id])=>id===vetId)?.[1]],
+        ["Date",today()],
+        ["Reason",reason.trim()]]}))return;
     inFlight.current = true;
     setBusy(true);
     const payload = {
@@ -81,6 +90,7 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
         </ol>
 
         <form onSubmit={handleSubmit}>
+          {review.card}
           <div className="sf-field">
             <label htmlFor="exw-search">Search patient or owner</label>
             <input id="exw-search" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Pet name, breed, owner or mobile number" />
@@ -141,7 +151,7 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
           {saveError && <p className="err" role="alert">{saveError}</p>}
           <div className="row end" style={{flexWrap:"wrap"}}>
             <button type="button" className="btn ghost" disabled={busy} onClick={onClose}>Cancel</button>
-            {!alreadyToday && <button type="submit" className="btn gold" disabled={!selectedPet || !selectedOwner || !doctors.some(([id]) => id === vetId) || busy}>{busy ? "Saving arrival…" : "Save arrival and record vitals"}<ArrowRight size={16} aria-hidden="true" /></button>}
+            {!alreadyToday && <button type="submit" className="btn gold" disabled={!selectedPet || !selectedOwner || !doctors.some(([id]) => id === vetId) || busy}>{busy ? "Saving arrival…" : "Review arrival"}<ArrowRight size={16} aria-hidden="true" /></button>}
           </div>
         </form>
       </div>
