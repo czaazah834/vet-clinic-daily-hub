@@ -20,10 +20,11 @@ export async function lockCheckout(client, appointmentId) {
   const appointment = (await client.query('SELECT * FROM appointments WHERE id = $1 FOR UPDATE', [appointmentId])).rows[0];
   if (!appointment) throw checkoutError('Appointment not found.', 404);
   if (appointment.status !== 'Completed' || appointment.billing_status === 'Paid') throw checkoutError('This visit is no longer waiting for checkout. Refresh the inbox.');
-  if (!(await client.query('SELECT id FROM consultations WHERE appt_id = $1', [appointmentId])).rows.length) throw checkoutError('A finalized consultation is required before checkout.');
+  const consultation = (await client.query('SELECT id, prescription_items, prescription FROM consultations WHERE appt_id = $1 ORDER BY date DESC, created_at DESC, id DESC LIMIT 1', [appointmentId])).rows[0];
+  if (!consultation) throw checkoutError('A finalized consultation is required before checkout.');
   await createCheckoutTask(client, appointmentId);
   const task = (await client.query('SELECT *, lease_until > NOW() AS active FROM checkout_tasks WHERE appointment_id = $1 FOR UPDATE', [appointmentId])).rows[0];
-  return { appointment, task };
+  return { appointment, task, consultation };
 }
 export function ownsClaim(task, user, token) {
   return task.status === 'claimed' && task.active && task.claimed_by === user.id && typeof token === 'string' && task.claim_hash === sha256(token);

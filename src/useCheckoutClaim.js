@@ -10,14 +10,14 @@ export function useCheckoutClaim(appointmentId, paid, enabled = true) {
     let active = true;
     token.current = null;
     const path = `/api/checkout-inbox/${encodeURIComponent(appointmentId)}`;
-    const update = value => { if (active) setState(value); };
+    const update = value => { if (active) setState(previous => ({...previous,...value})); };
     const acquire = async () => {
       update({ ready:false,error:'' });
       try {
         const result = await api.post(`${path}/claim`, {});
         if (!active) { api.post(`${path}/release`, { claimToken:result.claimToken }).catch(() => {}); return; }
         token.current = result.claimToken;
-        update({ready:true,error:''});
+        update({ready:true,error:'',invoiceItems:result.invoiceItems,prescriptionItems:result.prescriptionItems,prescription:result.prescription});
       } catch(error) { update({ready:false,error:error.message}); }
     };
     const renew = async () => {

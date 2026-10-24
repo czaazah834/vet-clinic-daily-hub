@@ -225,3 +225,53 @@ test('vet handoff is atomic, scoped, race-safe and exposes instructions to the r
  assert.equal(persisted.followUpReason,plan.followUpReason);
  assert.equal((await req('vet2','POST','/appointments/vet-handoff/handoff',{vetId:'v1',note:'Already complete'})).status,409);
 });
+
+test('structured prescription, automatic invoice and checkout task commit together and survive reload', async () => {
+ await prepareVisit('rx-atomic');
+ const dose={amount:0.5,unit:'mL',route:'by mouth',timesPerDay:2,days:7,unitsPerItem:5};
+ const body={...consultation('rx-atomic'),prescription:'Give with food.',prescriptionItems:[{catalogId:'product_multivitamin',quantity:2,dose},{catalogId:'srv_nexgard',quantity:1,instructions:'Vet-confirmed product and strength; one dose as directed.'}]};
+ for(const role of ['owner','assistant','admin','vet2']) assert.equal((await req(role,'POST','/consultations',body)).status,403);
+ await query(`CREATE FUNCTION reject_rx_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Finalized consultation note_rx-atomic%' THEN RAISE EXCEPTION 'Synthetic Rx audit failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_rx BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_rx_audit()`);
+ assert.equal((await req('vet','POST','/consultations',body)).status,500);
+ assert.equal((await query("SELECT COUNT(*)::int n FROM consultations WHERE appt_id='rx-atomic'")).rows[0].n,0);
+ const unchanged=(await query("SELECT * FROM appointments WHERE id='rx-atomic'")).rows[0];
+ assert.equal(unchanged.status,'In consultation');assert.deepEqual(unchanged.invoice_items,[]);
+ assert.equal((await query("SELECT COUNT(*)::int n FROM checkout_tasks WHERE appointment_id='rx-atomic'")).rows[0].n,0);
+ await query('DROP TRIGGER fail_rx ON audit_logs');
+ const result=await req('vet','POST','/consultations',body);assert.equal(result.status,200,JSON.stringify(result));
+ assert.equal(result.data.prescriptionItems.length,2);assert.match(result.data.prescription,/0.5 mL by mouth, 2 time/);
+ assert.match(result.data.prescription,/Give with food/);
+ assert.deepEqual(result.data.invoiceItems.map(p=>[p.catalogId,p.qty,p.price]),[['product_multivitamin',2,250],['srv_nexgard',1,550]]);
+ for(let i=0;i<2;i++) {
+  const state=(await req('assistant','GET','/state')).data.data;
+  assert.deepEqual(state.appts.find(a=>a.id==='rx-atomic').invoiceItems,result.data.invoiceItems);
+  assert.equal(state.consults.find(c=>c.apptId==='rx-atomic').prescriptionItems[0].dose.amount,0.5);
+ }
+ // Legacy installations can contain an older note linked to the same visit.
+ await query("INSERT INTO consultations(id,pet_id,vet_id,appt_id,date,symptoms,objective,diagnosis,treatment,prescription) VALUES('legacy-rx-note','p7','v1','rx-atomic','2020-01-01','Legacy','Legacy','Legacy','Legacy','Legacy text')");
+ const claim=await req('assistant','POST','/checkout-inbox/rx-atomic/claim',{});assert.equal(claim.status,200);
+ assert.deepEqual(claim.data.invoiceItems,result.data.invoiceItems);assert.deepEqual(claim.data.prescriptionItems,result.data.prescriptionItems);
+ const lines=claim.data.invoiceItems;
+ const pay=patch=>({invoiceItems:lines,amount:1050,paymentMethod:'Cash',cashTendered:2000,claimToken:claim.data.claimToken,...patch});
+ assert.equal((await req('assistant','POST','/appointments/rx-atomic/billing',pay({invoiceItems:[...lines,{...lines[1]}],amount:1600}))).status,400);
+ assert.equal((await req('assistant','POST','/appointments/rx-atomic/billing',pay({invoiceItems:[{...lines[0],price:1}],amount:2}))).status,400);
+ assert.equal((await req('assistant','POST','/appointments/rx-atomic/billing',pay({invoiceItems:[{...lines[1],catalogId:'srv_simparica',name:'Simparica Trio Chewable Tablet',price:600}],amount:600}))).status,400);
+ const paid=await req('assistant','POST','/appointments/rx-atomic/billing',pay({}));assert.equal(paid.status,200,JSON.stringify(paid));
+ assert.equal((await query("SELECT status FROM checkout_tasks WHERE appointment_id='rx-atomic'")).rows[0].status,'completed');
+ assert.equal((await req('vet','POST','/consultations',body)).status,403);
+ assert.equal((await query("SELECT jsonb_array_length(invoice_items)::int n FROM appointments WHERE id='rx-atomic'")).rows[0].n,2);
+});
+
+test('unprescribed medicine and diets cannot be added at checkout; retail guide products can', async () => {
+ await prepareVisit('rx-retail');
+ assert.equal((await req('vet','POST','/consultations',consultation('rx-retail'))).status,200);
+ const catalog=(await req('owner','GET','/services/prices')).data.catalog;
+ for(const id of ['srv_nexgard','product_renal_diet']) {
+  const product=catalog.find(p=>p.id===id);
+  const result=await req('assistant','POST','/appointments/rx-retail/billing',{amount:product.price,paymentMethod:'Cash',cashTendered:2000,invoiceItems:[{catalogId:id,name:product.name,price:product.price,qty:1}]});
+  assert.equal(result.status,400);assert.match(result.data.error,/prescription/);
+ }
+ const product=catalog.find(p=>p.id==='product_oatmeal_shampoo');
+ const paid=await req('assistant','POST','/appointments/rx-retail/billing',{amount:350,paymentMethod:'Cash',cashTendered:350,invoiceItems:[{catalogId:product.id,name:product.name,price:350,qty:1}]});
+ assert.equal(paid.status,200,JSON.stringify(paid));
+});

@@ -1,0 +1,21 @@
+// Supply arithmetic only: clinical choices and package contents are entered by
+// the veterinarian. Never infer a dose from weight, diagnosis or product name.
+export function calculateSupply(dose) {
+  if (!dose || typeof dose !== 'object') throw new Error('Complete the supply calculation.');
+  const { amount, timesPerDay, days, unitsPerItem, unit, route } = dose;
+  if (![amount, timesPerDay, days, unitsPerItem].every(n => typeof n === 'number' && Number.isFinite(n) && n > 0) || amount > 10000 || unitsPerItem > 100000 || !Number.isInteger(timesPerDay) || timesPerDay > 24 || !Number.isInteger(days) || days > 365) throw new Error('Enter a positive dose and package contents, 1–24 doses/day and 1–365 days.');
+  if (!['tablet', 'capsule', 'mL', 'g', 'drop'].includes(unit) || !['by mouth', 'on skin', 'in ear', 'in eye'].includes(route)) throw new Error('Select the dose unit and route.');
+  const scale = 10000;
+  const scaledAmount = Math.round(amount * scale), scaledPackage = Math.round(unitsPerItem * scale);
+  if (scaledAmount < 1 || scaledPackage < 1 || Math.abs(amount * scale - scaledAmount) > 0.000001 || Math.abs(unitsPerItem * scale - scaledPackage) > 0.000001) throw new Error('Use at most four decimal places for dose and package contents.');
+  const scaledTotal = scaledAmount * timesPerDay * days;
+  const totalUnits = scaledTotal / scale;
+  const quantity = Math.ceil(scaledTotal / scaledPackage);
+  if (quantity < 1 || quantity > 1000) throw new Error('The calculated supply must be 1–1000 items/packages.');
+  return { quantity, totalUnits, directions: `${amount} ${unit} ${route}, ${timesPerDay} time(s) per day for ${days} day(s).` };
+}
+export function prescriptionText(items, notes = '') {
+  const lines = items.map(p => `${p.name} — ${p.instructions} Supply: ${p.quantity} ${p.unit || 'item / package'}${p.dose ? ` (${p.dose.unitsPerItem} ${p.dose.unit} per item/package)` : ''}.`);
+  if (notes.trim()) lines.push(notes.trim());
+  return lines.join('\n');
+}
