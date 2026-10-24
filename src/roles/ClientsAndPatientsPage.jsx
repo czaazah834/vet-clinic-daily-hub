@@ -96,7 +96,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
   const vaccs = db.vacc || db.vaccs || [];
 
   // Front desk priority: patients who already hold an appointment today. Walk-ins are registered from the Front Desk dashboard instead.
-  const canCheckIn = me?.role === "assistant" || me?.role === "admin";
+  const canCheckIn = me?.role === "assistant";
   const todayApptByPet = {};
   (db.appts || [])
     .filter(a => a.date === TODAY && !["Cancelled", "No-show"].includes(a.status))
@@ -211,13 +211,13 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
 
         {/* Action Button */}
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          <button
+          {canCheckIn && <button
             className="btn gold"
             onClick={() => setShowWalkIn(true)}
             style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700, padding: "8px 16px", fontSize: "13.5px" }}
           >
             <Plus size={16} /> + Register Walk-in (Owner &amp; Pet)
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -532,7 +532,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
 
                         <td style={{ padding: "12px 14px", textAlign: "right" }}>
                           <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
-                            <button
+                            {canCheckIn && <button
                               type="button"
                               className="btn sm gold"
                               onClick={() => setAddPetForOwner(o)}
@@ -548,7 +548,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                               title="Register a new pet linked to this client"
                             >
                               <Plus size={13} /> Add Pet
-                            </button>
+                            </button>}
                             <button
                               type="button"
                               className="btn sm ghost"
@@ -604,9 +604,10 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
           setDb={setDb}
           me={me}
           onClose={() => setShowWalkIn(false)}
-          onRegistered={({ pet, owner }) => {
+          onRegistered={(pet, owner, appointment) => {
             say && say(`Successfully registered ${owner?.name || "Client"} and issued card for ${pet?.name || "Patient"}!`);
             setShowWalkIn(false);
+            if (appointment) setCheckInAppt(appointment);
           }}
         />
       )}
@@ -619,9 +620,10 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
           setDb={setDb}
           me={me}
           onClose={() => setAddPetForOwner(null)}
-          onRegistered={({ pet, owner }) => {
+          onRegistered={(pet, owner, appointment) => {
             say && say(`Successfully added ${pet?.name || "Patient"} to ${owner?.name || addPetForOwner.name}'s account!`);
             setAddPetForOwner(null);
+            if (appointment) setCheckInAppt(appointment);
           }}
         />
       )}

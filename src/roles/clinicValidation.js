@@ -10,7 +10,7 @@ const roleName = role => String(role ?? '').toLowerCase().replace(/[^a-z]/g,'');
 export const isVet = role => ['vet','veterinarian','doctor'].includes(roleName(role));
 export const isAssistant = role => ['assistant','vetassistant','veterinaryassistant','receptionist'].includes(roleName(role));
 export const isAdmin = role => ['admin','administrator'].includes(roleName(role));
-export const canCollectPayment = role => isAssistant(role) || isAdmin(role);
+export const canCollectPayment = role => isAssistant(role);
 export const canFinalizeConsultation = role => isVet(role);
 export const canChangeVisitStatus = (from,to) => from === to || Boolean(permitted[from]?.includes(to));
 export const money = input => {
@@ -55,7 +55,7 @@ export function validateConsultation({diagnosis,treatment,prescription,giveVacci
 export function validateCheckout({appointment,clinicalRecord,role,fee,discount=0,method,received,reference,existingPayments=[]}={}) {
   const errors={};
   if (!appointment?.id) errors.appointment='Appointment is missing.';
-  if (!canCollectPayment(role)) errors.role='Only authorized front-desk staff or admin may record payment.';
+  if (!canCollectPayment(role)) errors.role='Only authorized front-desk staff may record payment.';
   if (appointment?.status!=='Completed' || !clinicalRecord?.id || clinicalRecord.apptId!==appointment.id) errors.visit='A veterinarian must complete and record the consultation before payment.';
   if (appointment?.billingStatus==='Paid') errors.payment='This appointment is already paid.';
   if (['Voided','Refunded'].includes(appointment?.billingStatus)) errors.payment='This bill cannot be paid in its current status.';

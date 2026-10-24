@@ -41,7 +41,7 @@ export const SPECIES_DEFAULTS = {
 export function getIdealWeight(species = "Dog", breed = "") {
   const b = String(breed || "").toLowerCase().trim();
   for (const [k, v] of Object.entries(BREED_WEIGHTS)) {
-    if (b.includes(k) || k.includes(b)) {
+    if (b && (b.includes(k) || k.includes(b))) {
       return { min: v.min, max: v.max, source: `Breed standard (${breed})` };
     }
   }

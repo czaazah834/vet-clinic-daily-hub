@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   CalendarDays, AlertTriangle, PawPrint, ConciergeBell, Thermometer, Scale, UserCheck, Receipt, ArrowRight, X, Phone, Syringe,
 } from "lucide-react";
-import { Stats, Hero, TODAY, plus, moveAppt, Badge, dueState, ICON, I, uid, addLog, VETS } from "../lib.jsx";
+import { Stats, Hero, TODAY, plus, moveAppt, Badge, dueState, ICON, I, uid, addLog } from "../lib.jsx";
 import { api } from "../api.js";
 import InClinicRegistration from "./InClinicRegistration.jsx";
 import BillingModal from "./BillingModal.jsx";
@@ -180,7 +180,7 @@ function Dash({ db, setDb, me, go, say }) {
                       <Badge v={a.status} />
                       <button className="btn sm ghost" onClick={() => openCard(pet.id || a.petId, a)}>Digital card</button>
                       {a.status === "Scheduled" && (
-                        <button className="btn sm" onClick={() => { moveAppt(setDb, a.id, "Confirmed", me); say("Appointment confirmed."); }}>Confirm</button>
+                        <button className="btn sm" onClick={async () => { if (await moveAppt(setDb, a.id, "Confirmed", me, say)) say("Appointment confirmed."); }}>Confirm</button>
                       )}
                       {["Scheduled", "Confirmed"].includes(a.status) && (
                         <button className="btn sm gold" title="Arrival check-in and vitals intake" onClick={() => setCheckInAppt(a)}>Check in</button>
@@ -258,7 +258,7 @@ function Dash({ db, setDb, me, go, say }) {
         <InClinicRegistration
           db={db} setDb={setDb} me={me}
           onClose={() => setShowWalkIn(false)}
-          onRegistered={(owner, pet) => say(`Walk-in registered: ${owner.name} and ${pet.name}. Portal invite sent.`)}
+          onRegistered={(pet, owner, appointment) => { setShowWalkIn(false); say(`Walk-in registered: ${owner.name} and ${pet.name}. Record vitals to complete check-in.`); if (appointment) setCheckInAppt(appointment); }}
         />
       )}
 
@@ -327,7 +327,8 @@ function ExistingPatientCheckInModal({ db, setDb, me, onClose, onCheckIn, say })
   const [search, setSearch] = useState("");
   const [selectedPetId, setSelectedPetId] = useState("");
   const [reason, setReason] = useState("Walk-in consultation and routine exam");
-  const [vetId, setVetId] = useState(VETS[0][0]);
+  const doctors = (db.vets || []).map(v => [v.id, v.name]);
+  const [vetId, setVetId] = useState(doctors[0]?.[0] || "");
   const [busy, setBusy] = useState(false);
 
   const term = search.trim().toLowerCase();
@@ -356,9 +357,12 @@ function ExistingPatientCheckInModal({ db, setDb, me, onClose, onCheckIn, say })
     let newAppt;
     try {
       const res = await api.post("/api/appointments", payload);
-      newAppt = res?.appointment || { id: "a_" + uid(), ...payload };
-    } catch (_) {
-      newAppt = { id: "a_" + uid(), ...payload };
+      if (!res?.appointment) throw new Error("The server did not confirm the visit.");
+      newAppt = res.appointment;
+    } catch (error) {
+      setBusy(false);
+      say(error.message);
+      return;
     }
     setDb(prev => ({
       ...prev,
@@ -415,7 +419,7 @@ function ExistingPatientCheckInModal({ db, setDb, me, onClose, onCheckIn, say })
           <div className="sf-field">
             <label htmlFor="exw-vet">Veterinarian</label>
             <select id="exw-vet" value={vetId} onChange={e => setVetId(e.target.value)}>
-              {VETS.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              {doctors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
             </select>
           </div>
 

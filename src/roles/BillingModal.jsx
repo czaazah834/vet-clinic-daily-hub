@@ -25,9 +25,9 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   });
 
   const [method, setMethod] = useState(appt.paymentMethod || "Cash");
-  const [discount, setDiscount] = useState("0");
-  const [cashTendered, setCashTendered] = useState(String(appt.amount || 600));
-  const [refNo, setRefNo] = useState("");
+  const [discount, setDiscount] = useState(String(appt.discount || 0));
+  const [cashTendered, setCashTendered] = useState(String(appt.cashTendered ?? appt.amount ?? 600));
+  const [refNo, setRefNo] = useState(appt.paymentReference || "");
   const [formErr, setFormErr] = useState("");
   const [paid, setPaid] = useState(appt.billingStatus === "Paid");
   const [loading, setLoading] = useState(false);
@@ -81,13 +81,14 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   const handlePay = async (ev) => {
     ev.preventDefault();
     setFormErr("");
+    if (loading || me.role !== "assistant") return;
 
     if (!items.length) {
       setFormErr("At least one billable procedure or product is required.");
       return;
     }
-    if ((+discount || 0) > subtotal) {
-      setFormErr("Discount cannot exceed the billable subtotal.");
+    if (!Number.isFinite(+discount) || +discount < 0 || (+discount || 0) > subtotal) {
+      setFormErr("Discount must be between zero and the billable subtotal.");
       return;
     }
     if (method === "Cash") {
@@ -107,6 +108,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
     const payload = {
       amount: total,
+      discount: +discount,
       billingStatus: "Paid",
       paymentMethod: method,
       paymentReference: method !== "Cash" ? refNo.trim() : `CASH-${Date.now().toString().slice(-6)}`,
@@ -120,7 +122,9 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
     try {
       await api.post(`/api/appointments/${appt.id}/billing`, payload);
     } catch (err) {
-      console.warn("Backend billing fallback:", err.message);
+      setFormErr(err.message);
+      setLoading(false);
+      return;
     }
 
     setDb(p => ({
@@ -131,6 +135,9 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
         amount: total,
         paymentMethod: method,
         paymentReference: payload.paymentReference,
+        discount: payload.discount,
+        cashTendered: payload.cashTendered,
+        changeAmount: payload.changeAmount,
         paidAt: new Date().toLocaleTimeString("en-PH"),
         invoiceItems: items
       } : a),
@@ -205,7 +212,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             </div>
           </div>
         ) : (
-          <form onSubmit={handlePay}>
+          me.role !== "assistant" ? <p role="status">This visit is awaiting front desk checkout. Financial records are available for review after payment.</p> : <form onSubmit={handlePay}>
             {/* Patient Context Card */}
             <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "10px", marginBottom: "14px", border: "1px solid #e2e8f0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
@@ -467,7 +474,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             </div>
 
             {formErr && (
-              <div style={{ background: "#fef2f2", border: "1px solid #f87171", color: "#b91c1c", padding: "8px 12px", borderRadius: "8px", fontSize: "12.5px", marginBottom: "14px", fontWeight: 600 }}>
+              <div role="alert" style={{ background: "#fef2f2", border: "1px solid #f87171", color: "#b91c1c", padding: "8px 12px", borderRadius: "8px", fontSize: "12.5px", marginBottom: "14px", fontWeight: 600 }}>
                 {formErr}
               </div>
             )}

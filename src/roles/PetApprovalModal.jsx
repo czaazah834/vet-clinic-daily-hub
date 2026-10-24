@@ -1,3 +1,4 @@
+import { api } from "../api.js";
 import { useState } from "react";
 import { Syringe, CheckCircle2, ShieldCheck, PawPrint, X, Sparkles } from "lucide-react";
 import { TODAY, uid, addLog, ICON, I, petName, ownerName } from "../lib.jsx";
@@ -9,6 +10,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
   const [mode, setMode] = useState("review"); // 'review' | 'decline'
   const [declineReason, setDeclineReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const owner = db.owners.find(o => o.id === request.ownerId) || {};
   const age = calculateAge(request.birth);
@@ -24,6 +26,8 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
   );
 
   const handleApprove = async () => {
+    if (submitting) return;
+    setSaveError("");
     setSubmitting(true);
     let assignedCardId = cardId;
     let newPet = null;
@@ -31,15 +35,8 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
     let preScheduledAppt = null;
 
     try {
-      const res = await fetch(`/api/pet-requests/${request.id}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actorName: me.name,
-          actorRole: me.role || "Vet Assistant"
-        })
-      });
-      const data = await res.json();
+      const data = await api.post(`/api/pet-requests/${request.id}/approve`, {});
+      if (!data?.pet) throw new Error("The clinic did not confirm approval.");
       if (data.success) {
         assignedCardId = data.cardId || assignedCardId;
         if (data.appointment) preScheduledAppt = data.appointment;
@@ -87,31 +84,9 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
         }
       }
     } catch (err) {
-      console.warn("Backend approval fallback:", err);
-    }
-
-    if (!newPet) {
-      const newPetId = "p" + uid();
-      newPet = {
-        id: newPetId,
-        ownerId: request.ownerId,
-        name: request.name.trim(),
-        species: request.species,
-        speciesOther: request.speciesOther || "",
-        breed: request.breed ? request.breed.trim() : (request.species === "Dog" ? "Aspin" : request.species === "Cat" ? "Puspin" : "Mixed"),
-        sex: request.sex,
-        birth: request.birth,
-        weight: request.weight != null ? +request.weight : null,
-        neutered: request.neutered || "Not sure",
-        color: request.color || "",
-        notes: request.notes || "",
-        allergies: [],
-        vaccinationCardId: assignedCardId,
-        registeredAt: TODAY,
-        approvedBy: me.name,
-        weights: request.weight ? [{ date: TODAY, kg: +request.weight, by: "registration" }] : [],
-      };
-      newVaccRecords = generateAutomatedVaccineSchedule(newPet, newPet.id, me.name);
+      setSaveError(err.message);
+      setSubmitting(false);
+      return;
     }
 
     setDb(p => {
@@ -173,19 +148,15 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
     e.preventDefault();
     if (!declineReason.trim()) return;
 
+    if (submitting) return;
+    setSaveError("");
     setSubmitting(true);
     try {
-      await fetch(`/api/pet-requests/${request.id}/decline`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reason: declineReason.trim(),
-          actorName: me.name,
-          actorRole: me.role || "Vet Assistant"
-        })
-      });
+      await api.post(`/api/pet-requests/${request.id}/decline`, { reason: declineReason.trim() });
     } catch (err) {
-      console.warn("Backend decline fallback:", err);
+      setSaveError(err.message);
+      setSubmitting(false);
+      return;
     }
 
     setDb(p => ({
@@ -209,6 +180,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ width: "min(720px, 100%)", maxHeight: "94vh" }}>
+        {saveError && <p className="err" role="alert">{saveError}</p>}
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px", marginBottom: "14px" }}>
           <div>

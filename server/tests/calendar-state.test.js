@@ -14,7 +14,7 @@ mock.module('../db.js', { exports: {
   withTransaction: async () => { throw new Error('Unexpected write'); },
 } });
 mock.module('../services.js', { exports: { sendMail: async () => {}, sendSms: async () => {} } });
-mock.module('../routes/auth.js', { exports: { getAppUrl: () => 'http://localhost' } });
+mock.module('../routes/auth.js', { exports: { getAppUrl: () => 'http://localhost', requireAuth: (req, res, next) => { req.user = { id: 'synthetic-assistant', name: 'Synthetic assistant', role: 'assistant' }; next(); } } });
 const { clinicRouter } = await import('../routes/clinic.js');
 const app = express();
 app.use('/api', clinicRouter);

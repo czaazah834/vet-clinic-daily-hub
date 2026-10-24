@@ -9,7 +9,7 @@ import {
   issueCsrfToken,
   verifyCsrfToken,
 } from '../security.js';
-import { sendMail, sendSms, serverOutbox } from '../services.js';
+import { sendMail, sendSms } from '../services.js';
 
 export function getAppUrl(req) {
   if (req) {
@@ -620,7 +620,7 @@ router.post('/unlock', async (req, res) => {
 
 // 9. DEV OUTBOX
 router.get('/outbox', (req, res) => {
-  res.json({ outbox: serverOutbox });
+  res.status(404).json({ error: 'Not found.' });
 });
 
 // 10. INVITE STAFF (Clinic Administrator Only)
