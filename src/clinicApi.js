@@ -15,6 +15,10 @@ export async function clinicRequest(method, path, body, options = {}) {
   if (response.status === 304 && options.responseMetadata && options.ifNoneMatch) {
     return {notModified: true, etag: options.ifNoneMatch};
   }
+  if(options.blob && response.ok) {
+    if(!response.headers.get('Content-Type')?.startsWith('application/pdf'))throw new Error('The clinic server did not return a PDF. Please retry.');
+    return response.blob();
+  }
   let data;
   try { data = await response.json(); }
   catch { throw new Error('The clinic server returned an invalid response. Refresh to check whether your changes were saved.'); }

@@ -252,8 +252,8 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       externalClinicNotes: hasExternalHistory ? externalClinicNotes.trim() : ""
     };
 
-    if (!await review.ask({title:"Review patient registration",confirmLabel:"Register patient and issue card",
-      description:payload.addToQueue ? "Confirm owner and patient details. This issues the patient card and saves an arrival; measured intake is still required before the doctor queue." : "Confirm owner and patient details before issuing the patient card.",
+    if (!await review.ask({title:"Review patient registration",confirmLabel:"Register patient",
+      description:payload.addToQueue ? "Confirm owner and patient details. This assigns an internal treatment reference and saves an arrival; measured intake is still required before the doctor queue." : "Confirm owner and patient details before assigning the internal treatment reference.",
       fields:[
         ["Owner",payload.ownerName],
         ["Mobile",payload.phone],
@@ -293,7 +293,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       vacc: [...newVaccs, ...(p.vacc || [])],
       vaccs: [...newVaccs, ...(p.vaccs || [])],
       appts: newAppt ? [...(p.appts || []).filter(a => a.id !== newAppt.id), newAppt] : (p.appts || []),
-      log: addLog(p, me, `Registered walk-in customer ${owner.name} and pet ${pet.name} (${pet.species}). Issued Digital Card #${pet.vaccinationCardId}.${newAppt ? " Arrival created; intake vitals required." : ""}`)
+      log: addLog(p, me, `Registered walk-in customer ${owner.name} and pet ${pet.name} (${pet.species}). Assigned internal treatment reference #${pet.vaccinationCardId}.${newAppt ? " Arrival created; intake vitals required." : ""}`)
     }));
 
     inFlight.current = false;
@@ -332,7 +332,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               {successData.pet.name} &amp; {successData.owner.name} Successfully Registered!
             </h4>
             <p style={{ margin: "0 0 16px", fontSize: "13.5px", color: "#475569" }}>
-              Official Digital Vaccination Card <b style={{ color: "var(--navy)" }}>#{successData.pet.vaccinationCardId}</b> has been issued.
+              Internal treatment reference <b style={{ color: "var(--navy)" }}>#{successData.pet.vaccinationCardId}</b> has been assigned. The official Digital Vet Card is published after consultation completion and saved payment using verified clinic details.
               {successData.appt && " Arrival created. Record current vitals to complete check-in."}
             </p>
 

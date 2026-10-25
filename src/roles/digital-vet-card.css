@@ -1,0 +1,10 @@
+.digital-vet-card{background:#fff;border:1px solid #cbd5e1;border-radius:14px;padding:20px;margin:16px 0;color:#1e293b}
+.vet-card-heading,.vet-card-event header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.vet-card-heading h3{margin:0}.vet-card-heading p{margin:8px 0}.vet-card-identity{background:#f1f5f9;border-radius:10px;padding:16px;margin:16px 0;overflow-wrap:anywhere}
+.vet-card-identity address{font-style:normal}.vet-card-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:20px 0}
+.vet-card-filters label,.clinic-document-fields label{display:flex;flex-direction:column;gap:5px}
+.vet-card-event,.vet-card-visit{border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:8px;padding:14px;margin:12px 0;overflow-wrap:anywhere}
+.vet-card-event time{font-size:.85rem;color:#475569}.vet-card-event summary,.vet-card-visit summary{cursor:pointer;font-weight:600;padding:6px 0}
+.vet-card-notes{white-space:pre-wrap;overflow-wrap:anywhere}.vet-card-notes dt{font-weight:700}.vet-card-notes dd{margin:4px 0 12px}.vet-card-correction{color:#92400e;background:#fffbeb;padding:8px}
+.clinic-document-fields{display:grid;gap:14px;max-width:650px}.clinic-document-fields .clinic-confirm{display:block}
+@media(max-width:600px){.digital-vet-card{padding:12px}.vet-card-heading .row{flex-wrap:wrap}.vet-card-filters{grid-template-columns:1fr}}

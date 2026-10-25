@@ -41,6 +41,7 @@
   "libphonenumber-js": "^1.13.15",
   "lucide-react": "0.469.0",
   "nodemailer": "^10.2.1",
+  "pdfkit": "^0.17.2",
   "pg": "^8.23.1",
   "react": "^18.3.1",
   "react-dom": "^18.3.1"
@@ -48,6 +49,7 @@
  "devDependencies": {
   "@vitejs/plugin-react": "^4.3.1",
   "concurrently": "^10.0.6",
+  "pdfjs-dist": "^5.4.296",
   "vite": "^5.4.8"
  }
 }

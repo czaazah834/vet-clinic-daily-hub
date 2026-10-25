@@ -29,6 +29,8 @@ export async function clinicAccess(req, res, next) {
   const appointment = async id => (await query('SELECT * FROM appointments WHERE id = $1', [id])).rows[0];
   try {
     await ensureAppointmentStatusSchema();
+    if(path==='/clinic-document-profile')return (['GET','PUT'].includes(req.method) && allow('admin'))?next():denied();
+    if(/^\/pets\/[^/]+\/vet-card(?:\/pdf)?$/.test(path))return req.method==='GET' && allow('owner','vet','assistant','admin')?next():denied();
     if (key === 'GET /admissions/eligible') return allow('vet') ? next() : denied();
     if (path === '/admissions' || /^\/admissions\/[^/]+(?:\/(update|discharge|release|order|stop-medication|medication|correct-medication|discharge-summary))?$/.test(path)) {
       if (req.method === 'GET' && ! /\/(update|discharge|release|order|stop-medication|medication|correct-medication)$/.test(path)) return allow('owner','vet','assistant','admin') ? next() : denied();

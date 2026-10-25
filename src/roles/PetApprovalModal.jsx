@@ -64,7 +64,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
         vacc, vaccs:vacc,
         appts:result.appointment ? [...p.appts.filter(a => a.id !== result.appointment.id), result.appointment] : p.appts,
         petRequests:(p.petRequests || []).map(r => r.id === request.id && (r.revision ?? 0) <= result.request.revision ? result.request : r),
-        log:addLog(p, me, `Approved registration for ${result.pet.name}. Issued vaccination card ${result.cardId}; suggested protocols await veterinarian review.`)
+        log:addLog(p, me, `Approved registration for ${result.pet.name}. Assigned internal treatment reference ${result.cardId}; suggested protocols await veterinarian review.`)
       };
     });
     inFlight.current = false; setSubmitting(false);
@@ -218,14 +218,14 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                     <Syringe size={18} />
                   </div>
                   <div>
-                    <b style={{ color: "#166534", fontSize: "14px" }}>Automated Digital Vaccination Card Generation</b>
+                    <b style={{ color: "#166534", fontSize: "14px" }}>Internal Patient Reference & Suggested Protocols</b>
                     <small style={{ display: "block", color: "#15803d" }}>
-                      The server assigns the official card number after approval. These suggestions require veterinarian review and do not certify any administered dose or booster date.
+                      Approval assigns an internal treatment reference. The official Digital Vet Card requires consultation completion, saved payment and verified clinic details. Suggested protocols require veterinarian review and do not certify an administered dose.
                     </small>
                   </div>
                 </div>
                 <span style={{ background: "#dcfce7", color: "#15803d", fontWeight: "700", padding: "4px 8px", borderRadius: "6px", fontSize: "12px", border: "1px solid #86efac" }}>
-                  Card number assigned after approval
+                  Internal reference assigned after approval
                 </span>
               </div>
 
@@ -289,7 +289,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                 style={{ display: "flex", alignItems: "center", gap: "6px" }}
               >
                 <CheckCircle2 size={16} aria-hidden="true" />
-                <b>{linkedVisit ? "Approve appointment & registration" : "Approve pet and issue vaccination card"}</b>
+                <b>{linkedVisit ? "Approve appointment & registration" : "Approve pet registration"}</b>
               </button>}
             </div>
           </div>

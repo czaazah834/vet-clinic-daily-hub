@@ -14,17 +14,20 @@ const fakeQuery = async (sql, params = []) => {
   if (failSql && failSql.test(sql)) throw Error('synthetic database failure');
   const rows = value => ({ rows: structuredClone(value), rowCount: value.length });
   if (sql.includes('FROM sessions s')) return rows(users[params[0]] ? [users[params[0]]] : []);
+  if(sql==="SELECT version FROM pawcare_schema_migrations WHERE version='digital-vet-card-v1'")return rows([{version:'digital-vet-card-v1'}]);
   if (sql==="SELECT version FROM pawcare_schema_migrations WHERE version='owner-pet-onboarding-v1'") return rows([{version:'owner-pet-onboarding-v1'}]);
   if (sql.startsWith('SELECT *,submission_payload=')) return rows([]);
   if (sql==='SELECT owner_id FROM pets WHERE id=$1') return rows(db.pets.filter(p=>p.id===params[0]));
   if (sql==='SELECT registration_status FROM pets WHERE id=$1') return rows(db.pets.filter(p=>p.id===params[0]).map(p=>({registration_status:p.registration_status || 'Verified'})));
   if (sql==="SELECT id FROM pets WHERE id=$1 AND registration_status<>'Verified'") return rows(db.pets.filter(p=>p.id===params[0] && p.registration_status && p.registration_status!=='Verified'));
   if (sql.startsWith('SELECT to_regclass')) return rows([]);
-  if (sql.startsWith('-- Preserve source records') || sql.startsWith('-- Add audit metadata') || sql.startsWith('-- Rename legacy states') || sql.startsWith('-- Preserve owner-submitted') || sql.startsWith('-- Durable reception') || sql.startsWith('-- Idempotent migration') || sql.startsWith('SELECT pg_advisory_xact_lock')) return rows([]);
+  if (sql.startsWith('-- Add document publication') || sql.startsWith('-- Preserve source records') || sql.startsWith('-- Add audit metadata') || sql.startsWith('-- Rename legacy states') || sql.startsWith('-- Preserve owner-submitted') || sql.startsWith('-- Durable reception') || sql.startsWith('-- Idempotent migration') || sql.startsWith('SELECT pg_advisory_xact_lock')) return rows([]);
   if (sql.startsWith("SELECT version FROM pawcare_schema_migrations WHERE version='admission-care-v1'")) return rows([{version:'admission-care-v1'}]);
   if (sql.startsWith('-- Admission is separate') || sql.startsWith('-- Extend existing stays')) return rows([]);
   if (sql.includes('FROM admissions WHERE appt_id') || sql.includes('FROM admission_updates e JOIN admissions')) return rows([]);
   if (sql.startsWith('ALTER TABLE')) return rows([]);
+  if(sql==='SELECT * FROM clinic_document_profile WHERE id=true')return rows([]);
+  if(sql.startsWith('UPDATE vaccinations SET appt_id='))return rows([]);
   if (sql.startsWith('SELECT')) {
     if (sql.startsWith('SELECT id FROM owners WHERE id = $1')) return rows(db.owners.filter(o=>o.id===params[0]));
     if (sql.startsWith('SELECT name FROM pets WHERE owner_id')) return rows(db.pets.filter(p=>p.owner_id===params[0]));

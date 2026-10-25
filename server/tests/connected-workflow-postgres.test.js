@@ -52,6 +52,8 @@ test('clinic choices require authorized roles, persist, reject concurrent overwr
   await query('DROP TRIGGER reject_options ON audit_logs');
 });
 test('booking → approval → check-in → consultation → billing → owner records stays connected', async () => {
+  const profile=await call('admin','GET','/clinic-document-profile');assert.equal(profile.status,200);
+  assert.equal((await call('admin','PUT','/clinic-document-profile',{revision:profile.data.profile.revision,name:'Synthetic clinic',address:'Synthetic clinic address',phone:'+639170000001',email:'clinic@example.invalid',registration:'SYNTHETIC-REG',verificationSource:'Synthetic verified registration',confirmed:true})).status,200);
   const booking = await call('owner','POST','/appointments',{petId:'connected-pet',vetId:'connected-vet',date:'2026-10-26',time:'09:00',service:'checkup',reason:'Synthetic clinical concern'});
   assert.equal(booking.status,200,JSON.stringify(booking)); let visit = booking.data.appointment; assert.equal(visit.status,'Pending Approval');
   const patch = async (role,body) => { const result = await call(role,'PATCH',`/appointments/${visit.id}/status`,{...body,expectedVisit:intakeVisitSnapshot(visit)}); assert.equal(result.status,200,JSON.stringify(result)); visit = (await call(role,'GET','/state')).data.data.appts.find(row => row.id === visit.id); };
@@ -64,6 +66,7 @@ test('booking → approval → check-in → consultation → billing → owner r
   const observation = await call('assistant','POST',`/admissions/${admissionId}/update`,{requestId:crypto.randomUUID(),revision:0,completeObservation:true,clinicalNote:'Private measured observation',ownerUpdate:'Your pet has been checked by clinic staff.',measurements:{temp:38.6}}); assert.equal(observation.status,200,JSON.stringify(observation));
   const note = {id:'connected-note',petId:visit.petId,apptId:visit.id,date:'2026-10-26',symptoms:'Synthetic concern',objective:'Synthetic examination',diagnosis:configured.options.diagnosis[0],treatment:configured.options.treatment[0],prescription:'Synthetic home instructions',performedServices:['srv_consult'],prescriptionItems:[{catalogId:'product_multivitamin',quantity:1,instructions:'Synthetic directions'},{catalogId:'srv_nexgard',quantity:1,instructions:'Synthetic home prescription'}],expectedVisit:intakeVisitSnapshot(visit),weight:10.5,careStatus:'Routine care'};
   const saved = await call('vet','POST','/consultations',note); assert.equal(saved.status,200,JSON.stringify(saved)); assert.equal(saved.data.appointment.status,'Completed');
+  const unpaidCard=await call('owner','GET',`/pets/${visit.petId}/vet-card`);assert.equal(unpaidCard.data.document,null,'admission consultation alone does not publish');
   const orderId=crypto.randomUUID();
   const order=await call('vet','POST',`/admissions/${admissionId}/order`,{requestId:orderId,revision:1,clinicalNote:'Private veterinarian order rationale',medicine:'Synthetic prescribed medicine',dose:'Vet-entered dose',route:'Vet-entered route',frequency:'Vet-entered schedule',catalogId:'srv_nexgard',supplyLimit:1});
   assert.equal(order.status,200,JSON.stringify(order));
@@ -85,6 +88,7 @@ test('booking → approval → check-in → consultation → billing → owner r
   assert.equal((await pay([...invoiceItems,{catalogId:'srv_nexgard',name:'NexGard Spectra Chewable Tablet',price:550,qty:1}])).status,400,'clinic order does not authorize unprescribed take-home medicine');
   const paid = await pay(invoiceItems); assert.equal(paid.status,200,JSON.stringify(paid));
   assert.equal((await call('owner','GET',`/admissions/${admissionId}`)).data.admission.status,'Ready for discharge','paid pet still awaits actual release');
+  const paidCard=await call('owner','GET',`/pets/${visit.petId}/vet-card`);assert.equal(paidCard.status,200,JSON.stringify(paidCard));assert.ok(paidCard.data.document);assert.equal(paidCard.data.document.snapshot.visits[0].admissionStatus,'Ready for discharge');assert.ok(!JSON.stringify(paidCard.data).includes('Private observed response'));
   const released=await call('assistant','POST',`/admissions/${admissionId}/release`,{requestId:crypto.randomUUID(),revision:4,clinicalNote:'Released to verified owner',ownerUpdate:'Your pet has gone home with you.'}); assert.equal(released.status,200,JSON.stringify(released));
   const home = await call('owner','GET',`/admissions/${admissionId}`); assert.equal(home.data.admission.status,'Discharged'); assert.equal(home.data.admission.dischargeInstructions,'Follow the saved home-care instructions.');
   const records = (await call('owner','GET','/state')).data.data;

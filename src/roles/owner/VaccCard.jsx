@@ -1,24 +1,16 @@
-import {weightSourceLabel} from '../../vitalLabels.js';
+import DigitalVetCard from '../DigitalVetCard.jsx';
 import { PaginatedTable } from "../../components/Pagination.jsx";
 import PetPortrait from "../PetPortrait.jsx";
-import {useHistoryComplete} from "../../ClinicHistory.jsx";
 import { useState, useEffect, useRef } from "react";
 import { Badge, scope, petName, ICON, I } from "../../lib.jsx";
 import { auth, OFFLINE_MSG } from "../../authApi.js";
-import { setPrefill, toSquare, pick, petAge, Icon, Modal, fmt12 } from "./ui.jsx";
-import { formatSpeciesLabel, computeAgeDetails } from "../../preventiveSchedule.js";
+import { setPrefill, toSquare, pick, Icon, Modal, fmt12 } from "./ui.jsx";
+import { formatSpeciesLabel } from "../../preventiveSchedule.js";
 import { today as bookingToday } from "../../booking.js";
 import { currentVaccinationDue, vaccinationStatus, vaccinationAppointment, vaccinationBooking } from "../../ownerVaccination.js";
 import MedProfile from "./MedProfile.jsx";
 
-const CLINIC = {
-  name: "PawCare Veterinary Clinic",
-  subtitle: "Animal Health Passport & Official Immunization Record",
-  address: "128 Rizal Avenue, Caloocan City, Metro Manila",
-  phone: "+63 (02) 8352-8899 / 0917-888-PAWS",
-  email: "care@pawcareclinic.ph",
-  license: "BAI Reg. No. 2024-0891 • PVMA Accredited"
-};
+
 
 const doseLabel = v => v.doseNo ? (v.doseOf ? `Dose ${v.doseNo} of ${v.doseOf}` : `Dose ${v.doseNo}`) : "";
 
@@ -67,19 +59,18 @@ const veterinarianLabel = (v, vets) => {
 const tone = s => s === "Overdue" ? "er" : s === "Due soon" ? "wa" : "";
 
 export function OwnerVacc({ db, setDb, me, go, say }) {
-  const historyComplete=useHistoryComplete();
   const pets = scope(db, me, "pets").filter(p=>!p.registrationStatus || p.registrationStatus==='Verified');
   const vetOf = v => veterinarianLabel(v, db.vets || []);
   const [selectedId, setSel] = useState(() => (pick.petId && pets.some(p => p.id === pick.petId) ? pick.petId : pets[0] ? pets[0].id : ""));
   const sel = pets.some(p => p.id === selectedId) ? selectedId : pets[0]?.id || "";
   const [det, setDet] = useState(null), [st, setSt] = useState(""), [q, setQ] = useState(""), [tab, setTab] = useState("vacc");
-  const [isFlipped, setIsFlipped] = useState(false); // Controls the 3D page flip animation
+
   const fileInputRef = useRef(null);
 
   useEffect(() => { pick.petId = null; }, []);
-  
+
   // Whenever selected pet changes, reset to page 1
-  useEffect(() => { setIsFlipped(false); setDet(null); }, [sel]);
+  useEffect(() => { setDet(null); }, [sel]);
 
   const all = (scope(db, me, "vacc") || []).slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const current = currentVaccinationDue(all);
@@ -89,7 +80,6 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
 
   const over = all.filter(v => stateOf(v) === "Overdue"), soon = all.filter(v => stateOf(v) === "Due soon");
   const p = pets.find(x => x.id === sel), o = (db.owners || []).find(x => x.id === me.ownerId) || {};
-  const ageDetails = p?.birth ? computeAgeDetails(p.birth) : null;
   const mine = all.filter(v => v.petId === sel);
   const count = s => mine.filter(v => stateOf(v) === s).length;
 
@@ -102,7 +92,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
     setPrefill(vaccinationBooking(v));
     go("appts");
   };
-  
+
   const savePhoto = async photo => {
     try {
       const r = await auth.petPhoto(sel, photo);
@@ -148,17 +138,16 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
       <div className="empty" style={{ padding: "40px 20px" }}>
         <div><Icon n="syringe" size={40} /></div>
         <h3>No pets on your account yet</h3>
-        <p>Register your pet from the <b>My Pets</b> page and its official digital vaccination card and protocols will activate automatically.</p>
+        <p>Register your pet from the <b>My Pets</b> page and request a visit. The official Digital Vet Card is published after consultation completion and saved payment using verified clinic details.</p>
         <button className="btn gold" onClick={() => go("home")}>+ Add your pet</button>
       </div>
     );
   }
 
-  const cardIdFormatted = p?.vaccinationCardId || "Awaiting clinic-issued card";
+  const cardIdFormatted = p?.vaccinationCardId || "Awaiting internal reference";
 
   const handleRowClick = (v) => {
     setDet(v);
-    setIsFlipped(true); // Flip smoothly to Page 2 (Immunization Log) where this record is detailed
   };
 
   const petIndex = pets.findIndex(x => x.id === sel);
@@ -167,7 +156,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
     setDet(null);
     setSt("");
     setQ("");
-    setIsFlipped(false);
+
   };
   const movePet = step => {
     if (pets.length <= 1) return;
@@ -234,19 +223,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
             </div>
 
             <div className="vc-toolbar-actions">
-              <span className="vc-passport-stamp verified">Digital vaccination card · {cardIdFormatted}</span>
-              <button
-                type="button"
-                className="btn gold sm"
-                onClick={() => setIsFlipped(prev => !prev)}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
-                title="Switch between Page 1 and Page 2"
-              >
-                {isFlipped ? "View pet profile" : "View immunization log"}
-              </button>
-              <button className="btn ghost sm" disabled={!historyComplete} title={!historyComplete?"Load all saved history above before printing the complete card.":undefined} onClick={() => window.print()}>
-                <Icon n="print" size={14} /> Print Card
-              </button>
+              <span className="vc-passport-stamp">Internal treatment reference · {cardIdFormatted}</span>
             </div>
           </div>
 
@@ -283,280 +260,8 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
             </div>
           )}
 
-            {/* =========================================================================
-                AUTHENTIC 3D FLIP PHYSICAL VACCINATION CARD BOOKLET
-               ========================================================================= */}
-            <div className="vc-flip-stage">
-              <div className={`vc-flip-card ${isFlipped ? "is-flipped" : ""}`}>
-                
-                {/* ----------------- PAGE 1: COVER & PATIENT PROFILE ----------------- */}
-                <div className="vc-page-front">
-                  <div className="vc-booklet-spine" />
-                  
-                  {/* Passport Cover Header */}
-                  <div className="vc-passport-header">
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-                      <div>
-                        <div style={{ fontSize: "11px", letterSpacing: "1.5px", textTransform: "uppercase", color: "#fcd34d", fontWeight: 700 }}>
-                          Republic of the Philippines • Department of Agriculture (BAI)
-                        </div>
-                        <h2 style={{ margin: "4px 0 2px", fontSize: "1.35rem", letterSpacing: "0.5px", color: "#fff" }}>
-                          {CLINIC.name}
-                        </h2>
-                        <div style={{ fontSize: "12px", color: "#93c5fd" }}>
-                          {CLINIC.subtitle}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: "10.5px", color: "#e2e8f0" }}>Certificate Registration:</div>
-                        <div style={{ fontSize: "14px", fontWeight: 800, color: "#fef08a", fontFamily: "monospace", letterSpacing: "1px" }}>
-                          {cardIdFormatted}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Patient Profile Content */}
-                  <div className="vc-profile-body" style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div className="vc-profile-layout" style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: "20px", alignItems: "start" }}>
-                      
-                      {/* Photo Box with Direct File Explorer Upload */}
-                      <div style={{ textAlign: "center" }}>
-                        <PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />
-                        <div style={{ marginTop: 6, fontSize: "10px", color: "#059669", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                          Patient Verified
-                        </div>
-                      </div>
-
-                      {/* Patient Master Information */}
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
-                          <h3 style={{ margin: 0, fontSize: "1.5rem", color: "#0f172a" }}>{p.name}</h3>
-                          <span style={{ background: "#dbeafe", color: "#1e40af", padding: "2px 8px", borderRadius: "6px", fontSize: "12px", fontWeight: 700 }}>
-                            {formatSpeciesLabel(p.species)}
-                          </span>
-                        </div>
-
-                        <div className="vc-patient-fields" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "8px 14px", fontSize: "13px" }}>
-                          <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Breed:</span> <b>{p.breed || "Mixed Breed"}</b></div>
-                          <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Sex:</span> <b>{p.sex || "—"}</b></div>
-                          <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Birth Date:</span> <b>{p.birth ? fmtDate(p.birth) : "—"}</b> {p.birth && <small style={{ color: "#0284c7" }}>({petAge(p.birth)})</small>}</div>
-                          <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Life Stage Protocol:</span> <b style={{ color: ageDetails?.isAdult ? "#059669" : "#2563eb" }}>{ageDetails?.lifeStageLabel || "Standard"}</b></div>
-                          <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>{weightSourceLabel(p)}:</span> <b>{p.weight != null ? `${p.weight} kg` : "—"}</b></div>
-                          <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Coat / Markings:</span> <b>{p.color || "Standard"}</b></div>
-                          <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Neutered:</span> <b>{p.neutered || "Not sure"}</b></div>
-                        </div>
-
-                        {/* Owner Information */}
-                        <div className="vc-owner-details" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed #cbd5e1", fontSize: "12.5px" }}>
-                          <div className="vc-owner-fields" style={{ display: "flex", flexWrap: "wrap", gap: "10px 20px" }}>
-                            <div><span style={{ color: "#64748b" }}>Registered Owner:</span> <b>{o.name || me.name}</b></div>
-                            <div><span style={{ color: "#64748b" }}>Contact:</span> <b>{o.phone || "—"}</b></div>
-                            <div><span style={{ color: "#64748b" }}>Address:</span> <b>{o.address || o.city || "Metro Manila, PH"}</b></div>
-                          </div>
-                        </div>
-
-                        {/* Allergies / Health Notes alert */}
-                        {(p.allergies || []).length > 0 && (
-                          <div style={{ marginTop: 10, background: "#fef2f2", border: "1px solid #fecaca", padding: "6px 10px", borderRadius: "8px", fontSize: "12px", color: "#991b1b" }}>
-                            <b>Clinical Allergy Alert:</b> {(p.allergies || []).join(", ")}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Summary Row inside Card */}
-                    <div className="vc-profile-summary" style={{ marginTop: 4, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-                      <div style={{ display: "flex", gap: 16 }}>
-                        <div><div style={{ fontSize: "10.5px", color: "#64748b", textTransform: "uppercase" }}>{historyComplete?"Total Records":"Loaded Records"}</div><b style={{ fontSize: "14px", color: "#0f172a" }}>{mine.length}</b></div>
-                        <div><div style={{ fontSize: "10.5px", color: "#166534", textTransform: "uppercase" }}>On Track</div><b style={{ fontSize: "14px", color: "#166534" }}>{count("On track")}</b></div>
-                        <div><div style={{ fontSize: "10.5px", color: "#92400e", textTransform: "uppercase" }}>Due Soon</div><b style={{ fontSize: "14px", color: "#92400e" }}>{count("Due soon")}</b></div>
-                        <div><div style={{ fontSize: "10.5px", color: "#991b1b", textTransform: "uppercase" }}>Overdue</div><b style={{ fontSize: "14px", color: "#991b1b" }}>{count("Overdue")}</b></div>
-                      </div>
-
-                      {/* Interactive Flip Page Callout */}
-                      <button
-                        type="button"
-                        onClick={() => setIsFlipped(true)}
-                        style={{
-                          background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: "10px",
-                          padding: "8px 16px",
-                          fontSize: "13px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                          boxShadow: "0 4px 12px rgba(37,99,235,0.25)"
-                        }}
-                      >
-                        <span>Turn to Page 2 (Immunization Log)</span>
-                        <span style={{ fontSize: "1.1rem" }}>›</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Passport Footer */}
-                  <div style={{ background: "#f1f5f9", padding: "8px 24px", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "#64748b" }}>
-                    <span>Official Document Compliant with Philippine Anti-Rabies Act (RA 9482)</span>
-                    <span className="vc-noprint">PAGE 1 OF 2 (PROFILE)</span>
-                  </div>
-                </div>
-
-                {/* ----------------- PAGE 2: OFFICIAL IMMUNIZATION LOG ----------------- */}
-                <div className="vc-page-back">
-                  <div className="vc-booklet-spine" />
-
-                  {/* Header */}
-                  <div style={{ background: "linear-gradient(135deg, #1e293b, #0f172a)", color: "#fff", padding: "16px 24px", borderBottom: "3px solid #10b981", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-                    <div>
-                      <div style={{ fontSize: "11px", letterSpacing: "1px", color: "#6ee7b7", fontWeight: 700, textTransform: "uppercase" }}>
-                        WSAVA & PVMA Approved Protocol Register
-                      </div>
-                      <h3 style={{ margin: "2px 0 0", fontSize: "1.25rem", color: "#fff" }}>
-                        Official Immunization & Prophylaxis Record Log
-                      </h3>
-                      <div style={{ fontSize: "12px", color: "#cbd5e1" }}>
-                        Patient: <b>{p.name}</b> · Card ID: <b>{cardIdFormatted}</b>
-                        {ageDetails?.isAdult && <span style={{ marginLeft: 8, background: "rgba(16, 185, 129, 0.25)", color: "#6ee7b7", border: "1px solid #10b981", padding: "1px 7px", borderRadius: 4, fontSize: "11px", fontWeight: 700 }}>Lifelong Adult Routine Active</span>}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsFlipped(false)}
-                      style={{
-                        background: "rgba(255,255,255,0.12)",
-                        color: "#fff",
-                        border: "1px solid rgba(255,255,255,0.25)",
-                        borderRadius: "8px",
-                        padding: "6px 14px",
-                        fontSize: "12.5px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6
-                      }}
-                    >
-                      <span>Back to Page 1</span>
-                    </button>
-                  </div>
-
-                  {/* Immunization Log Table */}
-                  <div style={{ padding: "16px 24px", flex: 1, overflowY: "auto", maxHeight: "380px" }}>
-                    {mine.length ? (
-                      <PaginatedTable label="Vaccine overview" resetKey={sel} className="vc-table-interactive" style={{ width: "100%", fontSize: "12.5px", borderCollapse: "collapse" }}>
-                        <thead>
-                          <tr style={{ textAlign: "left", background: "#e2e8f0", color: "#334155", borderBottom: "2px solid #cbd5e1" }}>
-                            <th style={{ padding: "8px" }}>Vaccine / Care Protocol</th>
-                            <th style={{ padding: "8px" }}>Date Administered</th>
-                            <th style={{ padding: "8px" }}>Next Booster Due</th>
-                            <th style={{ padding: "8px" }}>Product & Batch/Lot</th>
-                            <th style={{ padding: "8px" }}>Clinic Verification</th>
-                            <th style={{ padding: "8px" }}>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {mine.map(v => {
-                            const s = stateOf(v), t = tone(s);
-                            const matchedAppt = getApptForRecord(v);
-                            const isSelected = det && det.id === v.id;
-                            return (
-                              <tr
-                                key={v.id}
-                                onClick={() => setDet(v)}
-                                style={{
-                                  borderBottom: "1px solid #e2e8f0",
-                                  cursor: "pointer",
-                                  background: isSelected ? "#e0f2fe" : "transparent",
-                                  outline: isSelected ? "2px solid #0284c7" : "none"
-                                }}
-                                title="Click to view full clinical details"
-                              >
-                                <td style={{ padding: "8px" }}>
-                                  <b style={{ color: "#0f172a" }}>{v.vaccine}</b>
-                                  {doseLabel(v) && <div style={{ fontSize: "11px", color: "#2563eb", fontWeight: 600 }}>{doseLabel(v)}</div>}
-                                </td>
-                                <td style={{ padding: "8px", whiteSpace: "nowrap" }}>
-                                  {v.done ? fmtDate(v.date) : <i style={{ color: "#0369a1", fontSize: "11.5px" }}>Card Initialized</i>}
-                                </td>
-                                <td style={{ padding: "8px", whiteSpace: "nowrap" }}>
-                                  {v.nextDue ? (
-                                    <>
-                                      <b>{fmtDate(v.nextDue)}</b>
-                                      {hasBooster(v) && <div style={{ fontSize: "11px", color: s === "Overdue" ? "#dc2626" : s === "Due soon" ? "#d97706" : "#059669" }}>{rel(v.nextDue)}</div>}
-                                      {matchedAppt && (
-                                        <div style={{ fontSize: "10.5px", color: "#15803d", fontWeight: 700, marginTop: "2px" }}>
-                                          ✓ Visit: {fmtDate(matchedAppt.date)} · {fmt12(matchedAppt.time)}
-                                        </div>
-                                      )}
-                                    </>
-                                  ) : "—"}
-                                </td>
-                                <td style={{ padding: "8px", fontSize: "11.5px", color: "#475569" }}>
-                                  {v.brand || "Product not recorded"}
-                                  <div style={{ fontFamily: "monospace", color: "#64748b" }}>
-                                    {v.batch ? `Lot: ${v.batch}` : "Lot not recorded"}
-                                  </div>
-                                </td>
-                                <td style={{ padding: "8px" }}>
-                                  <span style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 4,
-                                    background: vetOf(v).includes("External") ? "#fef3c7" : "#ecfdf5",
-                                    color: vetOf(v).includes("External") ? "#92400e" : "#065f46",
-                                    border: vetOf(v).includes("External") ? "1px solid #fde68a" : "1px solid #a7f3d0",
-                                    padding: "2px 6px",
-                                    borderRadius: "6px",
-                                    fontSize: "11px",
-                                    fontWeight: 700
-                                  }}>
-                                    {vetOf(v)}
-                                  </span>
-                                </td>
-                                <td style={{ padding: "8px" }}>
-                                  {matchedAppt ? (
-                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "#dcfce7", color: "#15803d", border: "1px solid #86efac", padding: "1px 6px", borderRadius: "8px", fontSize: "10.5px", fontWeight: 700 }}>
-                                      ✓ {matchedAppt.status}
-                                    </span>
-                                  ) : (
-                                    <Badge v={s} />
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </PaginatedTable>
-                    ) : (
-                      <div className="empty sm" style={{ padding: "30px 10px" }}>
-                        No vaccine records found for {p.name}. Standard protocols will be populated upon initial clinical visit.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Stamp & Verification Bottom Strip */}
-                  <div style={{ background: "#f1f5f9", padding: "10px 24px", borderTop: "1px solid #cbd5e1", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ border: "2px dashed #059669", padding: "4px 10px", borderRadius: "8px", color: "#047857", fontSize: "11px", fontWeight: 800, textTransform: "uppercase" }}>
-                        Official Clinic Seal: {CLINIC.name}
-                      </div>
-                      <span style={{ fontSize: "11px", color: "#64748b" }}>
-                        Issued by Licensed Veterinarian on file
-                      </span>
-                    </div>
-                    <div style={{ fontSize: "11px", color: "#64748b" }}>
-                      PAGE 2 OF 2 (IMMUNIZATION)
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            </div>
+            <PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />
+            <DigitalVetCard key={p.id} petId={p.id} />
 
             {/* Navigation Tabs (Vaccinations / Medical Profile) */}
             <div className="ow-tabs vc-noprint" role="tablist" aria-label={`${p.name} sections`}>
@@ -595,7 +300,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                   </div>
 
                   <p className="ow-hint vc-noprint" style={{ marginBottom: 8 }}>
-                    <b>Tip:</b> Click any row below to open and inspect that vaccine record on the physical card above.
+                    <b>Tip:</b> Click a row to inspect its saved vaccination record. Use Download PDF above for the complete published card.
                   </p>
 
                   {/* Interactive Table with Single-Click Open */}
@@ -636,7 +341,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                 </td>
                                 <td data-label="Date given">
                                   <span>
-                                    {v.done ? fmtDate(v.date) : v.automated ? <i style={{ color: "#0369a1", fontSize: "12px" }}>Card Initialized</i> : fmtDate(v.date)}
+                                    {v.done ? fmtDate(v.date) : <i>Planned · Not administered</i>}
                                     {vetOf(v) && <small className="vc-rel">{vetOf(v)}</small>}
                                   </span>
                                 </td>
