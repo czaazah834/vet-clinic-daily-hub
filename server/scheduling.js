@@ -16,8 +16,8 @@ export function minutes(time) {
 }
 export const inferBookingService = reason => /surgery|dental/i.test(reason) ? 'surgery' : /groom/i.test(reason) ? 'grooming' : /deworm/i.test(reason) ? 'deworming' : /vaccin|rabies|booster/i.test(reason) ? 'vaccination' : 'checkup';
 export const bookingError = (message, status = 400) => Object.assign(new Error(message), { status });
-export function validateSchedule(v, now = new Date()) {
-  const clock = clinicClock(now), duration = SERVICES[v.service]?.dur;
+export function validateSchedule(v, now = new Date(), duration = SERVICES[v.service]?.dur) {
+  const clock = clinicClock(now);
   if (!duration) throw bookingError('Choose a service from the list.');
   if (!validDate(v.date)) throw bookingError('Enter a valid appointment date.');
   if (v.date < clock.date || v.date > shiftDate(clock.date, 90)) throw bookingError('Choose a date within the next 90 days.');
@@ -28,13 +28,13 @@ export function validateSchedule(v, now = new Date()) {
   if (v.date === clock.date && v.time <= clock.time) throw bookingError('That time has passed. Choose a later slot.');
   return duration;
 }
-export function availableSlots(rows, v, now = new Date()) {
+export function availableSlots(rows, v, now = new Date(), savedDuration) {
   const slots = [];
   if (rows.some(a => a.id !== v.excludeId && a.booking_kind !== "walk-in" && !["Cancelled", "Rejected", "No-show"].includes(a.status) && !Number.isFinite(minutes(a.time)))) return slots;
   for (let m = 480; m < 1020; m += 30) {
     const time = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
     try {
-      const duration = validateSchedule({ ...v, time }, now);
+      const duration = validateSchedule({ ...v, time }, now, savedDuration);
       if (!rows.some(a => a.id !== v.excludeId && a.booking_kind !== 'walk-in' && !['Cancelled', 'Rejected', 'No-show'].includes(a.status) && m < minutes(a.time) + (a.duration_minutes || 30) && minutes(a.time) < m + duration)) slots.push(time);
     } catch { /* Invalid dates and slots have no availability. */ }
   }
@@ -45,11 +45,13 @@ export function availableSlots(rows, v, now = new Date()) {
 export async function lockSchedule(client) {
   await client.query("SELECT pg_advisory_xact_lock(726341901)");
 }
-export async function assertAvailable(client, v, excludeId) {
-  const duration = validateSchedule(v);
+export async function assertAvailable(client, v, excludeId, savedDuration) {
+  // Approval may supply a persisted duration; booking callers use the service catalog.
+  const now = new Date();
+  const duration = validateSchedule(v, now, savedDuration);
   const rows = (await client.query("SELECT * FROM appointments WHERE date = $1 AND (vet_id = $2 OR pet_id = $3)", [v.date, v.vetId, v.petId])).rows;
   const other = rows.filter(a => a.id !== excludeId && !['Cancelled', 'Rejected', 'No-show'].includes(a.status));
   if (other.some(a => a.pet_id === v.petId)) throw bookingError('This pet already has a visit that day. Review or reschedule that visit.', 409);
-  if (!availableSlots(other.filter(a => a.vet_id === v.vetId), { ...v, excludeId }).includes(v.time)) throw bookingError('That slot was just taken. Choose another available time.', 409);
+  if (!availableSlots(other.filter(a => a.vet_id === v.vetId), { ...v, excludeId }, now, savedDuration).includes(v.time)) throw bookingError('That slot was just taken. Choose another available time.', 409);
   return duration;
 }

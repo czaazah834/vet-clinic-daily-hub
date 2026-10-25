@@ -187,7 +187,9 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
           onClose={() => setActiveReq(null)}
           onProcessed={(action, newPet, cardId) => {
             setActiveReq(null);
-            if (action === "approved") {
+            if (action === "appointment-approved") {
+              say("Appointment approved, registration verified and slot confirmed.");
+            } else if (action === "approved") {
               say(`Pet approved! Digital Vaccination Card #${cardId} automatically created.`);
             } else {
               say("Pet registration request declined.");

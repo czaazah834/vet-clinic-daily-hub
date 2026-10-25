@@ -1,3 +1,6 @@
+import { changeAppointmentStatus } from "../appointmentStatus.js";
+import { sameIntakeVisit } from "../intakeVisit.js";
+import { fmt12 } from "../booking.js";
 import LiveControl from '../components/LiveControl.jsx';
 import { api } from "../api.js";
 import { useRef, useState } from "react";
@@ -11,7 +14,9 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
   const inFlight = useRef(false);
   const [conflict, setConflict] = useState(false);
   const changed = registrationReviewChanged(request, db.petRequests);
-  const canReview = request.status === "Pending" && !changed && !conflict;
+  const [linkedVisit] = useState(() => (db.appts || []).filter(a=>a.petId===request.petId && a.status==='Pending Approval').sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time))[0] || null);
+  const visitChanged = linkedVisit && !sameIntakeVisit(linkedVisit,db.appts.find(a=>a.id===linkedVisit.id));
+  const canReview = !visitChanged && request.status === "Pending" && !changed && !conflict;
   const close = () => { if (!inFlight.current) onClose(); };
   const [mode, setMode] = useState("review"); // 'review' | 'decline'
   const [declineReason, setDeclineReason] = useState("");
@@ -34,6 +39,13 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
     if (inFlight.current || !canReview) return;
     inFlight.current = true;
     setSaveError(""); setSubmitting(true);
+    if (linkedVisit) {
+      const expected = {...linkedVisit,expectedRegistration:{id:request.id,revision:request.revision ?? 0}};
+      const saved = await changeAppointmentStatus(setDb,linkedVisit.id,'Scheduled',setSaveError,expected);
+      inFlight.current = false; setSubmitting(false);
+      if (saved) onProcessed?.('appointment-approved',null,null);
+      return;
+    }
     let result;
     try {
       const data = await api.post(`/api/pet-requests/${request.id}/approve`, {revision:request.revision ?? 0});
@@ -86,7 +98,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && close()}>
       <div className="modal" style={{ width: "min(720px, 100%)", maxHeight: "94vh" }}>
-        {(changed || conflict) && <p className="err" role="alert">This request changed or was already processed. Close this review and reopen the latest request before making a decision.</p>}
+        {(changed || conflict || visitChanged) && <p className="err" role="alert">This request changed or was already processed. Close this review and reopen the latest request before making a decision.</p>}
         {request.status !== "Pending" && <section role="status"><b>Registration {request.status}</b>{request.declineReason && <p style={{whiteSpace:"pre-wrap"}}>{request.declineReason}</p>}<p>{request.status === "Declined" ? "The owner must correct and resubmit this request before it can be reviewed again." : "This registration has already been processed."}</p></section>}
         {saveError && <p className="err" role="alert">{saveError}</p>}
         {/* Header */}
@@ -192,6 +204,12 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
 
             {request.photo && <img src={request.photo} alt={`${request.name} submitted by owner`} style={{width:120,height:120,objectFit:"cover",borderRadius:12,marginBottom:16}} />}
 
+            {linkedVisit && <section className="card" aria-label="Requested visit">
+              <h4>Requested visit</h4><p>{linkedVisit.date} · {fmt12(linkedVisit.time)} · {(db.vets || []).find(v=>v.id===linkedVisit.vetId)?.name || 'Veterinarian not recorded'}</p>
+              <p>{linkedVisit.reason}</p>{linkedVisit.notes && <p>{linkedVisit.notes}</p>}
+              <p>Approval verifies this registration and confirms the available visit slot in one transaction.</p>
+            </section>}
+
             {/* Automated Vaccination Card Generation Box */}
             {request.status === "Pending" && <div style={{ background: "#f0fdf4", padding: "16px", borderRadius: "12px", border: "1px solid #86efac", marginBottom: "16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
@@ -271,7 +289,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                 style={{ display: "flex", alignItems: "center", gap: "6px" }}
               >
                 <CheckCircle2 size={16} aria-hidden="true" />
-                <b>Approve pet and issue vaccination card</b>
+                <b>{linkedVisit ? "Approve appointment & registration" : "Approve pet and issue vaccination card"}</b>
               </button>}
             </div>
           </div>

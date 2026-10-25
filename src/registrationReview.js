@@ -14,7 +14,7 @@ export function reviewedRequest(row) {
     dentalOcclusion:row.dental_occlusion || '', revision:row.revision ?? 0,
     status:row.status, declineReason:row.decline_reason || '', petId:row.pet_id || '',
     cardId:row.card_id || '', requestedAt:dateOnly(row.requested_at),
-    approvedAt:dateOnly(row.approved_at) || null, approvedBy:row.approved_by || ''
+    approvedAt:dateOnly(row.approved_at) || null, approvedBy:row.approved_by || '', reviewedAt:row.reviewed_at || null, approvedByUserId:row.approved_by_user_id || ''
   };
 }
 export function approvedRegistration(data) {

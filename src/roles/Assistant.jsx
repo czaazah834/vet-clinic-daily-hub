@@ -1,3 +1,4 @@
+import { approvalVisit } from "../appointmentStatus.js";
 import CancellationDialog from '../components/CancellationDialog.jsx';
 import { VaccineEstimate } from "../components/VaccineBooking.jsx";
 import AdmissionsPage, { AdmissionsSummary } from './AdmissionsPage.jsx';
@@ -65,8 +66,8 @@ function Dash({ db, setDb, me, go, say }) {
     confirmingRef.current.add(a.id);
     setActionError(""); setConfirming(p => ({...p,[a.id]:true}));
     try {
-      const saved = await moveAppt(setDb, a.id, "Scheduled", me, setActionError, a);
-      if (saved) say("Appointment approved and scheduled.");
+      const saved = await moveAppt(setDb, a.id, "Scheduled", me, setActionError, approvalVisit(db,a));
+      if (saved) say("Appointment approved, registration verified and slot confirmed.");
     } finally {
       confirmingRef.current.delete(a.id);
       setConfirming(p => ({...p,[a.id]:false}));
@@ -278,7 +279,7 @@ function Dash({ db, setDb, me, go, say }) {
           onClose={() => setReviewReq(null)}
           onProcessed={(action, newPet, cardId) => {
             setReviewReq(null);
-            say(action === "approved" ? `Pet approved. Digital vaccination card #${cardId} created.` : "Pet registration request declined.");
+            say(action === "appointment-approved" ? "Appointment approved, registration verified and slot confirmed." : action === "approved" ? `Pet approved. Digital vaccination card #${cardId} created.` : "Pet registration request declined.");
           }}
         />
       )}

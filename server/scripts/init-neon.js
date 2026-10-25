@@ -39,6 +39,7 @@ async function main() {
 
     await query(fs.readFileSync(path.join(__dirname, "../database/pet-registration.sql"), "utf-8"));
     await query(fs.readFileSync(path.join(__dirname, "../database/owner-pet-onboarding.sql"), "utf8"));
+    await query(fs.readFileSync(path.join(__dirname, "../database/appointment-approval.sql"), "utf8"));
 
     await query(fs.readFileSync(path.join(__dirname, "../database/staff-access.sql"), "utf-8"));
 

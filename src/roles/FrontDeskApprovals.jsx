@@ -11,7 +11,7 @@ export default function FrontDeskApprovals({ db, onReviewPet, onOpenCard, onCale
   const pets = (db.petRequests || []).filter(r => r.status === "Pending");
   return <section className="card sf-approvals" aria-labelledby="approval-heading">
     <div className="sf-section-hd">
-      <div><span className="sf-eyebrow">Reception inbox</span><h2 id="approval-heading">Needs clinic approval <span className="sf-pill">{visits.length + pets.length}</span></h2><p>Review upcoming visit requests and new pet registrations here.</p></div>
+      <div><span className="sf-eyebrow">Reception inbox</span><h2 id="approval-heading">Pending Appointment Requests <span className="sf-pill">{visits.length}</span></h2><p>Review the patient and requested visit. Approval confirms the available slot and verifies the linked registration together.</p></div>
       <button className="btn ghost sm" onClick={onCalendar}><CalendarDays size={16} aria-hidden="true" />Open calendar</button>
     </div>
     <div className="sf-approval-tabs" aria-label="Approval categories">
@@ -24,10 +24,23 @@ export default function FrontDeskApprovals({ db, onReviewPet, onOpenCard, onCale
         const pet = db.pets.find(p => p.id === a.petId);
         const owner = db.owners.find(o => o.id === (pet?.ownerId || a.ownerId));
         const vet = db.vets.find(v => v.id === a.vetId);
+        const registration = (db.petRequests || []).find(r => r.petId === a.petId && r.status !== "Approved");
+        const patient = registration || pet;
         return <article className="sf-approval-item" key={a.id}>
           <div className="sf-approval-date"><CalendarDays size={18} aria-hidden="true" /><b>{a.date}</b><span>{a.time ? fmt12(a.time) : "Time not recorded"}</span></div>
           <div className="sf-body"><h3>{pet?.name || a.petName || "Patient"}</h3><p>{a.reason || a.service || "Visit request"}</p><VaccineEstimate appointment={a} compact /><p><b>Owner:</b> {owner?.name || a.ownerName || "Not recorded"} · {owner?.phone || owner?.email || "No contact on file"}</p><p><b>Veterinarian:</b> {vet?.name || "Not recorded"}</p>{a.notes && <p className="sf-approval-note">{a.notes}</p>}</div>
-          <div className="sf-approval-actions"><span className="sf-pill wa">Pending Approval</span><button className="btn sm" disabled={!!confirming[a.id]} onClick={() => onConfirm(a)}>{confirming[a.id] ? "Approving…" : "Approve visit"}</button><button className="btn danger sm" disabled={!!confirming[a.id]} onClick={() => onReject(a)}>Reject request</button><button className="btn ghost sm" onClick={() => onOpenCard(a.petId, a)}>View patient</button></div>
+          <div className="sf-body">
+            <p><b>Registration:</b> {registration?.status || pet?.registrationStatus || "Verified"}</p>
+            <p>{patient?.species} · {patient?.speciesOther || patient?.breed || "Breed not recorded"} · {patient?.sex || "Sex not recorded"}</p>
+            <details><summary>Pet registration details</summary>
+              <p><b>Born:</b> {patient?.birth || "Not recorded"} · <b>{registration ? "Owner-reported weight:" : "Latest recorded weight:"}</b> {patient?.weight ?? "Not recorded"} kg</p>
+              <p><b>Spayed/neutered:</b> {patient?.neutered || "Not recorded"} · <b>Color:</b> {patient?.color || "Not recorded"}</p>
+              {patient?.dentalOcclusion && <p><b>Owner-reported dental status:</b> {patient.dentalOcclusion}</p>}
+              {patient?.notes && <p><b>Owner notes:</b> {patient.notes}</p>}
+              {patient?.photo && <img src={patient.photo} alt={`${patient.name} registration`} width="100" height="100" style={{objectFit:"cover"}} />}
+            </details>
+          </div>
+          <div className="sf-approval-actions"><span className="sf-pill wa">Pending Approval</span><button className="btn sm" disabled={!!confirming[a.id] || registration?.status === "Declined"} onClick={() => onConfirm(a)}>{confirming[a.id] ? "Approving…" : registration ? "Approve appointment & registration" : "Approve visit"}</button>{registration?.status === "Declined" && <small>The owner must correct and resubmit the registration.</small>}<button className="btn danger sm" disabled={!!confirming[a.id]} onClick={() => onReject(a)}>Reject request</button><button className="btn ghost sm" onClick={() => onOpenCard(a.petId, a)}>View patient</button></div>
         </article>;
       }) : <div className="sf-approval-empty"><CalendarCheck size={26} aria-hidden="true" /><b>No visit requests awaiting approval</b><span>New bookings appear here before the clinic confirms them.</span></div>
       : pets.length ? pets.map(p => {

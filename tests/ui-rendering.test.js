@@ -24,6 +24,7 @@ buildSync({
       export { ProfileBody, PasswordBody } from './src/roles/owner/Profile.jsx';
       export { PetFormModal, PetProfileModal } from './src/roles/owner/Pets.jsx';
       export { DischargeDocument } from './src/roles/AdmissionDischargeSummary.jsx';
+      export { default as PetApprovalModal } from './src/roles/PetApprovalModal.jsx';
       export { default as Reports } from './src/roles/ReportsPage.jsx';
       export { default as ErrorBoundary } from './src/ErrorBoundary.jsx';
       export { SEED } from './src/lib.jsx';
@@ -140,7 +141,7 @@ test('front desk surfaces a future booking before its arrival date', () => {
   const db = populated();
   db.appts = [{id:'future-approval',petId:'p1',vetId:'v1',date:'2099-01-05',time:'10:00',status:'Pending Approval',reason:'Future vaccination request',notes:'Please call before the visit.'}];
   const html = render(ui.assistant.Dash, props('assistant', db));
-  assert.match(html, /Needs clinic approval/);
+  assert.match(html, /Pending Appointment Requests/);
   assert.match(html, /Visit requests \(1\)/);
   assert.match(html, /Future vaccination request/);
   assert.match(html, /2099-01-05/);
@@ -188,4 +189,20 @@ test('discharge print document distinguishes prescribed medicine, clinic use, un
   const paid=render(ui.DischargeDocument,{data:{...data,admission:{...data.admission,status:'Discharged',dischargedAt:'2026-10-25T02:00:00Z'},appointment:{...data.appointment,billingStatus:'Paid',amount:90,discount:10,paymentMethod:'Cash',cashTendered:100,changeAmount:10,paidAt:'2026-10-25T01:30:00Z'}}});
   for(const text of ['Paid amount','90.00','Cash received','Change recorded'])assert.ok(paid.includes(text),text);
   assert.ok(!paid.includes('Release to owner has not yet been confirmed'));
+});
+
+test('pending appointment queue presents linked registration and visit for one combined approval',()=>{
+ const db=populated();
+ db.pets[0]={...db.pets[0],registrationStatus:'Pending'};
+ db.petRequests=[{id:'review',petId:db.pets[0].id,ownerId:db.pets[0].ownerId,name:'Pending Luna',species:'Feline',breed:'Puspin',sex:'Female',birth:'2025-01-01',weight:4.25,neutered:'Not sure',notes:'Owner registration notes',status:'Pending',revision:2}];
+ db.appts=[{id:'pending-visit',petId:db.pets[0].id,vetId:'v1',date:'2099-01-05',time:'10:00',status:'Pending Approval',reason:'Requested examination'}];
+ const html=render(ui.assistant.Dash,props('assistant',db));
+ for(const text of ['Pending Appointment Requests','Requested examination','Pet registration details','Owner-reported weight:','4.25','Owner registration notes','Approve appointment &amp; registration']) assert.ok(html.includes(text),text);
+});
+
+test('registration review of a booked pending patient uses the combined approval action',()=>{
+ const db=populated();const request={id:'review',petId:db.pets[0].id,ownerId:db.pets[0].ownerId,name:'Luna',species:'Feline',sex:'Female',birth:'2025-01-01',weight:4.25,neutered:'Not sure',status:'Pending',revision:0};
+ db.petRequests=[request];db.appts=[{id:'linked',petId:request.petId,vetId:'v1',date:'2099-01-05',time:'10:00',reason:'Linked requested examination',status:'Pending Approval'}];
+ const html=render(ui.PetApprovalModal,{...props('assistant',db),request});
+ assert.match(html,/Requested visit/);assert.match(html,/Linked requested examination/);assert.match(html,/Approve appointment &amp; registration/);assert.doesNotMatch(html,/>Approve pet and issue vaccination card</);
 });

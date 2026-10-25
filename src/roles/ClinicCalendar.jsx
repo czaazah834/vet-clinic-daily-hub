@@ -1,3 +1,4 @@
+import { approvalVisit } from "../appointmentStatus.js";
 import CancellationDialog from '../components/CancellationDialog.jsx';
 import { intakeVisitSnapshot } from '../intakeVisit.js';
 import LiveControl from '../components/LiveControl.jsx';
@@ -173,7 +174,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
     confirmingRef.current.add(a.id);
     setActionError("");
     setConfirming(p => ({...p,[a.id]:true}));
-    const saved = await moveAppt(setDb, a.id, action, me, setActionError, a);
+    const saved = await moveAppt(setDb, a.id, action, me, setActionError, approvalVisit(db,a));
     confirmingRef.current.delete(a.id);
     setConfirming(p => ({...p,[a.id]:false}));
     if (saved) say && say(`${LABEL[action] || action} updated`);

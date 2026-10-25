@@ -1,3 +1,4 @@
+import { approvalVisit } from "./appointmentStatus.js";
 import CancellationDialog from './components/CancellationDialog.jsx';
 import { useSubmissionReview } from './components/SubmissionReview.jsx';
 import { api } from "./api.js";
@@ -152,7 +153,7 @@ export default function EntityPage({ ent, db, setDb, me, say }) {
     if (s === "WRITE") return setModal({ consult: a });
     if (s === 'Cancelled') {setActionError('');setCancelling(a);return;}
     if (s === 'No-show' && !await statusReview.ask({title:'Review missed visit',confirmLabel:'Mark no-show',description:'Confirm that this patient did not arrive for the saved visit.',fields:[['Patient',petName(db,a.petId)],['Visit',`${a.date} ${a.time}`]]}))return;
-    if (!await moveAppt(setDb, a.id, s, me, say, a)) return;
+    if (!await moveAppt(setDb, a.id, s, me, say, approvalVisit(db,a))) return;
     say(s === "In consultation" ? "Consultation started" : `${LABEL[s]} done`);
     if (s === "In consultation") setModal({ consult: a });
   };
