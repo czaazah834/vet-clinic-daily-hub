@@ -1124,8 +1124,14 @@ save fails. Validation messages must be linked to controls with
 
 - Use `useFormValidation` with a pure field-error map for domain rules. Spread
   `formProps` on the form, `field(key)` on each control, render `feedback(key)`,
-  and call `validate(event)` before reviewing or sending data. Its capture
-  handler marks edits; keep value updates in each control's `onChange`.
+  and call `validate(event)` before reviewing or sending data. Its
+  input and change handlers mark edits, including incomplete native numbers
+  such as `-` and `1e`; keep value updates in each control's `onChange`. Use
+  `changed(key)` when a preset assigns a field value so obsolete native errors
+  clear, and `touch(key)` to mark other edits. The returned `errors` map exposes
+  current visible feedback for forms retaining existing error markup. SOAP
+  recalculates its field errors, including related dose/date constraints, on
+  every edit; untouched blank fields remain quiet.
 - Use `LiveControl` for forms governed by native required, range, length and
   format constraints. It retains native submit blocking and reacts to changed
   bounds. Existing `useLive` forms already recalculate their domain rules on

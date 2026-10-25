@@ -13,20 +13,29 @@ export function useFormValidation(errors) {
   const show = key => (submitted || touched[key]) ? allErrors[key] || '' : '';
   const field = key => ({name:key, id:`${prefix}-${key}`, 'aria-invalid':!!show(key), 'aria-describedby':`${prefix}-${key}-error`, onBlur:()=>touch(key)});
   const feedback = key => <span id={`${prefix}-${key}-error`} className="err field-feedback" aria-live="polite">{show(key)}</span>;
+  const nativeError = control => control.validity?.badInput ? control.type==='number' ? 'Enter a valid number.' : 'Enter a valid value.' : '';
   const edited = event => {
     const control=event.target;
     if(control.name) {
       touch(control.name);
-      setInputErrors(previous=>({...previous,[control.name]:control.validity?.badInput ? 'Enter a valid number.' : ''}));
+      setInputErrors(previous=>({...previous,[control.name]:nativeError(control)}));
     }
   };
-  const formProps = {noValidate:true,onChangeCapture:edited};
+  // Input also fires for incomplete number edits (for example '-' or '1e')
+  // when the browser value remains '' and React does not dispatch onChange.
+  // Handle input during bubbling so controlled values update before validation renders.
+  const formProps = {noValidate:true,onInput:edited,onChangeCapture:edited};
+  // Call after assigning a value with a preset or other programmatic edit.
+  const changed = key => {
+    touch(key);
+    setInputErrors(previous=>({...previous,[key]:''}));
+  };
   const validate = event => {
     setSubmitted(true);
     const first = Array.from(event.currentTarget.elements).find(control => (allErrors[control.name] || control.validity?.badInput) && !control.disabled);
-    if(first?.validity?.badInput) setInputErrors(previous=>({...previous,[first.name]:'Enter a valid number.'}));
+    if(first?.validity?.badInput) setInputErrors(previous=>({...previous,[first.name]:nativeError(first)}));
     if (first) first.focus();
     return !first && !Object.values(allErrors).some(Boolean);
   };
-  return {field,feedback,formProps,validate};
+  return {field,feedback,formProps,validate,touch,changed,errors:Object.fromEntries(Object.keys(allErrors).map(key=>[key,show(key)]))};
 }

@@ -1,3 +1,4 @@
+import {boosterDate} from './clinicalWorkflow.js';
 // Match the consultation endpoint's SOAP, date and weight limits before sending.
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
   && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
@@ -13,6 +14,15 @@ export function validateSoapFields(form, today, birth) {
     errors.weight = 'Enter a weight greater than 0 and no more than 120 kg, or leave it blank.';
   }
   if (String(form.prescription || '').length > 3000) errors.prescription = 'Prescription notes cannot exceed 3,000 characters.';
+  if (form.giveVaccine) {
+    if (!form.vaccine) errors.vaccine='Please select the administered biological / vaccine.';
+    if (!Number.isInteger(Number(form.doseNo)) || Number(form.doseNo)<1 || Number(form.doseNo)>20) errors.doseNo='Enter the administered dose number (1–20).';
+    if (!Number.isInteger(Number(form.doseOf)) || Number(form.doseOf)<1 || Number(form.doseOf)>20 || Number(form.doseOf)<Number(form.doseNo)) errors.doseOf='Total planned doses must be 1–20 and at least the administered dose number.';
+    if (!boosterDate(form.date,form.intervalDays)) errors.intervalDays='Enter a whole booster interval from 1 to 3,650 days and a valid administration date.';
+    if (!form.scheduleApproved) errors.scheduleApproved='Approve the booster interval for this patient.';
+    if (!String(form.brand || '').trim()) errors.brand='Vaccine manufacturer brand name is required.';
+    if (!String(form.batch || '').trim()) errors.batch='Lot / Batch number is required for official certification.';
+  }
   if (form.scheduleFollowUp) {
     if (!['Follow-up required','Recheck required'].includes(form.careStatus)) errors.careStatus = 'Choose a supported follow-up status.';
     if (!validDate(form.followUpDate) || form.followUpDate < today) errors.followUpDate = 'Follow-up date must be a real date, today or in the future.';
