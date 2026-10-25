@@ -1,3 +1,5 @@
+import { ensureAdmissionsSchema } from '../admissions.js';
+import { assertAdmissionCheckout, admissionCharges, validateAdmissionCharges } from '../admissionMedication.js';
 import { noteOptionsRouter } from "./noteOptions.js";
 import { admissionsRouter } from './admissions.js';
 import { requestedVaccineReason } from '../vaccineBooking.js';
@@ -74,6 +76,7 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
     await ensurePetRegistrationSchema();
     await ensureCareSchema();
     await ensurePrescriptionSchema();
+    await ensureAdmissionsSchema();
     const plan=stateReadPlan(req.user,{...req.query,view:req.path==='/state/summary'?'summary':req.path==='/state/history'?'history':'full'});
     const {owner,vet,scoped,params:scopeParams,petScope}=plan;
     const read=key=>query(plan.reads[key].sql,plan.reads[key].params);
@@ -118,6 +121,10 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
       const counts=await query(`SELECT (SELECT count(*)::int FROM consultations WHERE ${plan.filters.consults}) AS consultations, (SELECT jsonb_object_agg(status,n) FROM (SELECT status,count(*)::int n FROM appointments WHERE ${plan.filters.appts} GROUP BY status) s) AS appointment_status`,scopeParams);
       totals=counts.rows[0];
     }
+
+    // Only annotate appointments already selected by this user's scope/page.
+    const admissionStates = apptsRes.rows.length ? (await query('SELECT appt_id,status FROM admissions WHERE appt_id=ANY($1::varchar[])',[apptsRes.rows.map(a=>a.id)])).rows : [];
+    const admissionByVisit = new Map(admissionStates.map(row=>[row.appt_id,row.status]));
 
     // Attach weights to pets
     const weightsByPet = {};
@@ -187,6 +194,7 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
       cashTendered: a.payment_details?.cashTendered ?? null,
       changeAmount: a.payment_details?.changeAmount || 0,
       paidAt: a.paid_at || null,
+      admissionStatus: admissionByVisit.get(a.id) || null,
       invoiceItems: a.invoice_items || [],
       intakeVitals: a.intake_vitals || null,
       handoffs: owner ? [] : (a.handoffs || []),
@@ -1626,7 +1634,7 @@ clinicRouter.get("/services/prices", (req, res) => {
 clinicRouter.post("/appointments/:id/billing", async (req, res) => {
   const apptId = req.params.id;
   const { amount, billingStatus, paymentMethod, actorName, actorRole } = req.body;
-  const invoiceItems = canonicalInvoice(req.body.invoiceItems);
+  const invoiceItems = req.body.invoiceItems;
 
   const discount = req.body.discount === undefined ? 0 : Number(req.body.discount);
   const validItems = Array.isArray(invoiceItems) && invoiceItems.length > 0 && invoiceItems.length <= 100 && invoiceItems.every(item => item && typeof item.name === "string" && item.name.trim() && typeof item.price === "number" && Number.isFinite(item.price) && item.price >= 0 && item.price <= 10000000 && Number.isInteger(item.qty) && item.qty > 0 && item.qty <= 1000);
@@ -1641,6 +1649,7 @@ clinicRouter.post("/appointments/:id/billing", async (req, res) => {
     await ensureCheckoutInboxSchema();
     await ensurePrescriptionSchema();
     await ensureCareSchema();
+    await ensureAdmissionsSchema();
     const paymentDetails = { discount, reference: req.body.paymentReference || "", cashTendered: paymentMethod === "Cash" ? req.body.cashTendered : total, changeAmount: paymentMethod === "Cash" ? Math.round((req.body.cashTendered - total) * 100) / 100 : 0 };
     const result = await withTransaction(async client => {
       const current = (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [apptId])).rows[0];
@@ -1648,14 +1657,20 @@ clinicRouter.post("/appointments/:id/billing", async (req, res) => {
       if (current.status !== "Completed" || current.billing_status === "Paid") throw Object.assign(new Error("Only a completed, unpaid consultation can be checked out."), { status: 409 });
       const consultation = (await client.query("SELECT id, prescription_items, performed_services FROM consultations WHERE appt_id = $1 ORDER BY date DESC, created_at DESC, id DESC LIMIT 1", [apptId])).rows[0];
       if (!consultation) throw Object.assign(new Error("A finalized consultation is required before payment."), { status: 409 });
-      const chargeError = validateClinicalCharges(invoiceItems, consultation.performed_services || []);
+      await assertAdmissionCheckout(client, apptId);
+      const expectedAdmission = await admissionCharges(client, apptId);
+      const canonical = canonicalInvoice(invoiceItems, priceCatalog(), expectedAdmission);
+      if (!canonical) throw Object.assign(new Error('Use the official clinic prices and recorded admission supplies.'), {status:400});
+      const admissionError = validateAdmissionCharges(canonical, expectedAdmission);
+      if (admissionError) throw Object.assign(new Error(admissionError), {status:400});
+      const chargeError = validateClinicalCharges(canonical, consultation.performed_services || []);
       if (chargeError) throw Object.assign(new Error(chargeError), {status:400});
-      const saleError = validatePrescriptionSale(invoiceItems, consultation.prescription_items || []);
+      const saleError = validatePrescriptionSale(canonical.filter(line => line.source !== 'admission'), consultation.prescription_items || []);
       if (saleError) throw Object.assign(new Error(saleError), {status: 400});
       await authorizeCheckoutPayment(client, apptId, req.user, req.body.claimToken);
       const updated = await client.query(
         `UPDATE appointments SET amount = $1, billing_status = 'Paid', payment_method = $2, invoice_items = $3, payment_details = $4, paid_at = NOW() WHERE id = $5 RETURNING *`,
-        [total, paymentMethod, JSON.stringify(invoiceItems), JSON.stringify(paymentDetails), apptId]
+        [total, paymentMethod, JSON.stringify(canonical), JSON.stringify(paymentDetails), apptId]
       );
       await client.query("INSERT INTO audit_logs (user_name, user_role, action) VALUES ($1,$2,$3)", [req.user.name, req.user.role, `Processed payment ₱${total} (${paymentMethod}) for visit ${apptId}`]);
       await finishCheckoutTask(client, apptId, req.user.id);

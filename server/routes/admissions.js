@@ -1,4 +1,6 @@
 import express from 'express';
+import { admissionCharges, saveMedicineAction } from '../admissionMedication.js';
+import { ensureCheckoutInboxSchema, createCheckoutTask } from '../checkout.js';
 import { query, withTransaction } from '../db.js';
 import { assignedTo } from '../clinicAccess.js';
 import { lockSchedule } from '../scheduling.js';
@@ -11,7 +13,7 @@ admissionsRouter.use(async (req,res,next) => {
   try { await ensureAdmissionsSchema(); next(); }
   catch { res.status(500).json({error:'Unable to load admissions. Please retry.'}); }
 });
-const base = `SELECT d.*,p.name pet_name,p.owner_id,o.name owner_name,a.vet_id,a.status visit_status,
+const base = `SELECT d.*,p.name pet_name,p.owner_id,o.name owner_name,a.vet_id,a.status visit_status,a.billing_status,
   COALESCE((SELECT CONCAT('Dr. ',u.first_name,' ',u.last_name) FROM users u WHERE u.id=a.vet_id OR u.vet_id=a.vet_id LIMIT 1),'Veterinarian') vet_name,
   latest.owner_update latest_update,latest.created_at latest_update_at
   FROM admissions d JOIN pets p ON p.id=d.pet_id JOIN owners o ON o.id=p.owner_id JOIN appointments a ON a.id=d.appt_id
@@ -32,11 +34,11 @@ function errorResponse(res,error) {
 }
 admissionsRouter.get('/', async (req,res) => {
   try {
-    const status = req.query.status || 'Admitted';
+    const status = req.query.status || 'Active';
     const offset = Number(req.query.offset || 0);
-    if (!['Admitted','Discharged'].includes(status) || !Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) throw admissionError('Choose a valid admission status and page.');
+    if (!['Active','Admitted','Ready for discharge','Discharged'].includes(status) || !Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) throw admissionError('Choose a valid admission status and page.');
     const params = [status];
-    const filter = `d.status=$1 AND ${scope(req.user,params)}`;
+    const filter = `($1='Active' AND d.status<>'Discharged' OR d.status=$1) AND ${scope(req.user,params)}`;
     const count = (await query(`SELECT count(*)::int total FROM admissions d JOIN pets p ON p.id=d.pet_id JOIN appointments a ON a.id=d.appt_id WHERE ${filter}`,params)).rows[0].total;
     params.push(offset);
     const {rows} = await query(`${base} WHERE ${filter} ORDER BY d.admitted_at DESC,d.id DESC LIMIT 50 OFFSET $${params.length}`,params);
@@ -47,7 +49,7 @@ admissionsRouter.get('/eligible', async (req,res) => {
   try {
     const {rows} = await query(`SELECT a.*,p.name pet_name,o.name owner_name FROM appointments a JOIN pets p ON p.id=a.pet_id JOIN owners o ON o.id=p.owner_id
       WHERE a.vet_id=ANY($1::varchar[]) AND (a.status='In consultation' OR (a.status='Completed' AND EXISTS (SELECT 1 FROM consultations c WHERE c.appt_id=a.id)))
-      AND NOT EXISTS (SELECT 1 FROM admissions d WHERE d.appt_id=a.id OR (d.pet_id=a.pet_id AND d.status='Admitted')) ORDER BY a.date DESC,a.time DESC`,[[req.user.vetId,req.user.id].filter(Boolean)]);
+      AND COALESCE(a.billing_status,'')<>'Paid' AND NOT EXISTS (SELECT 1 FROM admissions d WHERE d.appt_id=a.id OR (d.pet_id=a.pet_id AND d.status<>'Discharged')) ORDER BY a.date DESC,a.time DESC`,[[req.user.vetId,req.user.id].filter(Boolean)]);
     res.json({visits:rows.map(row => ({...intakeVisitSnapshot(row),petName:row.pet_name,ownerName:row.owner_name}))});
   } catch (error) { errorResponse(res,error); }
 });
@@ -63,17 +65,18 @@ admissionsRouter.get('/:id', async (req,res) => {
       if (!cursor || !isUuid(cursor.id) || typeof cursor.at !== 'string' || !Number.isFinite(Date.parse(cursor.at))) throw admissionError('Invalid update page.');
       params.push(cursor.at,cursor.id); filter += ' AND (created_at,id)<($2::timestamptz,$3::uuid)';
     }
-    const rows = (await query(`SELECT id,kind,created_at,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') cursor_at,actor_name,actor_role,owner_update${owner ? '' : ',clinical_note,care_plan,measurements'} FROM admission_updates WHERE ${filter} ORDER BY created_at DESC,id DESC LIMIT 51`,params)).rows;
+    const rows = (await query(`SELECT id,kind,created_at,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') cursor_at,actor_name,actor_role,owner_update${owner ? '' : ",clinical_note,care_plan,measurements,medication,EXISTS (SELECT 1 FROM admission_updates correction WHERE correction.admission_id=admission_updates.admission_id AND correction.kind='Medication correction' AND correction.medication->>'voids'=admission_updates.id::text) AS voided"} FROM admission_updates WHERE ${filter} ORDER BY created_at DESC,id DESC LIMIT 51`,params)).rows;
     const more = rows.length > 50; rows.length = Math.min(rows.length,50);
     const last = rows.at(-1);
-    res.json({admission:admissionView(row,owner),updates:rows.map(update => admissionUpdateView(update,owner)),nextCursor:more ? Buffer.from(JSON.stringify({at:last.cursor_at,id:last.id})).toString('base64url') : null,checkedAt:new Date().toISOString()});
+    const orders = owner ? [] : (await query('SELECT id,medicine,dose,route,frequency,instructions,catalog_id,supply_limit,ordered_by,ordered_at,stopped_at FROM admission_medication_orders WHERE admission_id=$1 ORDER BY ordered_at,id',[row.id])).rows;
+    res.json({...(owner ? {} : {medicationOrders:orders}),admission:admissionView(row,owner),updates:rows.map(update => admissionUpdateView(update,owner)),nextCursor:more ? Buffer.from(JSON.stringify({at:last.cursor_at,id:last.id})).toString('base64url') : null,checkedAt:new Date().toISOString()});
   } catch (error) { errorResponse(res,error); }
 });
 const audit = (client,user,action) => client.query('INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)',[user.name,user.role,action]);
-async function addUpdate(client,req,id,kind,data) {
+async function addUpdate(client,req,id,kind,data,payload=data) {
   const ownerMessage = kind === 'Discharge' ? [data.ownerUpdate,data.dischargeInstructions].filter(Boolean).join('\n\n') : data.ownerUpdate;
-  await client.query(`INSERT INTO admission_updates (id,admission_id,kind,clinical_note,care_plan,measurements,owner_update,actor_id,actor_name,actor_role,request_payload)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[req.body.requestId,id,kind,data.clinicalNote,data.carePlan || '',JSON.stringify(data.measurements),ownerMessage,req.user.id,req.user.name,req.user.role,JSON.stringify(data)]);
+  await client.query(`INSERT INTO admission_updates (id,admission_id,kind,clinical_note,care_plan,measurements,owner_update,actor_id,actor_name,actor_role,request_payload,medication)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[req.body.requestId,id,kind,data.clinicalNote,data.carePlan || '',JSON.stringify(data.measurements),ownerMessage,req.user.id,req.user.name,req.user.role,JSON.stringify(payload),JSON.stringify(data.medication || {})]);
 }
 async function replay(client,req,id,data) {
   const row = (await client.query('SELECT admission_id,actor_id,request_payload=$2::jsonb AS same FROM admission_updates WHERE id=$1',[req.body.requestId,JSON.stringify(data)])).rows[0];
@@ -84,6 +87,7 @@ async function replay(client,req,id,data) {
 admissionsRouter.post('/', async (req,res) => {
   try {
     const data = admissionInput(req.body,'create',req.user.role), id = req.body.requestId;
+    await ensureCheckoutInboxSchema();
     const saved = await withTransaction(async client => {
       await lockSchedule(client);
       // Match consultation/handoff locking: appointment first, then admission.
@@ -92,6 +96,9 @@ admissionsRouter.post('/', async (req,res) => {
       const active = (await client.query("SELECT id FROM users WHERE id=$1 AND role='vet' AND COALESCE(to_jsonb(users)->>'is_active','true')<>'false'",[req.user.id])).rows[0];
       if (!active) throw admissionError('Your account is inactive. Contact the clinic administrator.',403);
       if (await replay(client,req,id,data)) return readAdmission(client.query.bind(client),id,req.user);
+      if (visit.billing_status === 'Paid') throw admissionError('A paid visit cannot start a new admission. Reception must create a new visit.',409);
+      const checkout = (await client.query("SELECT appointment_id FROM checkout_tasks WHERE appointment_id=$1 AND status='claimed' AND lease_until>NOW()",[visit.id])).rows[0];
+      if (checkout) throw admissionError('Reception is already checking out this visit. Close its checkout before admitting the pet.',409);
       if (!['In consultation','Completed'].includes(visit.status)) throw admissionError('Start the consultation before admitting this pet.',409);
       if (!req.body.expectedVisit || !sameIntakeVisit(visit,req.body.expectedVisit)) throw admissionError('This visit changed. Refresh clinic records and reopen admission.',409);
       if (visit.status === 'Completed' && !(await client.query('SELECT id FROM consultations WHERE appt_id=$1',[visit.id])).rows.length) throw admissionError('A completed visit needs saved SOAP notes before admission.',409);
@@ -106,10 +113,12 @@ admissionsRouter.post('/', async (req,res) => {
 });
 admissionsRouter.post('/:id/:action', async (req,res) => {
   try {
-    const {id,action} = req.params;
+    const {action} = req.params;
+    const id = req.params.id.toLowerCase();
     if (!isUuid(id)) throw admissionError('Admission not found.',404);
-    if (!['update','discharge'].includes(action)) throw admissionError('Admission action not found.',404);
+    if (!['update','discharge','release','order','stop-medication','medication','correct-medication'].includes(action)) throw admissionError('Admission action not found.',404);
     const data = admissionInput(req.body,action,req.user.role);
+    if (action === 'discharge') await ensureCheckoutInboxSchema();
     const saved = await withTransaction(async client => {
       const source = (await client.query('SELECT appt_id FROM admissions WHERE id=$1',[id])).rows[0];
       if (!source) throw admissionError('Admission not found.',404);
@@ -117,14 +126,32 @@ admissionsRouter.post('/:id/:action', async (req,res) => {
       if (req.user.role === 'vet' && !assignedTo(visit,req.user)) throw admissionError('This admission is no longer assigned to you.',403);
       const row = (await client.query('SELECT * FROM admissions WHERE id=$1 FOR UPDATE',[id])).rows[0];
       if (await replay(client,req,id,data)) return readAdmission(client.query.bind(client),id,req.user);
-      if (row.status !== 'Admitted') throw admissionError('This pet has already been discharged. Refresh admission records.',409);
       if (row.revision !== req.body.revision) throw admissionError('Another staff member updated this admission. Close this form, refresh and review the latest notes before saving.',409);
-      if (action === 'discharge') {
-        if (visit.status !== 'Completed' || !(await client.query('SELECT id FROM consultations WHERE appt_id=$1',[visit.id])).rows.length) throw admissionError('Finalize the consultation SOAP notes before discharging this pet.',409);
-        await client.query("UPDATE admissions SET status='Discharged',discharged_at=clock_timestamp(),discharge_instructions=$2,revision=revision+1 WHERE id=$1",[id,data.dischargeInstructions]);
-      } else await client.query("UPDATE admissions SET care_plan=COALESCE(NULLIF($2,''),care_plan),revision=revision+1 WHERE id=$1",[id,data.carePlan || '']);
-      await addUpdate(client,req,id,action === 'discharge' ? 'Discharge' : req.user.role === 'vet' ? 'Veterinarian update' : 'Observation',data);
-      await audit(client,req.user,`${action === 'discharge' ? 'Discharged' : 'Updated'} admission ${id}`);
+      if (action === 'release') {
+        if (row.status !== 'Ready for discharge' || visit.billing_status !== 'Paid') throw admissionError('Release requires veterinarian discharge approval and a saved final payment.',409);
+        await client.query("UPDATE admissions SET status='Discharged',discharged_at=clock_timestamp(),revision=revision+1 WHERE id=$1",[id]);
+        await addUpdate(client,req,id,'Release',data);
+      } else {
+        if (row.status !== 'Admitted') throw admissionError('Care recording is closed after discharge approval. Refresh admission records.',409);
+        if (action === 'discharge') {
+          if (visit.status !== 'Completed' || !(await client.query('SELECT id FROM consultations WHERE appt_id=$1',[visit.id])).rows.length) throw admissionError('Finalize the consultation SOAP notes before approving discharge.',409);
+          await client.query("UPDATE admissions SET status='Ready for discharge',discharge_approved_at=clock_timestamp(),discharge_instructions=$2,revision=revision+1 WHERE id=$1",[id,data.dischargeInstructions]);
+          await createCheckoutTask(client,visit.id);
+          await addUpdate(client,req,id,'Discharge',data);
+        } else if (action === 'update') {
+          await client.query("UPDATE admissions SET care_plan=COALESCE(NULLIF($2,''),care_plan),revision=revision+1 WHERE id=$1",[id,data.carePlan || '']);
+          await addUpdate(client,req,id,req.user.role === 'vet' ? 'Veterinarian update' : 'Observation',data);
+        } else {
+          const event = await saveMedicineAction(client,req,row,data);
+          await addUpdate(client,req,id,event.kind,{...data,...event},data);
+          if (action === 'order') await client.query(`INSERT INTO admission_medication_orders(id,admission_id,medicine,dose,route,frequency,instructions,catalog_id,supply_limit,ordered_by)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[req.body.requestId,id,data.medicine,data.dose,data.route,data.frequency,data.instructions,data.catalogId,data.supplyLimit,req.user.name]);
+          const charges = await admissionCharges(client,visit.id);
+          if (charges.some(line => line.qty>1000) || charges.length>30) throw admissionError('Admission medicine supplies exceed the invoice limit. Review the recorded quantities.');
+          await client.query('UPDATE admissions SET revision=revision+1 WHERE id=$1',[id]);
+        }
+      }
+      await audit(client,req.user,`${action === 'discharge' ? 'Approved discharge for' : action === 'release' ? 'Released' : 'Updated'} admission ${id} (${action})`);
       return readAdmission(client.query.bind(client),id,req.user);
     });
     res.json({success:true,admission:admissionView(saved)});

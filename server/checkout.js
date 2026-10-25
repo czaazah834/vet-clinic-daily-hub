@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { query } from './db.js';
+import { assertAdmissionCheckout } from './admissionMedication.js';
 import { sha256 } from './security.js';
 let ready;
 export function ensureCheckoutInboxSchema() {
@@ -20,6 +21,7 @@ export async function lockCheckout(client, appointmentId) {
   const appointment = (await client.query('SELECT * FROM appointments WHERE id = $1 FOR UPDATE', [appointmentId])).rows[0];
   if (!appointment) throw checkoutError('Appointment not found.', 404);
   if (appointment.status !== 'Completed' || appointment.billing_status === 'Paid') throw checkoutError('This visit is no longer waiting for checkout. Refresh the inbox.');
+  await assertAdmissionCheckout(client, appointmentId);
   const consultation = (await client.query('SELECT id, prescription_items, prescription FROM consultations WHERE appt_id = $1 ORDER BY date DESC, created_at DESC, id DESC LIMIT 1', [appointmentId])).rows[0];
   if (!consultation) throw checkoutError('A finalized consultation is required before checkout.');
   await createCheckoutTask(client, appointmentId);

@@ -26,13 +26,13 @@ export function priceCatalog() {
   if (new Set(catalog.map(p => p.id)).size !== catalog.length) throw new Error('Duplicate clinic product catalog ID');
   return catalog;
 }
-export function canonicalInvoice(items, catalog = priceCatalog()) {
+export function canonicalInvoice(items, catalog = priceCatalog(), admission = []) {
   if (!Array.isArray(items) || !items.length || items.length > 100) return null;
   const result = [];
   for (const item of items) {
-    const official = catalog.find(p => p.id === item?.catalogId);
+    const official = item?.source === 'admission' ? admission.find(p => p.catalogId === item.catalogId && p.price === item.price && p.name === item.name) : catalog.find(p => p.id === item?.catalogId);
     if (!official || item.price !== official.price || item.name !== official.name || !Number.isInteger(item.qty) || item.qty < 1 || item.qty > 1000) return null;
-    result.push({catalogId: official.id, name: official.name, category: official.category, price: official.price, qty: item.qty});
+    result.push({catalogId: official.id || official.catalogId, name: official.name, category: official.category, price: official.price, qty: item.qty,...(item.source === 'admission' ? {source:'admission'} : {})});
   }
   return result;
 }

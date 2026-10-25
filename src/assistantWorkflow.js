@@ -43,7 +43,7 @@ export function dailyCollections(appointments, date = today()) {
   return {paid,undated,total:sumAmounts(paid),methods,missingAmounts:paid.filter(a => ownerBill(a).amount === null).length};
 }
 export function pendingCheckout(appointments, date = today()) {
-  const visits = appointments.filter(a => a.date === date && a.status === 'Completed' && a.billingStatus !== 'Paid');
+  const visits = appointments.filter(a => a.date === date && a.status === 'Completed' && a.billingStatus !== 'Paid' && a.admissionStatus !== 'Admitted');
   return {visits, draftTotal:sumAmounts(visits), awaitingInvoice:visits.filter(a => ownerBill(a).amount === null).length};
 }
 const priority = a => ({Emergency:0,Priority:1,Routine:2}[a.intakeVitals?.triageLevel] ?? 2);

@@ -58,21 +58,21 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
   const addItem = (item) => {
     setItems(prev => {
-      const existing = prev.find(p => p.catalogId === item.id);
+      const existing = prev.find(p => p.catalogId === item.id && p.source !== 'admission');
       if (existing?.source === 'performed') return prev;
-      const limit = item.requiresPrescription ? prescribed.find(p => p.catalogId === item.id)?.quantity || 0 : 1000;
+      const limit = item.requiresPrescription ? prescribed.find(p => p.catalogId === item.id && p.source !== 'admission')?.quantity || 0 : 1000;
       if (!limit || (existing?.qty || 0) >= limit) return prev;
-      return existing ? prev.map(p => p.catalogId === item.id ? {...p, qty:p.qty + 1} : p) : [...prev, {catalogId:item.id,name:item.name,category:item.category,price:item.price,qty:1}];
+      return existing ? prev.map(p => p.catalogId === item.id && p.source !== 'admission' ? {...p, qty:p.qty + 1} : p) : [...prev, {catalogId:item.id,name:item.name,category:item.category,price:item.price,qty:1}];
     });
     setSearch("");
   };
 
   const removeItem = (idx) => {
-    setItems(prev => prev.filter((item, i) => i !== idx || item.source === 'performed'));
+    setItems(prev => prev.filter((item, i) => i !== idx || ['performed','admission'].includes(item.source)));
   };
 
   const updateQty = (idx, qty) => {
-    setItems(prev => prev.map((item, i) => i === idx && item.source !== 'performed' ? { ...item, qty: Math.max(1, +qty || 1) } : item));
+    setItems(prev => prev.map((item, i) => i === idx && !['performed','admission'].includes(item.source) ? { ...item, qty: Math.max(1, +qty || 1) } : item));
   };
 
   const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -210,7 +210,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                 {savedBill.items.length === 0 && <p>Itemized charges not recorded.</p>}
                 <PaginatedList label="Receipt items" resetKey={appt.id}>{savedBill.items.map((it, idx) => (
                   <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#475569", marginTop: "3px" }}>
-                    <span>{it.qty}x {it.name}</span>
+                    <span>{it.qty}x {it.name}{it.source === 'admission' && ' (clinic use)'}</span>
                     <b>₱{(it.price * it.qty).toLocaleString()}</b>
                   </div>
                 ))}</PaginatedList>
@@ -348,6 +348,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
             {catalogError && <p role="alert">{catalogError} <button type="button" onClick={() => { setCatalogError(""); setCatalogAttempt(x => x + 1); }}>Retry prices</button></p>}
             <p>Choose services and other products from the clinic catalog. Unit prices are fixed. Veterinarian-confirmed services are included once and retained for checkout.</p>
+            <p>Clinic-use medicine supplies are shown separately and retained at their recorded quantities. Take-home products remain subject to the veterinarian’s prescription. Payment does not mark a medicine dose as given.</p>
             {!!prescribed.length && <div style={{padding:12,background:"#eff6ff",borderRadius:8,marginBottom:12}}><b>Veterinarian-prescribed products loaded</b><p>Confirm the actual product form, package size and supply before dispensing. Reduce or remove items that are not dispensed; the signed prescription is retained.</p>{prescribed.map(p => <p key={p.catalogId}><b>{p.name}</b> · {p.quantity} item(s)/package(s)<br />{p.instructions}</p>)}</div>}
             {/* Bill Line Items Table */}
             <div style={{ border: "1px solid #cbd5e1", borderRadius: "10px", overflow: "hidden", marginBottom: "16px" }}>
@@ -367,7 +368,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                       <td style={{ padding: "8px 10px" }}>
                         <input
                           type="text"
-                          value={it.name}
+                          value={it.name + (it.source === 'admission' ? ' (clinic use)' : '')}
                           readOnly aria-label="Fixed catalog value"
                           style={{ width: "100%", fontSize: "12.5px", padding: "4px 6px", border: "1px solid transparent", borderRadius: "4px" }}
                           onFocus={e => e.target.style.borderColor = "#93c5fd"}
@@ -378,8 +379,8 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                         <input
                           type="number"
                           min="1"
-                          readOnly={it.source === 'performed'}
-                          aria-label={it.source === 'performed' ? 'Confirmed service quantity' : 'Quantity'}
+                          readOnly={['performed','admission'].includes(it.source)}
+                          aria-label={['performed','admission'].includes(it.source) ? 'Recorded service or clinic supply quantity' : 'Quantity'}
                           value={it.qty}
                           onChange={e => updateQty(idx, e.target.value)}
                           style={{ width: "50px", textAlign: "center", padding: "4px", fontSize: "12px", border: "1px solid #cbd5e1", borderRadius: "4px" }}
@@ -398,7 +399,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                         ₱{(it.price * it.qty).toLocaleString()}
                       </td>
                       <td style={{ padding: "8px 6px", textAlign: "center" }}>
-                        {it.source !== 'performed' && items.length > 0 && (
+                        {!['performed','admission'].includes(it.source) && items.length > 0 && (
                           <button
                             type="button"
                             onClick={() => removeItem(idx)}

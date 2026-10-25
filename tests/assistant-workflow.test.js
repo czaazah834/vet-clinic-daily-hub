@@ -82,3 +82,9 @@ test('approval inbox includes today and future Scheduled visits independently of
   assert.equal(all[0], future, 'does not reorder the clinic store');
   assert.equal(pendingVisitApprovals(all.map(a => a.id === 'future' ? {...a,status:'Confirmed'} : a),date).some(a => a.id === 'future'),false);
 });
+
+test('checkout summary holds admitted pets until discharge approval and preserves outpatient checkout',()=>{
+ const base={id:'outpatient',date,status:'Completed',billingStatus:'Unbilled',invoiceItems:[{name:'Consultation',price:500,qty:1}]};
+ const rows=[base,{...base,id:'admitted',admissionStatus:'Admitted'},{...base,id:'ready',admissionStatus:'Ready for discharge'}];
+ assert.deepEqual(pendingCheckout(rows,date).visits.map(a=>a.id),['outpatient','ready']);
+});

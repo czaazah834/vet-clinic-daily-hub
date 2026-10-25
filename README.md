@@ -1015,13 +1015,62 @@ API. Owners see their own pets' status, saved shared messages and discharge
 instructions in **Pet Admission Updates**, with an active-stay shortcut on My Pets.
 The pages poll while open and show refresh failures and the last check time.
 
-Only the assigned veterinarian can approve discharge, after finalizing SOAP. A
-clinical discharge summary and owner-visible home-care instructions are required.
-Discharged stays remain readable; new observations cannot be added to them.
-Appointment completion and payment remain separate from admission status: signing
-SOAP still prepares the existing checkout, and payment does not discharge the pet.
-This feature records care and does not create diagnoses, treatments or admission
-fees. Confirm billable services and products through the existing workflow.
+### Discharge, payment and release
+
+For admitted pets the workflow is **Admitted → Ready for discharge → payment →
+Discharged (released to owner)**. The assigned veterinarian signs SOAP, approves
+discharge and records a private summary plus owner-visible home-care instructions.
+Approval closes care entry and sends the visit to final checkout; it does not mark
+the pet as released. Reception records payment through the existing claim-based
+checkout, then confirms actual release in Admitted Pets. Payment never changes
+admission status by itself. Pending release still counts as an active stay.
+
+This intentionally replaces the earlier admission behavior that allowed checkout
+before discharge approval. Ordinary outpatient checkout is unchanged. Existing
+Discharged rows retain their original status, timestamps and history. A paid visit
+cannot start a new admission, and an active reception checkout claim must be closed
+before admission. Final payment and claim endpoints both enforce the discharge
+approval guard. Historically paid active stays can still be approved and released.
+
+### Medicine orders, actual doses and supplies
+
+Only the assigned veterinarian adds or stops admission medicine orders. Each order
+records a medicine, dose with units, route, frequency, instructions and author. It
+may authorize a clinic catalog supply with a maximum number of whole items/packages.
+These quantities describe billable supplies, not doses; no clinical decision or
+supply-to-dose conversion is inferred. Custom medicine names can be recorded without
+an additional catalog supply charge. Take-home supplies are prescribed in SOAP.
+
+Veterinarians and assistants record each actual medicine event against an active
+order: **Given**, **Missed**, or **Held**, actual Manila date/time, observed response,
+reaction or reason, and any whole clinic items/packages actually used. The event
+retains the veterinarian's dose and route; assistants cannot substitute a different
+medicine or dose. Dates cannot precede the order/admission or be in the future.
+Missed/held events have no medicine supply charge. The total clinic supply cannot
+exceed the veterinarian's authorization. Giving a dose is an explicit staff action;
+prescribing, signing SOAP, paying or releasing a pet never creates a dose entry.
+
+The assigned vet can mark an incorrect medicine event as entered in error while
+care is open. The original entry remains visible, with an appended reason and
+correction reference; it is excluded from supply totals and billing. A correction
+to an owner-shared entry requires an owner correction message. Stopping an order
+retains its history and blocks later events against that order.
+
+Final checkout loads recorded clinic-use supplies once, separately from take-home
+products even when both use the same catalog item. Their saved quantities/prices
+cannot be removed, duplicated or changed at payment. Home supplies still require
+the original SOAP prescription where applicable; an admission medicine order does
+not authorize additional home supplies. The invoice retains a clinic-use label.
+This is recording and billing only: no stock deduction, automated diagnosis,
+treatment recommendations, inferred doses, admission fees or inventory expansion.
+
+After release, the admission, care timeline, medicine orders/events/corrections,
+SOAP prescription and invoice stay linked to the pet and visit. Owners receive
+only explicitly entered messages, status, discharge instructions and their existing
+prescription/payment views. Internal orders, doses, observations and corrections
+are not exposed through the owner admission API unless staff explicitly describes
+them in an owner message. Discharged stays remain readable; new care entries close
+at vet discharge approval.
 
 All writes require a connected server save. Forms keep entries on save failure,
 confirm discarding unsaved text and warn before browser navigation; they do not
@@ -1029,7 +1078,7 @@ store admission entries on the device. Revisions reject conflicting staff saves,
 request IDs make retries idempotent, and updates and audit entries commit together.
 Timeline and stay history are paginated. No external clinic records are retrieved.
 
-Apply `server/database/admissions.sql` using the migration role before deploying
+Apply `server/database/admissions.sql` followed by `server/database/admission-workflow.sql` using the migration role before deploying
 when the runtime role cannot create tables. `npm run db:init` includes the migration
 for new installations; do not run demo seeding on a live database. Admission routes
 otherwise initialize missing tables on first use.

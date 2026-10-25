@@ -1,11 +1,13 @@
 import { ensurePrescriptionSchema } from "../prescriptions.js";
 import express from 'express';
+import { ensureAdmissionsSchema } from '../admissions.js';
+import { admissionCharges } from '../admissionMedication.js';
 import { query, withTransaction } from '../db.js';
 import { sha256 } from '../security.js';
 import { ensureCheckoutInboxSchema, lockCheckout, ownsClaim, checkoutError } from '../checkout.js';
 export const checkoutRouter = express.Router();
 checkoutRouter.use(async (req,res,next) => {
-  try { await ensureCheckoutInboxSchema(); await ensurePrescriptionSchema(); next(); }
+  try { await ensureCheckoutInboxSchema(); await ensurePrescriptionSchema(); await ensureAdmissionsSchema(); next(); }
   catch { res.status(500).json({ error:'Unable to load the checkout inbox. Please retry.' }); }
 });
 checkoutRouter.get('/', async (req,res) => {
@@ -23,7 +25,7 @@ checkoutRouter.get('/', async (req,res) => {
       p.name AS pet_name,o.name AS owner_name,a.date,a.time
       FROM checkout_tasks t JOIN appointments a ON a.id=t.appointment_id JOIN pets p ON p.id=a.pet_id
       JOIN owners o ON o.id=p.owner_id LEFT JOIN users u ON u.id=t.claimed_by
-      WHERE a.status='Completed' AND COALESCE(a.billing_status,'')<>'Paid' AND t.status<>'completed'
+      WHERE a.status='Completed' AND COALESCE(a.billing_status,'')<>'Paid' AND t.status<>'completed' AND NOT EXISTS (SELECT 1 FROM admissions d WHERE d.appt_id=a.id AND d.status='Admitted')
       ORDER BY t.created_at,t.appointment_id LIMIT 200`)).rows;
     res.set('Cache-Control','no-store').json({ tasks:rows.map(t=>({ appointmentId:t.appointment_id,createdAt:t.created_at,status:t.status,claimedBy:t.claimed_by,claimedName:t.claimed_name,leaseUntil:t.lease_until,petName:t.pet_name,ownerName:t.owner_name,date:t.date,time:t.time })) });
   } catch { res.status(500).json({ error:'Unable to load the checkout inbox. Please retry.' }); }
@@ -39,7 +41,7 @@ checkoutRouter.post('/:id/:action', async (req,res) => {
         const token=crypto.randomUUID();
         const row=(await client.query("UPDATE checkout_tasks SET status='claimed',claimed_by=$2,claim_hash=$3,lease_until=NOW()+INTERVAL '5 minutes' WHERE appointment_id=$1 RETURNING lease_until",[id,req.user.id,sha256(token)])).rows[0];
         await client.query('INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)',[req.user.name,req.user.role,`Claimed checkout ${id}`]);
-        return {claimToken:token,leaseUntil:row.lease_until,invoiceItems:appointment.invoice_items || [],prescriptionItems:consultation.prescription_items || [],prescription:consultation.prescription || ""};
+        return {claimToken:token,leaseUntil:row.lease_until,invoiceItems:[...(appointment.invoice_items || []).filter(line => line.source !== 'admission'),...await admissionCharges(client,id)],prescriptionItems:consultation.prescription_items || [],prescription:consultation.prescription || ""};
       }
       if (!ownsClaim(task,req.user,req.body.claimToken)) throw checkoutError('Your checkout claim is no longer active. Reclaim it before continuing.');
       if (action==='renew') {

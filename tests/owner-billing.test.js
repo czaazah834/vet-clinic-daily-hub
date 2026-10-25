@@ -40,3 +40,11 @@ test('inconsistent historical itemization is flagged without replacing the recor
  const bill=ownerBill({...visit,billingStatus:'Paid',amount:700,invoiceItems:lines});
  assert.equal(bill.amount,700);assert.equal(bill.subtotal,750.7);assert.equal(bill.mismatch,true);
 });
+
+test('admitted stays await vet approval without presenting an unfinished total as payable',()=>{
+ const a={...visit,status:'Completed',invoiceItems:lines,admissionStatus:'Admitted'};
+ assert.equal(ownerBill(a).status,'Awaiting discharge approval');assert.equal(ownerBill(a).amount,null);
+ assert.deepEqual(ownerBill(a).items,lines,'draft lines are retained');
+ assert.equal(ownerBill({...a,admissionStatus:'Ready for discharge'}).status,'Awaiting checkout');
+ assert.equal(ownerBill({...a,billingStatus:'Paid',amount:750.7}).amount,750.7,'historical payments remain authoritative');
+});
