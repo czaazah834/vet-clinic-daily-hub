@@ -1,11 +1,12 @@
 import {useResendTimer} from "../useResendTimer.js";
 ﻿import { useState, useRef } from "react";
-import { Logo, I, ROLES } from "../lib.jsx";
+import { Logo, ROLES } from "../lib.jsx";
 import { validateLogin } from "../validate.js";
 import { useLive } from "../roles/owner/ui.jsx";
 import { auth, OFFLINE_MSG } from "../authApi.js";
 import "./auth.css";
 import "./brand.css";
+import "./public-pages.css";
 
 const Eye = ({ off }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -78,45 +79,65 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
   const title = role ? `Log in · ${ROLES[role][0]}` : "Log in";
 
   return (
-    <div className="lg auth cardl">
-      <aside className="lgl photo">
-        <div className="brandrow"><Logo size={30} /><span>PawCare</span></div>
-        <div className="cap">
-          <h1>Welcome back to <em>PawCare</em></h1>
-          <p>Sign in to open your portal. Each role sees its own tools.</p>
-          <div className="pills" aria-hidden="true"><span>Appointments</span><span>Vaccine cards</span><span>Consultations</span></div>
+    <main className="login-page">
+      <div className="login-layout">
+      <aside className="login-story" aria-label="Welcome to PawCare">
+        <span className="public-eyebrow">A little care. A healthier tomorrow.</span>
+        <h2>Good care starts with <em>staying connected.</em></h2>
+        <p>Your pets, their health records, and the people who care for them. All in one friendly place.</p>
+        <div className="login-photo">
+          <img src="/images/login-pets.jpg" alt="A dog and cat ready for their next visit" />
+          <span><Logo size={34} /> Here for every wag &amp; purr.</span>
         </div>
+        <div className="login-benefits"><span>Appointments</span><span>Vaccine records</span><span>Connected care</span></div>
       </aside>
-      <form className="lgr" onSubmit={submit} noValidate>
-        <button type="button" className="lnk" onClick={onBack}>
-          ← Back to home
-        </button>
-        <h2>{title}</h2>
+      <form className="login-card" onSubmit={submit} noValidate aria-labelledby="login-title">
+        <div className="login-card-top">
+          <div className="public-brand"><Logo size={42} /><span><b>PawCare</b><small>CLINIC &amp; PET CARE HUB</small></span></div>
+          <button type="button" className="lnk login-back" onClick={onBack}>← Home</button>
+        </div>
+        <div className="login-heading">
+          <span className="public-eyebrow">YOUR CARE SPACE</span>
+          <h1 id="login-title">{role ? title : "Welcome back"}</h1>
+          <p>Enter your details to open your portal.</p>
+        </div>
         {notice && <p className={`auth-note${bad ? " bad" : ""}`} role="status">{notice}</p>}
 
         <div className="fld">
           <label htmlFor="login-email">
             Email<i> *</i>
+          </label>
             <input
               id="login-email"
-              disabled={resending}
+              disabled={resending || busy}
               type="email"
+              required
+              spellCheck={false}
+              autoCapitalize="none"
+              placeholder="you@example.com"
+              aria-invalid={!!f.show("email", false)}
+              aria-describedby="login-email-error"
               autoComplete="username"
               value={f.v.email}
               className={f.show("email", false) ? "bad" : f.v.email && !f.errs.email ? "ok" : ""}
               onChange={(e) => f.set("email", e.target.value)}
               onBlur={() => f.blur("email")}
             />
-          </label>
-          <span className="err">{f.show("email", false)}</span>
+          <span className="err" id="login-email-error" aria-live="polite">{f.show("email", false)}</span>
         </div>
 
         <div className="fld">
           <label htmlFor="login-password">
             Password<i> *</i>
+          </label>
             <div className="pw">
               <input
                 id="login-password"
+                required
+                disabled={busy}
+                placeholder="Enter your password"
+                aria-invalid={!!f.show("password", false)}
+                aria-describedby="login-password-error"
                 type={show ? "text" : "password"}
                 autoComplete="current-password"
                 value={f.v.password}
@@ -134,8 +155,7 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
                 <Eye off={show} />
               </button>
             </div>
-          </label>
-          <span className="err">{f.show("password", false)}</span>
+          <span className="err" id="login-password-error" aria-live="polite">{f.show("password", false)}</span>
         </div>
 
         <div className="auth-row" style={{ justifyContent: "flex-end" }}>
@@ -152,7 +172,7 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
         {unver && <button type="button" className="lnk" disabled={resending || busy || cool>0} onClick={resend}>{resending?"Sending…":cool>0?`Resend email in ${cool}s`:"Resend verification email"}</button>}
         {rv && <p className="okm" role="status" style={{ color: "var(--ok, #16a34a)" }}>{rv}</p>}
 
-        <button className="btn gold wide" disabled={busy}>
+        <button className="btn gold wide login-submit" disabled={busy}>
           {busy ? "Logging in…" : "Log in"}
         </button>
         <p className="auth-alt">
@@ -180,7 +200,8 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
           </div>
         )}
       </form>
-    </div>
+      </div>
+    </main>
   );
 }
 
