@@ -1,3 +1,4 @@
+import { ShieldCheck, AlertTriangle, Scale, Hospital, ClipboardList, Info } from "lucide-react";
 import {HistoryControls} from "../../ClinicHistory.jsx";
 import { useState } from "react";
 import { formatSpeciesLabel } from "../../preventiveSchedule.js";
@@ -28,7 +29,7 @@ export default function MedProfile({ p }) {
       <section aria-labelledby="mp-al" style={{ marginBottom: "24px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
           <h4 id="mp-al" style={{ margin: 0, fontSize: "1.1rem", color: "var(--navy)", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-            <span>🛡️</span> <span>Recorded Allergies &amp; Sensitivities</span>
+            <ShieldCheck size={20} aria-hidden="true" /> <span>Recorded Allergies &amp; Sensitivities</span>
           </h4>
           <span style={{ fontSize: "0.78rem", color: "#64748b", background: "#f1f5f9", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>
             Official Clinical Record
@@ -54,7 +55,7 @@ export default function MedProfile({ p }) {
                   borderRadius: "8px"
                 }}
               >
-                ⚠️ {a}
+                <AlertTriangle size={14} aria-hidden="true" /> {a}
               </li>
             ))}
           </ul>
@@ -69,7 +70,7 @@ export default function MedProfile({ p }) {
       <section aria-labelledby="mp-wt" style={{ marginBottom: "24px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", flexWrap: "wrap", gap: "8px" }}>
           <h4 id="mp-wt" style={{ margin: 0, fontSize: "1.1rem", color: "var(--navy)", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-            <span>⚖️</span> <span>Official Weight History &amp; Vital Growth</span>
+            <Scale size={20} aria-hidden="true" /> <span>Official Weight History &amp; Vital Growth</span>
           </h4>
           <div style={{ background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: "8px", padding: "4px 12px", fontSize: "0.85rem", color: "#1e40af", fontWeight: 700 }}>
             Last recorded weight: <b>{p.weight != null ? `${p.weight} kg` : "—"}</b>
@@ -153,7 +154,7 @@ export default function MedProfile({ p }) {
                         </td>
                         <td style={{ padding: "10px 12px" }}>
                           <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "0.78rem", color: "#334155", background: "#f1f5f9", padding: "2px 8px", borderRadius: "6px" }}>
-                            <span>🏥</span> {sourceLabel}
+                            <Hospital size={14} aria-hidden="true" /> {sourceLabel}
                           </span>
                         </td>
                       </tr>
@@ -171,7 +172,7 @@ export default function MedProfile({ p }) {
       <section aria-labelledby="mp-nt">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
           <h4 id="mp-nt" style={{ margin: 0, fontSize: "1.1rem", color: "var(--navy)", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-            <span>📋</span> <span>Clinical Care &amp; Handling Notes</span>
+            <ClipboardList size={20} aria-hidden="true" /> <span>Clinical Care &amp; Handling Notes</span>
           </h4>
           <span style={{ fontSize: "0.78rem", color: "#64748b", background: "#f1f5f9", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>
             Read Only
@@ -192,7 +193,7 @@ export default function MedProfile({ p }) {
             </span>
           )}
           <div style={{ marginTop: "10px", fontSize: "0.75rem", color: "#64748b", borderTop: "1px solid #e2e8f0", paddingTop: "8px" }}>
-            💡 To update care instructions or reported sensitivities, notify the Vet Assistant during your next clinic visit.
+            <Info size={16} aria-hidden="true" /> To update care instructions or reported sensitivities, notify the Vet Assistant during your next clinic visit.
           </div>
         </div>
       </section>

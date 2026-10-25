@@ -1,3 +1,4 @@
+import { CalendarDays, Plus, Syringe } from "lucide-react";
 import { useSubmissionReview } from "../../components/SubmissionReview.jsx";
 import { confirmedBooking, confirmedCancellation } from "../../receptionSaves.js";
 import { intakeVisitSnapshot } from "../../intakeVisit.js";
@@ -49,7 +50,13 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   const pets = scope(db, me, "pets"), owner = db.owners.find(o => o.id === me.ownerId) || {};
   const prev = editing ? serviceOf(editing) : "", svc0 = editing ? prev : start?.service || (start?.reason ? inferService(start.reason) : "");
   const f = useLive({ followUpId: editing?.followUpId || start?.followUpId || "", service: svc0, petId: editing ? editing.petId : (start && start.petId) || (pets.length === 1 ? pets[0].id : ""), vetId: editing ? editing.vetId : "", date: editing ? editing.date : (start && start.date) || "", time: editing ? editing.time : "", notes: editing ? editing.notes || "" : "" }, mkRules(db, me, editing));
+  useEffect(() => {
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = overflow; };
+  }, []);
   const bookingFlight = useRef(false);
+  const [changingDate, setChangingDate] = useState(!start?.date || !!editing);
   const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const { v } = f, S = SERVICES[v.service];
   const followUp = db.records.find(r => r.id === v.followUpId && r.petId === v.petId);
@@ -119,22 +126,29 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   };
   return (
     <Modal title={editing ? "Edit appointment" : "Book a visit"} onClose={() => { if (!bookingFlight.current) onClose(); }}>
-      <form onSubmit={submit} noValidate>
+      <form className="ow-book-form" onSubmit={submit} noValidate>
         {review.card}
         <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
         {start && (start.fromVaccineCard || start.vaccineName) && (
           <div className="ow-banner ok" style={{ marginBottom: 12 }}>
             <span>
-              💉 <b>Vaccine Booster Schedule:</b> Booking for <b>{start.vaccineName || start.reason}</b>. {start.vaccineDueDate && <>Vet-approved due date: <b>{start.vaccineDueDate}</b>. </>}Choose an available visit date, veterinarian and time. The due date does not reserve a visit.
+              <Syringe size={18} aria-hidden="true" /> <b>Vaccine booster:</b> Booking for <b>{start.vaccineName || start.reason}</b>. {start.vaccineDueDate && <>Vet-approved due date: <b>{start.vaccineDueDate}</b>. </>}Choose an available visit date, veterinarian and time. The due date does not reserve a visit.
             </span>
           </div>
         )}
         {!pets.length && <p className="ow-note">You have no pets on your account yet. Please ask the clinic front desk to register your pet first.</p>}
         {moved && <p className="ow-note">Changing the service, date, time or veterinarian sends this visit back to “Scheduled” so the clinic can re-confirm it.</p>}
+        {!changingDate && !f.show("date") ? <section className="ow-book-date" aria-label="Selected visit date">
+          <CalendarDays size={24} aria-hidden="true" />
+          <div><small>Your selected visit date</small><strong>{new Date(v.date + "T00:00:00").toLocaleDateString("en-PH", {weekday:"long",month:"long",day:"numeric",year:"numeric"})}</strong><span>Complete the details to request this visit.</span></div>
+          <button type="button" className="btn ghost sm" onClick={() => setChangingDate(true)}>Change date</button>
+        </section> : <Field id="date" label="Date" req type="date" min={TODAY} maxDate={LAST} value={v.date} onChange={x => f.patch({ date: x, time: "" })} onBlur={() => f.blur("date")} error={f.show("date")} valid={f.ok("date")} hint={holidayName(v.date) ? `${holidayName(v.date)} is a holiday. The clinic is closed` : `Pick a day within the next ${MAX_DAYS} days (closed on Philippine holidays)`} />}
         <ServicePicker value={v.service} onChange={x => { if (x === v.service) return; f.set("service", x); f.quiet({ time: "" }); }} error={f.show("service")} />
+        <div className="ow-book-patient">
         <Field id="petId" label="Pet" req type="select" disabled={!!editing?.followUpId} value={v.petId} onChange={x => f.patch({petId:x, followUpId:""})} onBlur={() => f.blur("petId")} options={pets.map(p => [p.id, `${p.name} (${p.species})`])} error={f.show("petId")} valid={f.ok("petId")} hint="Which pet is coming in?" />
         <Field id="vetId" label="Veterinarian" req type="select" value={v.vetId} onChange={x => f.patch({ vetId: x, time: "" })} onBlur={() => f.blur("vetId")} options={liveDoctors(db)} error={f.show("vetId")} valid={f.ok("vetId")} hint="Times below update for the vet you pick" />
-        <Field id="date" label="Date" req type="date" min={TODAY} maxDate={LAST} value={v.date} onChange={x => f.patch({ date: x, time: "" })} onBlur={() => f.blur("date")} error={f.show("date")} valid={f.ok("date")} hint={holidayName(v.date) ? `${holidayName(v.date)} is a holiday. The clinic is closed` : `Pick a day within the next ${MAX_DAYS} days (closed on Philippine holidays)`} />
+        </div>
+
         {availability.error && <button type="button" className="btn ghost" onClick={availability.refresh}>Retry availability</button>}
         <SlotPicker times={times} value={v.time} onChange={x => f.set("time", x)} error={f.show("time")} hint={timeHint} dur={S ? S.dur : 30} suggest={nextDay} onSuggest={() => f.patch({ date: nextDay, time: "" })} />
         {S && v.time && times.includes(v.time) && <p className="ow-note info">{S.label}: {fmt12(v.time)} to {fmt12(addMin(v.time, S.dur))} with {vetName}</p>}
@@ -260,7 +274,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
   const dayNice = day ? new Date(day + "T00:00:00").toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "";
   const waiting = scope(db, me, "appts").filter(a => a.status === "Scheduled" && a.date >= TODAY).length;
   return (<>
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end", marginBottom: 14 }}>
+    <div className="ow-appt-toolbar">
       <div style={{ flex: "2 1 240px", minWidth: 0 }}>
         <label className="ow-lbl" htmlFor="ap-q">Search</label>
         <input id="ap-q" type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Pet, service, vet, date or status" style={{ width: "100%" }} />
@@ -277,7 +291,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
         <label className="ow-lbl" htmlFor="ap-svc">Service</label>
         <select id="ap-svc" value={svc} onChange={e => setSvc(e.target.value)} style={{ width: "100%" }}><option value="">All services</option>{Object.entries(SERVICES).map(([k, x]) => <option key={k} value={k}>{x.label}</option>)}</select>
       </div>
-      <button className="btn" onClick={() => setModal({ book: true })} disabled={!pets.length} title={pets.length ? "" : "Add your pet first from My Pets"}>+ Book a visit</button>
+      <button className="btn" onClick={() => setModal({ book: true, start: {petId: pet || "", service: svc || "", date: day >= TODAY && day <= lastDay() && !hol ? day : ""} })} disabled={!pets.length} title={pets.length ? "" : "Add your pet first from My Pets"}><Plus size={17} aria-hidden="true" />Book a visit</button>
     </div>
     {waiting > 0 && <div className="ow-banner wa"><span>{waiting} visit(s) waiting for the clinic to confirm. You can still edit or cancel them.</span></div>}
 
@@ -292,12 +306,12 @@ export default function OwnerAppts({ db, setDb, me, say }) {
       <div style={{ minWidth: 0 }}>
         {!pets.length && (
           <div className="ow-note info" style={{ marginBottom: 12 }}>
-            💡 <b>Notice:</b> You haven’t added a pet yet. Please go to <b>My Pets</b> to add your pet, or you can view the clinic calendar and schedules below.
+            <b>Get started:</b> You haven’t added a pet yet. Please go to <b>My Pets</b> to add your pet, or you can view the clinic calendar and schedules below.
           </div>
         )}
         {day && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
           <h3 style={{ margin: 0, flex: "1 1 auto" }}>{dayNice}{day === TODAY ? " (today)" : ""}</h3>
-          {day >= TODAY && !hol && <button className="btn sm" disabled={!pets.length} onClick={() => setModal({ book: true, start: { petId: pet || "", reason: "", date: day } })}>+ Book on this day</button>}
+          {day >= TODAY && !hol && <button className="btn sm" disabled={!pets.length} onClick={() => setModal({ book: true, start: { petId: pet || "", reason: "", date: day } })}><Plus size={16} aria-hidden="true" />Book on this day</button>}
           <button className="btn ghost sm" onClick={() => setDay("")}>Show all</button>
         </div>}
 
@@ -305,7 +319,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
         {dayVacc.length > 0 && (
           <div className="ow-dayp" style={{ marginBottom: 16 }}>
             <h4 style={{ margin: "0 0 10px", fontSize: "0.95rem", color: "var(--navy)", fontWeight: 800 }}>
-              💉 Vaccines &amp; Care Scheduled on this Day
+              <Syringe size={17} aria-hidden="true" /> Vaccines &amp; care on this day
             </h4>
             {dayVacc.map((x, i) => {
               const matchedAppt = ["due", "over"].includes(x.kind) ? vaccinationAppointment(x.vacc, scope(db, me, "appts")) : null;
@@ -384,7 +398,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
           </div>
         ) : (
           <div className="empty" style={{ padding: "28px 16px" }}>
-            <div><I e="📅" size={34} /></div>
+            <div><CalendarDays size={34} aria-hidden="true" /></div>
             <p style={{ margin: "8px 0 0", color: "var(--mu)", fontWeight: 600 }}>
               {day ? "No visits on this day." : "No visits to show here."}
             </p>

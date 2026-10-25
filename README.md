@@ -871,3 +871,21 @@ The checks bundle the real JSX with the existing Vite/esbuild toolchain and use
 synthetic local records; they do not connect to a database or send messages.
 Page rendering failures keep the portal navigation available. Production
 recovery screens show retry/home actions and keep exception details in the console.
+
+### Owner booking and reception approvals
+
+Selecting a day in My Appointments carries that date into either booking button.
+The form shows the selected date once, with Change date available; changing it
+clears the selected time and reloads availability. Booking still requires review,
+a server acknowledgment and reception confirmation.
+
+Front Desk includes a Needs clinic approval inbox with Visit requests and Pet
+registrations. Today’s and future Scheduled visits appear independently of the
+arrival queue. Approve visit uses the existing Confirmed transition and displayed
+visit snapshot; failed requests remain available for retry. Pet registrations use
+the existing revision-checked review and card issuance flow. Clinical booster
+dates still require veterinarian certification.
+
+Checks: `node --test tests/assistant-workflow.test.js tests/appointment-status.test.js tests/reception-saves.test.js tests/owner-vaccination.test.js tests/ui-rendering.test.js`
+and `npm run build`. Browser checks cover selected-date handoff, retry behavior,
+photo controls and owner/assistant layouts at phone, tablet and desktop sizes.

@@ -486,3 +486,52 @@
 .shell.th-owner .pc-vaccine-detail > span { color: #445874; overflow-wrap: anywhere; }
 .shell.th-owner .pc-vaccine-detail > svg { flex: none; color: var(--blue); }
 .shell.th-owner .petcard .pc-vaccine > small { color: #64748b; font-size: 13px; line-height: 1.65; }
+
+/* Clearer surfaces and a compact booking workspace across screen sizes. */
+.shell.th-owner{--ow-bg:#f5f7fb;--ow-shadow:0 2px 8px rgba(30,58,138,.04);--ow-shadow-up:0 8px 24px rgba(30,58,138,.1)}
+.shell.th-owner .card,.shell.th-owner .petcard{border:1px solid #e2e8f0;border-radius:22px;box-shadow:var(--ow-shadow)}
+.shell.th-owner .petcard .pc-top{padding-bottom:16px;border-bottom:1px solid #edf1f7}
+.shell.th-owner .petcard .kv{padding:14px;background:#f8fafd;border:1px solid #e9eef6;border-radius:16px}
+.shell.th-owner .btn{box-shadow:none;border-radius:14px}
+.shell.th-owner .btn:hover{box-shadow:0 4px 10px rgba(37,99,235,.12)}
+.shell.th-owner .side nav button{border-radius:14px}
+.shell.th-owner .side nav button.on{box-shadow:none}
+.shell.th-owner .ow-hero{box-shadow:0 8px 24px rgba(30,58,138,.12)}
+.shell.th-owner .ow-appt-toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:18px;margin-bottom:18px;border:1px solid var(--ow-line);border-radius:20px;background:#fff}
+.shell.th-owner .ow-cal{background:#fff;border:1px solid var(--ow-line);border-radius:20px;box-shadow:none}
+.shell.th-owner .ow-day{border-radius:10px}
+.shell.th-owner .ow-day:focus-visible,.shell.th-owner .ow-svc:focus-visible,.shell.th-owner .ow-slot:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+.shell.th-owner .modal:has(.ow-book-form){width:min(760px,100%);max-width:760px}
+.shell.th-owner .ow-book-form .ow-svcs{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.shell.th-owner .ow-book-form .ow-svc{flex-direction:column;align-items:flex-start;padding:12px;min-width:0;border-radius:14px;text-align:left;box-shadow:none}
+.shell.th-owner .ow-book-form .ow-svc .ic{display:flex;color:#2563eb;margin-bottom:6px}
+.shell.th-owner .ow-book-form .ow-svc b{font-size:13px}
+.shell.th-owner .ow-book-form .ow-svc small{font-size:11px;line-height:1.4}
+.shell.th-owner .ow-book-patient{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.shell.th-owner .ow-book-date{display:flex;align-items:center;gap:14px;padding:16px;background:#edf4ff;border:1px solid #cadcf8;border-radius:16px;margin:8px 0 18px;color:#1e3a8a}
+.shell.th-owner .ow-book-date>svg{flex:none}
+.shell.th-owner .ow-book-date>div{flex:1;min-width:0}
+.shell.th-owner .ow-book-date small,.shell.th-owner .ow-book-date strong,.shell.th-owner .ow-book-date span{display:block}
+.shell.th-owner .ow-book-date small{font-size:12px;margin-bottom:4px}
+.shell.th-owner .ow-book-date strong{font-size:16px}
+.shell.th-owner .ow-book-date span{font-size:12px;margin-top:6px;line-height:1.5}
+.shell.th-owner .ow-book-date .btn{flex:none}
+.shell.th-owner .ow-book-form .ow-slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr))}
+@media(max-width:1100px){.shell.th-owner .ap-split{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){
+ .shell.th-owner .ow-appt-toolbar{padding:14px;gap:10px}
+ .shell.th-owner .ow-appt-toolbar>.btn{width:100%}
+ .shell.th-owner .ow-book-patient{grid-template-columns:minmax(0,1fr);gap:0}
+ .shell.th-owner .ow-book-form .ow-svcs{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .shell.th-owner .ow-book-date{flex-wrap:wrap;padding:14px;gap:10px}
+ .shell.th-owner .ow-book-date .btn{margin-left:34px}
+ .shell.th-owner .ow-book-form .row.end{display:flex;flex-wrap:wrap;gap:8px}
+ .shell.th-owner .ow-book-form .row.end>.btn{flex:1}
+}
+
+@media(max-width:600px){
+ .shell.th-owner .ow-book-form .ow-svc{display:grid;grid-template-columns:22px minmax(0,1fr);gap:4px 8px;align-content:start}
+ .shell.th-owner .ow-book-form .ow-svc .ic{grid-column:1;grid-row:1;margin:0}
+ .shell.th-owner .ow-book-form .ow-svc b{grid-column:2;align-self:center;overflow-wrap:anywhere}
+ .shell.th-owner .ow-book-form .ow-svc small{grid-column:1/-1}
+}

@@ -1,8 +1,9 @@
+import PetPortrait from "../PetPortrait.jsx";
 import {useHistoryComplete} from "../../ClinicHistory.jsx";
 import { useState, useEffect, useRef } from "react";
 import { Badge, scope, petName, ICON, I } from "../../lib.jsx";
 import { auth, OFFLINE_MSG } from "../../authApi.js";
-import { setPrefill, Avatar, toSquare, pick, petAge, Icon, Modal, fmt12 } from "./ui.jsx";
+import { setPrefill, toSquare, pick, petAge, Icon, Modal, fmt12 } from "./ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails } from "../../preventiveSchedule.js";
 import { today as bookingToday } from "../../booking.js";
 import { currentVaccinationDue, vaccinationStatus, vaccinationAppointment, vaccinationBooking } from "../../ownerVaccination.js";
@@ -239,7 +240,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
                 title="Switch between Page 1 and Page 2"
               >
-                🔄 {isFlipped ? "Flip to Page 1" : "Flip Card (Page 1 ➜ Page 2)"}
+                {isFlipped ? "View pet profile" : "View immunization log"}
               </button>
               <button className="btn ghost sm" disabled={!historyComplete} title={!historyComplete?"Load all saved history above before printing the complete card.":undefined} onClick={() => window.print()}>
                 <Icon n="print" size={14} /> Print Card
@@ -272,7 +273,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                     boxShadow: x.id === sel ? "0 2px 8px rgba(37,99,235,0.15)" : "none"
                   }}
                 >
-                  <span>🐾</span>
+                  <Icon n="paw" size={24} />
                   <span>{x.name}</span>
                   {x.id === sel && <span style={{ fontSize: "10px", background: "#2563eb", color: "#fff", padding: "1px 5px", borderRadius: "6px" }}>Active</span>}
                 </button>
@@ -319,53 +320,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                       
                       {/* Photo Box with Direct File Explorer Upload */}
                       <div style={{ textAlign: "center" }}>
-                        <div
-                          style={{
-                            position: "relative",
-                            width: 104,
-                            height: 104,
-                            margin: "0 auto",
-                            borderRadius: "16px",
-                            overflow: "hidden",
-                            border: "3px solid #3b82f6",
-                            boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
-                            cursor: "pointer"
-                          }}
-                          onClick={() => fileInputRef.current?.click()}
-                          title="Click to choose a photo from your files"
-                        >
-                          <Avatar src={p.photo} fallback={<Icon n="paw" size={48} />} size={104} />
-                          
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp"
-                            onChange={handlePhotoFileChange}
-                            hidden
-                          />
-
-                          <button
-                            type="button"
-                            className="vc-cam vc-noprint"
-                            onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                            style={{ position: "absolute", bottom: 4, right: 4, background: "#1e3a8a", color: "#fff", border: "none", borderRadius: "50%", width: 28, height: 28, display: "grid", placeItems: "center", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.25)" }}
-                            title="Upload picture from files"
-                          >
-                            <Icon n="camera" size={14} />
-                          </button>
-
-                          {p.photo && (
-                            <button
-                              type="button"
-                              className="vc-noprint"
-                              onClick={(e) => { e.stopPropagation(); savePhoto(""); }}
-                              style={{ position: "absolute", top: 4, right: 4, background: "rgba(220, 38, 38, 0.9)", color: "#fff", border: "none", borderRadius: "50%", width: 22, height: 22, display: "grid", placeItems: "center", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}
-                              title="Remove photo"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
+                        <PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />
                         <div style={{ marginTop: 6, fontSize: "10px", color: "#059669", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                           Patient Verified
                         </div>
