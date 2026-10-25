@@ -1,3 +1,4 @@
+import {chronologicalAppointments} from './appointmentOrder.js';
 import { ownerBill } from './ownerBilling.js';
 import { today } from './booking.js';
 
@@ -49,7 +50,7 @@ export function pendingCheckout(appointments, date = today()) {
 const priority = a => ({Emergency:0,Priority:1,Routine:2}[a.intakeVitals?.triageLevel] ?? 2);
 export function assistantQueue(appointments, date = today()) {
   const visits = appointments.filter(a => a.date === date && a.status !== 'Cancelled');
-  const chronological = (a,b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')) || a.id.localeCompare(b.id);
+  const chronological = chronologicalAppointments;
   const unfinished = appointments.filter(a => a.date < date && ['Checked-in','In consultation'].includes(a.status));
   const flow = [...unfinished, ...visits];
   const byStatus = statuses => flow.filter(a => statuses.includes(a.status)).sort(chronological);
@@ -66,5 +67,5 @@ export function assistantQueue(appointments, date = today()) {
 // Keep future requests visible independently of today's arrival/triage queue.
 export function pendingVisitApprovals(appointments, date = today()) {
   return appointments.filter(a => a.status === 'Pending Approval' && a.date >= date)
-    .sort((a,b) => a.date.localeCompare(b.date) || String(a.time || '').localeCompare(String(b.time || '')) || a.id.localeCompare(b.id));
+    .sort(chronologicalAppointments);
 }

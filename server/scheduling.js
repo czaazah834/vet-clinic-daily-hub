@@ -49,9 +49,11 @@ export async function assertAvailable(client, v, excludeId, savedDuration) {
   // Approval may supply a persisted duration; booking callers use the service catalog.
   const now = new Date();
   const duration = validateSchedule(v, now, savedDuration);
-  const rows = (await client.query("SELECT * FROM appointments WHERE date = $1 AND (vet_id = $2 OR pet_id = $3)", [v.date, v.vetId, v.petId])).rows;
+  const rows = v.vetAliases
+    ? (await client.query("SELECT * FROM appointments WHERE date = $1 AND (vet_id = ANY($2::varchar[]) OR pet_id = $3)",[v.date,v.vetAliases,v.petId])).rows
+    : (await client.query("SELECT * FROM appointments WHERE date = $1 AND (vet_id = $2 OR pet_id = $3)", [v.date, v.vetId, v.petId])).rows;
   const other = rows.filter(a => a.id !== excludeId && !['Cancelled', 'Rejected', 'No-show'].includes(a.status));
   if (other.some(a => a.pet_id === v.petId)) throw bookingError('This pet already has a visit that day. Review or reschedule that visit.', 409);
-  if (!availableSlots(other.filter(a => a.vet_id === v.vetId), { ...v, excludeId }, now, savedDuration).includes(v.time)) throw bookingError('That slot was just taken. Choose another available time.', 409);
+  if (!availableSlots(other.filter(a => (v.vetAliases || [v.vetId]).includes(a.vet_id)), { ...v, excludeId }, now, savedDuration).includes(v.time)) throw bookingError('That slot was just taken. Choose another available time.', 409);
   return duration;
 }

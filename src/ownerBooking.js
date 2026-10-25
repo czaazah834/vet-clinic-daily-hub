@@ -9,7 +9,7 @@ export function bookingDayConflict(appointments, petId, date, excludeId) {
 
 // Early feedback mirrors the server's reservation rules; the server remains
 // authoritative for ownership, concurrent bookings and current availability.
-export function validateOwnerBooking(v, { pets, vets, appointments, records, editing, date = today(), last = plus(90), time = nowHM() }) {
+export function validateOwnerBooking(v, { pets, vets, appointments, records, editing, date = today(), last = plus(90), time = nowHM(), duration }) {
   const errors = {}, service = SERVICES[v.service];
   if (v.service === 'vaccination') { const error = vaccineChoiceError(v.vaccineId, pets.find(p=>p.id===v.petId)?.species); if(error) errors.vaccineId=error; }
   if (!service) errors.service = 'Choose a service from the list.';
@@ -20,7 +20,7 @@ export function validateOwnerBooking(v, { pets, vets, appointments, records, edi
   else if (holidayName(v.date)) errors.date = `The clinic is closed for ${holidayName(v.date)}. Choose another day.`;
   else if (bookingDayConflict(appointments, v.petId, v.date, editing?.id)) errors.date = 'This pet already has a visit that day. View or reschedule the existing visit.';
   if (!/^([01]\d|2[0-3]):(00|30)$/.test(v.time || '')) errors.time = 'Choose an available time.';
-  else if (service && (v.time < '08:00' || addMin(v.time, service.dur) > '17:00')) errors.time = 'Choose a time where the whole visit fits between 8 AM and 5 PM.';
+  else if (service && (v.time < '08:00' || addMin(v.time, duration || service.dur) > '17:00')) errors.time = 'Choose a time where the whole visit fits between 8 AM and 5 PM.';
   else if (v.date === date && v.time <= time) errors.time = 'That time has passed. Choose a later slot.';
   if (v.followUpId) {
     const request = records.find(r => r.id === v.followUpId && r.petId === v.petId && r.followUpDate && r.careStatus !== 'Routine care');

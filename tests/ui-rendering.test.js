@@ -29,6 +29,8 @@ buildSync({
       export { default as ErrorBoundary } from './src/ErrorBoundary.jsx';
       export { SEED } from './src/lib.jsx';
       export { VitalEntries, Correction } from './src/roles/VitalsHistory.jsx';
+      export { QuickBookModal } from './src/roles/ClinicCalendar.jsx';
+      export { default as BookingReason } from './src/components/BookingReason.jsx';
       export { default as CheckInModal } from './src/roles/CheckInModal.jsx';
       export { default as SoapConsultationModal } from './src/roles/SoapConsultationModal.jsx';
       export { emptyClinicState } from './src/clinicState.js';
@@ -233,4 +235,18 @@ test('SOAP displays saved intake but starts the new-measurement field empty',()=
  const db=populated(),pet=db.pets[0],appt={...db.appts.find(a=>a.petId===pet.id),status:'In consultation',intakeVitals:{weight:10.25,temp:38.5}};db.appts=[appt];
  const html=render(ui.SoapConsultationModal,{...props('vet',db),pet,appt});
  assert.match(html,/New measured weight/);assert.match(html,/10.25 kg/);assert.match(html,/<input[^>]*id="soap-weight"[^>]*value=""/);
+});
+
+
+test('assistant reschedule form exposes only date/time controls and preserves original request visibly',()=>{
+ const db=populated(),pet=db.pets[0];
+ const html=render(ui.QuickBookModal,{db,doctors:[['v1','Sample Vet']],slot:{id:'fixed',editing:true,petId:pet.id,vetId:'v1',date:'2026-12-01',time:'09:00',service:'surgery',durationMinutes:120,reason:'Original symptoms',notes:'Original owner note',status:'Scheduled'},onClose(){},onBook(){}});
+ assert.match(html,/Original symptoms/);assert.match(html,/Original owner note/);assert.match(html,/120 min/);
+ assert.match(html,/name="date"/);assert.match(html,/name="time"/);
+ for(const name of ['petId','vetId','service','reasonChoice','otherReason','followUpId'])assert.doesNotMatch(html,new RegExp(`name="${name}"`));
+});
+test('Other reason renders an accessible textbox only for the selected Other choice',()=>{
+ const html=render(ui.BookingReason,{service:'checkup',choice:'Other',other:'12',onChoice(){},onOther(){},errors:{otherReason:'Describe symptoms in words.'}});
+ assert.match(html,/name="otherReason"/);assert.match(html,/aria-invalid="true"/);assert.match(html,/Describe symptoms in words/);
+ assert.doesNotMatch(render(ui.BookingReason,{service:'checkup',choice:'Annual check-up',other:'12'}),/textarea/);
 });

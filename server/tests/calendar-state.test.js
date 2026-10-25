@@ -30,7 +30,7 @@ test('state exposes appointment vet IDs, names and legacy account ID fallback', 
   const response = await fetch(`http://127.0.0.1:${server.address().port}/api/state`);
   assert.equal(response.status, 200);
   const { data } = await response.json();
-  assert.deepEqual(data.vets, [{ id: 'v_invited', name: 'Dr. Jane Doe' }, { id: 'u_legacy', name: 'Dr. Legacy Vet' }]);
+  assert.deepEqual(data.vets, [{ id: 'v_invited', userId:'u_new', name: 'Dr. Jane Doe' }, { id: 'u_legacy', userId:'u_legacy', name: 'Dr. Legacy Vet' }]);
   assert.deepEqual(data.appts, []);
 });
 test('state returns an empty roster without losing other state collections', async () => {

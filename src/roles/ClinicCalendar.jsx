@@ -1,3 +1,8 @@
+import {chronologicalAppointments,upcomingAppointments,appointmentMinutes} from '../appointmentOrder.js';
+import BookingReason from '../components/BookingReason.jsx';
+import {bookingReasonErrors,bookingReason} from '../bookingReason.js';
+import {validateOwnerBooking} from '../ownerBooking.js';
+import {useFormValidation} from '../components/useFormValidation.jsx';
 import { approvalVisit } from "../appointmentStatus.js";
 import CancellationDialog from '../components/CancellationDialog.jsx';
 import { intakeVisitSnapshot } from '../intakeVisit.js';
@@ -15,7 +20,7 @@ import { canBookAppointments } from "../appointmentPermissions.js";
 import { prefill } from "./owner/ui.jsx";
 import { openFollowUps } from "../clinicalWorkflow.js";
 import { useAvailability } from "../useAvailability.js";
-import { lastDay, today as bookingToday, SERVICES, openSlots, reservationCovers, addMin, durOf } from "../booking.js";
+import { lastDay, today as bookingToday, SERVICES, serviceOf, splitReason, openSlots, reservationCovers, addMin, durOf, fmt12 } from "../booking.js";
 import { useRef, useState } from "react";
 import {
   Calendar,
@@ -97,6 +102,8 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const canBook = canBookAppointments(me?.role);
   const [viewMode, setViewMode] = useState(me?.role === "owner" ? "month" : "timeline"); // 'timeline' | 'month' | 'list'
   const doctors = calendarDoctors(db, me, VETS);
+  const doctorId = id => (db.vets || []).find(v=>v.id===id || v.userId===id)?.id || id;
+  const scheduleDb = {...db,appts:db.appts.map(a=>({...a,vetId:doctorId(a.vetId)}))};
   const [selectedVet, setVetFilter] = useState("");
   const vetFilter = isDoctor ? me?.vetId || me?.id : selectedVet;
   const visibleDoctors = doctors.filter(([id]) => !vetFilter || id === vetFilter);
@@ -123,8 +130,8 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const [cardPetId, setCardPetId] = useState(null);
   const [cardAppt, setCardAppt] = useState(null);
 
-  const slotsByVet = Object.fromEntries(visibleDoctors.map(([id]) => [id, openSlots(db, { vetId: id, date: sel, service: "vaccination" })]));
-  const appts = db.appts.filter(a => (!vetFilter || a.vetId === vetFilter) && !["Cancelled","Rejected","No-show"].includes(a.status));
+  const slotsByVet = Object.fromEntries(visibleDoctors.map(([id]) => [id, openSlots(scheduleDb, { vetId: id, date: sel, service: "vaccination" })]));
+  const appts = db.appts.filter(a => (!vetFilter || doctorId(a.vetId) === vetFilter) && !["Cancelled","Rejected","No-show"].includes(a.status));
 
   const ev = {};
   const add = (d, e) => { if (d) (ev[d] = ev[d] || []).push(e); };
@@ -134,7 +141,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
     const owner = db.owners.find(o => o.id === pet.ownerId || o.userId === pet.ownerId) || {};
     add(a.date, {
       id: a.id,
-      time: a.time,
+      time: appointmentMinutes(a.time)<1440 ? `${String(Math.floor(appointmentMinutes(a.time)/60)).padStart(2,'0')}:${String(appointmentMinutes(a.time)%60).padStart(2,'0')}` : a.time,
       pet: pet.name || "Unknown Patient",
       species: pet.species || "Other",
       breed: pet.breed || "",
@@ -142,13 +149,14 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
       ownerPhone: owner.phone || "",
       reason: a.reason,
       status: a.status,
-      vetId: a.vetId,
-      vet: (doctors.find(v => v[0] === a.vetId) || [])[1] || "",
+      vetId: doctorId(a.vetId),
+      vet: (doctors.find(v => v[0] === doctorId(a.vetId)) || [])[1] || "",
       appt: a,
       petObj: pet,
     });
   });
 
+  Object.values(ev).forEach(events=>events.sort(chronologicalAppointments));
   const first = new Date(cur.y, cur.m, 1);
   const cells = Array.from({ length: 42 }, (_, i) => new Date(cur.y, cur.m, 1 - first.getDay() + i));
   const moveMonth = n => {
@@ -166,7 +174,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
     setCur({ y: d.getFullYear(), m: d.getMonth() });
   };
 
-  const dayEvents = (ev[sel] || []).slice().sort((a, b) => a.time.localeCompare(b.time));
+  const dayEvents = (ev[sel] || []).slice().sort(chronologicalAppointments);
   const niceDate = new Date(sel + "T00:00:00").toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
   const handleAction = async (a, action) => {
@@ -211,34 +219,32 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   };
 
   const manageAppointment = visit => me.role === "assistant" && ["Pending Approval", "Scheduled"].includes(visit.status)
-    ? <><button className="btn sm ghost" onClick={() => setBookingSlot({...visit, editing:true})}>Reschedule / edit</button>
+    ? <><button className="btn sm ghost" onClick={() => setBookingSlot({...visit, editing:true})}>Reschedule</button>
       <button className="btn danger sm" onClick={()=>{setActionError("");setClosingVisit({visit,status:"Cancelled"});}}>Cancel visit</button>
       {visit.status==="Pending Approval" && <button className="btn danger sm" onClick={()=>{setActionError("");setClosingVisit({visit,status:"Rejected"});}}>Reject request</button>}</> : null;
 
   // Quick booking submit saved to PostgreSQL backend
-  const handleQuickBook = async (petId, serviceName, reasonText, targetVetId, targetDate, targetTime, followUpId, vaccineId) => {
+  const handleQuickBook = async (petId, serviceName, reasonText, targetVetId, targetDate, targetTime, followUpId, vaccineId, reasonChoice, otherReason) => {
     if (!canBook) throw new Error("Only owners and reception can book visits.");
     const previous = bookingSlot?.editing ? bookingSlot : null;
     if (previous && me.role !== "assistant") throw new Error("Reception manages appointment reassignment.");
     if (bookingRequest.current?.slot !== bookingSlot) bookingRequest.current = {slot:bookingSlot,id:"a_"+crypto.randomUUID()};
     const newApptId = previous?.id || bookingRequest.current.id;
-    const reason = serviceName === "vaccination" ? reasonText : previous && previous.service === serviceName && previous.reason === reasonText ? reasonText
-      : serviceName ? `${SERVICES[serviceName]?.label || serviceName}: ${reasonText}` : reasonText;
-    const payload = {
-      ...(previous ? {expectedVisit:intakeVisitSnapshot(previous)} : {}),
-      id: newApptId, followUpId: followUpId || null, petId, vetId: targetVetId,
-      date: targetDate, time: targetTime, service: serviceName, reason,
-      ...(serviceName === "vaccination" ? {vaccineId} : {}),
-      notes: previous?.notes || "",
-      status: previous && previous.petId === petId && previous.vetId === targetVetId && previous.date === targetDate && previous.time === targetTime && previous.service === serviceName && (serviceName !== "vaccination" || previous.reason === reason) ? previous.status : "Pending Approval",
-      actorName: me.name, actorRole: me.role,
+    const reason = previous ? previous.reason : reasonText;
+    const expected = {
+      id:newApptId,petId,vetId:targetVetId,date:targetDate,time:targetTime,service:previous ? previous.service : serviceName,
+      reason,followUpId:followUpId || null,
+      status:previous && previous.date===targetDate && previous.time===targetTime ? previous.status : 'Pending Approval'
+    };
+    const payload = previous ? {date:targetDate,time:targetTime,expectedVisit:intakeVisitSnapshot(previous)} : {
+      ...expected,notes:'',...(serviceName==='vaccination' ? {vaccineId} : {reasonChoice,otherReason})
     };
     const response = previous ? await api.put(`/api/appointments/${previous.id}`, payload) : await api.post("/api/appointments", payload);
-    const newAppt = confirmedBooking(response, payload);
+    const newAppt = confirmedBooking(response, expected);
 
     setDb(p => ({
       ...p,
-      appts: [...p.appts.filter(a => a.id !== newApptId), newAppt],
+      appts: [...p.appts.filter(a => a.id !== newApptId), {...previous,...newAppt}],
       log: addLog(p, me, `${me.name} ${previous ? "updated" : "scheduled"} appointment for ${petName(p, petId)} with ${(doctors.find(v => v[0] === targetVetId) || [])[1]} on ${targetDate} at ${targetTime}.`),
     }));
 
@@ -811,7 +817,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 
           {/* Master Appointments Table */}
           {(() => {
-            let filtered = db.appts.filter(a => !vetFilter || a.vetId === vetFilter);
+            let filtered = db.appts.filter(a => !vetFilter || doctorId(a.vetId) === vetFilter);
             if (statusFilter) filtered = filtered.filter(a => a.status === statusFilter);
             if (search.trim()) {
               const q = search.trim().toLowerCase();
@@ -826,7 +832,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                 );
               });
             }
-            filtered.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+            filtered.sort((a,b)=>upcomingAppointments(a,b,TODAY));
 
             if (!filtered.length) {
               return <div className="empty sm">No appointments match the selected filter.</div>;
@@ -835,7 +841,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
             return (
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", padding: "8px 14px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12.5px", color: "#475569" }}>
-                  <span><b>Tip:</b> Click any appointment row to open the pet&rsquo;s official Digital Vaccination Card and review visit details.</span>
+                  <span><b>Nearest upcoming dates first.</b> Previous visits follow, newest first. Select a row to view the pet card and visit details.</span>
                   <span style={{ fontWeight: 600 }}>{filtered.length} appointment(s)</span>
                 </div>
 
@@ -858,7 +864,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                         const pet = db.pets.find(p => p.id === a.petId) || {};
                         const owner = db.owners.find(o => o.id === pet.ownerId || o.userId === pet.ownerId) || {};
                         const isPaid = a.billingStatus === "Paid";
-                        const vetName = (doctors.find(v => v[0] === a.vetId) || [])[1] || "Veterinarian not recorded";
+                        const vetName = (doctors.find(v => v[0] === doctorId(a.vetId)) || [])[1] || "Veterinarian not recorded";
 
                         return (
                           <tr
@@ -1038,206 +1044,75 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   );
 }
 
-function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
-  const TODAY = bookingToday();
-  const [petId, setPetId] = useState(slot.petId || db.pets[0]?.id || "");
-  const [vetId, setVetId] = useState(slot.vetId || doctors[0]?.[0] || "");
-  const [date, setDate] = useState(slot.fromVaccineCard || slot.followUpId ? slot.date : slot.date && slot.date >= TODAY ? slot.date : TODAY);
-  const [time, setTime] = useState(slot.time || "09:00");
-  const [service, setService] = useState(slot.service || "checkup");
-  const [reason, setReason] = useState(slot.reason || "");
-  const [vaccineId,setVaccineId]=useState(vaccineIdFromReason(slot.reason) || (slot.service === 'vaccination' && slot.reason ? 'vet-review' : ''));
-  const catalog=useBookingCatalog()?.data?.catalog || [];
-  const [followUpId, setFollowUpId] = useState(slot.followUpId || "");
-  const [dateErr, setDateErr] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const bookingFlight = useRef(false);
-
-  const curYear = new Date().getFullYear();
-  const maxBookingDate = lastDay();
-  const availability = useAvailability({ vetId, date, service, excludeId:slot.editing ? slot.id : undefined });
-
-  const review = useSubmissionReview([petId,vetId,date,time,service,reason,vaccineId,followUpId,slot,db.appts.find(a => a.id === slot.id),doctors]);
-  const selectedPet = db.pets.find(p => p.id === petId) || {};
-  const owner = db.owners.find(o => o.id === selectedPet.ownerId) || {};
-  const followUp = db.records.find(r => r.id === followUpId && r.petId === petId);
-
-  const validateDate = (val) => {
-    if (!val) return "Please choose an appointment date.";
-    if (val > maxBookingDate) return "Choose a date within the next 90 days.";
-    if (val < TODAY) return "Appointments cannot be booked for past dates. Please select today or a future date.";
-    const yr = parseInt(val.slice(0, 4), 10);
-    if (isNaN(yr) || yr < curYear || yr > curYear + 1) {
-      return `Invalid year (${yr}). Appointments can only be scheduled for ${curYear} or ${curYear + 1}.`;
-    }
-    return "";
+export function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
+  const editing=!!slot.editing,TODAY=bookingToday();
+  const [petId,setPetId]=useState(slot.petId || db.pets.find(p=>p.registrationStatus!=='Declined')?.id || '');
+  const [vetId,setVetId]=useState(slot.vetId || doctors[0]?.[0] || '');
+  const [date,setDate]=useState(slot.date || TODAY),[time,setTime]=useState(slot.time || '');
+  const [service,setService]=useState(slot.service || serviceOf(slot) || 'checkup');
+  const [reasonChoice,setReasonChoice]=useState(splitReason(service,slot.reason)[0]);
+  const [otherReason,setOtherReason]=useState(splitReason(service,slot.reason)[1]);
+  const [vaccineId,setVaccineId]=useState(vaccineIdFromReason(slot.reason) || (service==='vaccination' && slot.reason ? 'vet-review' : ''));
+  const [followUpId,setFollowUpId]=useState(slot.followUpId || '');
+  const [saving,setSaving]=useState(false),[saveError,setSaveError]=useState('');
+  const bookingFlight=useRef(false),catalog=useBookingCatalog()?.data?.catalog || [];
+  const availability=useAvailability({vetId,date,service,excludeId:editing?slot.id:undefined});
+  const selectedPet=db.pets.find(p=>p.id===petId) || {};
+  const owner=db.owners.find(o=>o.id===selectedPet.ownerId || o.userId===selectedPet.ownerId) || {};
+  const doctor=(db.vets || []).find(v=>v.id===vetId || v.userId===vetId);
+  const vetName=doctor?.name || doctors.find(([id])=>id===vetId)?.[1] || `Assigned veterinarian (${vetId})`;
+  const followUp=db.records.find(r=>r.id===followUpId && r.petId===petId);
+  const rules=validateOwnerBooking({petId,vetId:doctor?.id || vetId,date,time,service,notes:'',followUpId,vaccineId}, {
+    pets:db.pets,vets:db.vets || [],appointments:db.appts,records:db.records,editing:editing?slot:undefined,
+    duration:editing?durOf(slot):undefined
+  });
+  if(editing) {delete rules.service;delete rules.vaccineId;delete rules.followUpId;delete rules.vetId;}
+  else Object.assign(rules,bookingReasonErrors(service,reasonChoice,otherReason));
+  if(selectedPet.registrationStatus==='Declined')rules.petId='Correct and resubmit this patient registration before booking.';
+  if(!rules.date && !availability.loading && !availability.error && time && !availability.slots.includes(time))rules.time='That time is unavailable. Choose another open slot.';
+  const validation=useFormValidation(rules);
+  const review=useSubmissionReview([petId,vetId,date,time,service,reasonChoice,otherReason,vaccineId,followUpId,slot,db.appts.find(a=>a.id===slot.id),db.vets]);
+  const edit=(setter,value)=>{setter(value);setSaveError('');};
+  const handleSubmit=async e=>{
+    e.preventDefault();if(bookingFlight.current)return;
+    setSaveError('');
+    if(!validation.validate(e))return;
+    if(availability.loading || availability.error || !availability.slots.includes(time)){setSaveError(availability.error || 'Choose an available time from the refreshed list.');availability.refresh();return;}
+    const visitReason=editing?slot.reason:service==='vaccination'?vaccineReason(vaccineId,vaccineId==='vet-review'?slot.reason:''):bookingReason(service,reasonChoice,otherReason);
+    if(!await review.ask({title:editing?'Review reschedule':'Review clinic booking',confirmLabel:editing?'Save new date and time':'Confirm booking',
+      description:editing?'Only the date and time change. The visit returns to Pending Approval when moved.':'Review the request before sending it for approval.',
+      fields:[['Patient',selectedPet.name],['Owner',owner.name],['Veterinarian',vetName],['Service',SERVICES[service]?.label || 'Existing visit'],['Duration',`${editing?durOf(slot):SERVICES[service]?.dur} minutes`],['Date and time',`${date} at ${fmt12(time)}`],['Reason / symptoms',visitReason],['Saved owner note',slot.notes],['Follow-up request',followUp?`${followUp.followUpDate}: ${followUp.followUpReason}`:followUpId || 'Regular visit'],...(!editing && service==='vaccination'?[['Estimated vaccine price',vaccinePriceLabel(vaccineId,catalog)]]:[])]}))return;
+    bookingFlight.current=true;setSaving(true);
+    try{await onBook(petId,service,visitReason,vetId,date,time,followUpId,vaccineId,reasonChoice,otherReason);}
+    catch(error){setSaveError(error.message);availability.refresh();}
+    finally{bookingFlight.current=false;setSaving(false);}
   };
-
-  const handleDateChange = (val) => {
-    setDate(val);
-    setDateErr(validateDate(val));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (bookingFlight.current) return;
-    setSaveError("");
-    if (!petId) return;
-    if (!doctors.some(([id]) => id === vetId)) { setSaveError("Choose an active veterinarian."); return; }
-    if (!availability.slots.includes(time)) { setDateErr("Choose an available time from the list."); availability.refresh(); return; }
-    const err = validateDate(date);
-    if (err) {
-      setDateErr(err);
-      return;
-    }
-    const dup = (db.appts || []).find(a => a.id !== (slot.editing ? slot.id : null) && a.petId === petId && a.date === date && a.time === time && !["Cancelled","Rejected","No-show"].includes(a.status));
-    if (dup) {
-      setDateErr(`${selectedPet.name || "Patient"} already has a scheduled visit at ${time} on this date.`);
-      return;
-    }
-    const vaccineError=service === 'vaccination' ? vaccineChoiceError(vaccineId,selectedPet.species) : '';
-    if(vaccineError){setSaveError(vaccineError);return;}
-    const visitReason=service === 'vaccination' ? vaccineReason(vaccineId,vaccineId === 'vet-review' ? slot.reason : '') : reason.trim() || 'General visit';
-    if (!await review.ask({title:slot.editing ? "Review appointment changes" : "Review clinic booking", confirmLabel:slot.editing ? "Save appointment changes" : "Confirm booking",
-      description:"Check the patient and assignment. Reception must confirm changed appointments with the owner.",
-      fields:[
-        ["Patient",selectedPet.name],
-        ["Owner",owner.name],
-        ["Veterinarian",doctors.find(([id]) => id === vetId)?.[1]],
-        ["Date and time",`${date} at ${time}`],
-        ["Service",SERVICES[service]?.label],
-        ["Reason",visitReason],
-        ...(service === "vaccination" ? [["Estimated vaccine price",vaccinePriceLabel(vaccineId,catalog)]] : []),
-        ["Saved owner note",slot.notes],
-        ["Follow-up request",followUp ? `${followUp.followUpDate}: ${followUp.followUpReason}` : "Regular visit"]]
-    })) return;
-    bookingFlight.current = true;
-    setSaving(true);
-    try {
-      await onBook(petId, service, visitReason, vetId, date, time, followUpId, vaccineId);
-    } catch (error) {
-      setSaveError(error.message);
-      availability.refresh();
-    } finally {
-      bookingFlight.current = false;
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !saving && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="quick-book-title" style={{ width: "min(540px, 100%)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px", marginBottom: "16px" }}>
-          <h3 id="quick-book-title" style={{ margin: 0, fontSize: "18px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <Calendar size={20} color="var(--navy)" />
-            <span>{slot.editing ? "Manage appointment" : "Book Clinic Visit"}</span>
-          </h3>
-          <button className="btn ghost sm" disabled={saving} onClick={onClose} aria-label="Close booking">
-            <X size={16} />
-          </button>
+  return <div className="scrim" onMouseDown={e=>e.target===e.currentTarget && !saving && onClose()}>
+    <div className="modal cc-book-modal" role="dialog" aria-modal="true" aria-labelledby="quick-book-title">
+      <header className="cc-book-heading"><h3 id="quick-book-title">{editing?'Reschedule appointment':'Book clinic visit'}</h3><button type="button" className="btn ghost sm" disabled={saving} onClick={onClose} aria-label="Close booking"><X size={16}/></button></header>
+      <form {...validation.formProps} onSubmit={handleSubmit}>
+        {review.card}<fieldset disabled={saving}>
+        {editing?<><p className="ow-note">Choose a new date and time. The original patient, service, veterinarian, reason and follow-up stay linked to this visit.</p>
+          <dl className="cc-book-summary">{[['Patient',`${selectedPet.name || petId} · ${owner.name || 'Owner on file'}`],['Veterinarian',vetName],['Service',`${SERVICES[service]?.label || 'Existing visit'} · ${durOf(slot)} min`],['Reason / symptoms',slot.reason || 'Not recorded'],['Owner note',slot.notes || 'None'],['Follow-up',followUp?`${followUp.followUpDate} · ${followUp.followUpReason}`:followUpId || 'Regular visit']].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+        </>:<div className="cc-book-fields">
+          <label>Patient *<select {...validation.field('petId')} value={petId} onChange={e=>{edit(setPetId,e.target.value);setVaccineId('');setFollowUpId('');}}><option value="">Choose a patient</option>{db.pets.filter(p=>p.registrationStatus!=='Declined').map(p=><option key={p.id} value={p.id}>{p.name} · {db.owners.find(o=>o.id===p.ownerId)?.name || 'Owner on file'}</option>)}</select>{validation.feedback('petId')}</label>
+          <label>Veterinarian *<select {...validation.field('vetId')} value={vetId} onChange={e=>{edit(setVetId,e.target.value);setTime('');}}><option value="">Choose a current veterinarian</option>{doctors.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select>{validation.feedback('vetId')}</label>
+          <label>Service *<select {...validation.field('service')} value={service} onChange={e=>{edit(setService,e.target.value);setTime('');setReasonChoice('');setOtherReason('');setVaccineId('');}}>{Object.entries(SERVICES).map(([key,s])=><option key={key} value={key}>{s.label} · {s.dur} min</option>)}</select>{validation.feedback('service')}</label>
+          <BookingReason service={service} choice={reasonChoice} other={otherReason} onChoice={x=>edit(setReasonChoice,x)} onOther={x=>edit(setOtherReason,x)} errors={validation.errors}/>
+          {service==='vaccination' && <VaccinePicker value={vaccineId} onChange={x=>{edit(setVaccineId,x);validation.changed('vaccineId');}} species={selectedPet.species} petSelected={!!petId} error={validation.errors.vaccineId}/>}
+          <label>Follow-up request (optional)<select {...validation.field('followUpId')} value={followUpId} onChange={e=>edit(setFollowUpId,e.target.value)}><option value="">Regular visit</option>{openFollowUps(db,petId).map(r=><option key={r.id} value={r.id}>{r.followUpDate} · {r.followUpReason}</option>)}</select>{validation.feedback('followUpId')}</label>
+        </div>}
+        {slot.vaccineDueDate && <p className="ow-note">Approved booster due: {slot.vaccineDueDate}. Booking does not change the approved due date.</p>}
+        <div className="cc-book-schedule">
+          <label>Date *<input type="date" {...validation.field('date')} value={date} min={TODAY} max={lastDay()} onChange={e=>{edit(setDate,e.target.value);setTime('');}}/>{validation.feedback('date')}</label>
+          <label>Time *<select {...validation.field('time')} value={availability.slots.includes(time)?time:''} onChange={e=>edit(setTime,e.target.value)}><option value="">Choose an available time</option>{availability.slots.map(t=><option key={t} value={t}>{fmt12(t)}</option>)}</select>{validation.feedback('time')}</label>
         </div>
-
-        <form onSubmit={handleSubmit}>
-          {review.card}
-          <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
-          {slot.editing && <p className="ow-note">Change the veterinarian or schedule here. A changed assignment returns to Pending Approval for reception to approve with the owner. Saved owner notes and linked follow-up instructions are retained.</p>}
-          {slot.vaccineDueDate && <p className="ow-note">Approved booster due: {slot.vaccineDueDate}. Choose an available clinic visit; this does not change the approved due date.</p>}
-          <div style={{ display: "grid", gap: "12px" }}>
-            <div className="fld">
-              <label htmlFor="quick-book-pet">Select Patient (Pet &amp; Owner)</label>
-              <LiveControl as="select" id="quick-book-pet" disabled={!!(slot.editing && slot.followUpId)} value={petId} onChange={e => { setPetId(e.target.value); setVaccineId(""); setFollowUpId(""); }} required>
-                {db.pets.map(p => {
-                  const o = db.owners.find(x => x.id === p.ownerId) || {};
-                  return (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.species} &bull; {p.breed || "Mixed"}) — Owner: {o.name}
-                    </option>
-                  );
-                })}
-              </LiveControl>
-            </div>
-
-            <label>Follow-up request (optional)<LiveControl as="select" disabled={!!(slot.editing && slot.followUpId)} value={followUpId} onChange={e => setFollowUpId(e.target.value)}><option value="">Regular visit</option>{db.records.filter(r => r.petId === petId && (r.id === followUpId || openFollowUps(db,petId).some(x => x.id === r.id))).map(r => <option key={r.id} value={r.id}>{r.followUpDate} · {r.followUpReason}</option>)}</LiveControl></label>
-            {followUp && <section aria-label="Selected follow-up instructions" className="ow-note"><b>{followUp.careStatus} · Target: {followUp.followUpDate}</b><p style={{whiteSpace:"pre-wrap"}}>{followUp.followUpReason}</p><small>Select an available visit time. Booking does not change the vet's target date.</small></section>}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div className="fld">
-                <label htmlFor="quick-book-vetId">Veterinarian</label>
-                <LiveControl as="select" id="quick-book-vetId" value={vetId} onChange={e => setVetId(e.target.value)}>
-                  {!doctors.some(([id]) => id === vetId) && <option value={vetId} disabled>Choose an active veterinarian</option>}
-                  {doctors.map(([id, name]) => (
-                    <option key={id} value={id}>{name}</option>
-                  ))}
-                </LiveControl>
-              </div>
-
-              <div className="fld">
-                <label htmlFor="quick-book-service">Service Category</label>
-                <LiveControl as="select" id="quick-book-service" value={service} onChange={e => {setService(e.target.value);setVaccineId("");}}>
-                  {Object.entries(SERVICES).map(([key, item]) => <option key={key} value={key}>{item.label} ({item.dur} min)</option>)}
-                </LiveControl>
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div className="fld">
-                <label htmlFor="quick-book-date">Date *</label>
-                <LiveControl as="input"
-                  id="quick-book-date"
-                  type="date"
-                  value={date}
-                  min={TODAY}
-                  max={maxBookingDate}
-                  onChange={e => handleDateChange(e.target.value)}
-                  className={dateErr ? "bad" : ""}
-                  required
-                />
-                {dateErr && (
-                  <span style={{ fontSize: "11px", color: "#dc2626", marginTop: "3px", display: "block", fontWeight: "600" }}>
-                    {dateErr}
-                  </span>
-                )}
-              </div>
-
-              <div className="fld">
-                <label htmlFor="quick-book-time">Time Slot</label>
-                {availability.error && <p role="alert">{availability.error} <button type="button" onClick={availability.refresh}>Retry</button></p>}
-                {availability.loading && <small>Checking availability…</small>}
-                <LiveControl as="select" id="quick-book-time" value={availability.slots.includes(time) ? time : ""} onChange={e => setTime(e.target.value)}>
-                  <option value="">Choose an available time</option>
-                  {availability.slots.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </LiveControl>
-              </div>
-            </div>
-
-            {service === 'vaccination' && <VaccinePicker id="quick-book-vaccine" value={vaccineId} onChange={setVaccineId} species={selectedPet.species} petSelected={!!petId} />}
-            {service !== 'vaccination' && <div className="fld">
-              <label htmlFor="quick-book-reason">Reason / Owner Symptoms</label>
-              <LiveControl as="input"
-                id="quick-book-reason"
-                type="text"
-                maxLength={300}
-                value={reason}
-                onChange={e => setReason(e.target.value)}
-                placeholder="e.g. Lethargy, skin itching..."
-              />
-            </div>}
-          </div>
-
-          <div className="row end" style={{ marginTop: "18px", gap: "10px" }}>
-            <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={saving || availability.loading || !!availability.error || !availability.slots.includes(time)} className="btn gold" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <Check size={16} />
-              <b>{saving ? "Saving booking…" : slot.editing ? "Review changes" : "Review booking"}</b>
-            </button>
-          </div>
-          </fieldset>
-          {saving && <p role="status">Saving booking… Please wait for confirmation.</p>}
-          {saveError && <p role="alert" className="err">{saveError}</p>}
-        </form>
-      </div>
+        {availability.loading && <p role="status">Checking availability…</p>}
+        {availability.error && <p className="err" role="alert">{availability.error} <button type="button" className="btn ghost sm" onClick={availability.refresh}>Retry availability</button></p>}
+        {!availability.loading && !availability.error && !rules.date && !availability.slots.length && <p className="ow-note">No available times for this visit. Choose another date.</p>}
+        <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button className="btn gold" disabled={saving || availability.loading || !!availability.error}>{saving?'Saving…':editing?'Review reschedule':'Review booking'}</button></div>
+        </fieldset>{saveError && <p className="err" role="alert">{saveError}</p>}
+      </form>
     </div>
-  );
+  </div>;
 }

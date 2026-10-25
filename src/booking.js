@@ -55,7 +55,14 @@ export function holidayName(date) {
   return FIXED_HOLIDAYS[md] || (HOLIDAYS_BY_YEAR[y] || {})[md] || movable(y)[date] || "";
 }
 
-const toMin = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const toMin = t => {
+  const match=/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i.exec(String(t || ''));
+  if(!match)return NaN;
+  let h=Number(match[1]);const m=Number(match[2]),period=match[3]?.toUpperCase();
+  if(m>59 || h>(period?12:23) || (period && h<1))return NaN;
+  if(period)h=h%12+(period==='PM'?12:0);
+  return h*60+m;
+};
 const toHM = n => `${pad(Math.floor(n / 60))}:${pad(n % 60)}`;
 export const addMin = (t, n) => toHM(toMin(t) + n);
 export const durText = n => { const h = Math.floor(n / 60), m = n % 60; return [h ? `${h} hr${h > 1 ? "s" : ""}` : "", m ? `${m} min` : ""].filter(Boolean).join(" "); };
