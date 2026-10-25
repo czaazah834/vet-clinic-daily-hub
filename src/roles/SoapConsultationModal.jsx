@@ -56,9 +56,9 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const prevRecords = db.records.filter(r => r.petId === pet.id).sort((a, b) => b.date.localeCompare(a.date));
   const prevVaccs = db.vacc.filter(v => v.petId === pet.id).sort((a, b) => b.date.localeCompare(a.date));
 
-  // SOAP fields initialized with Assistant's Intake Vitals if present
+  // Saved intake remains in the exam summary; a new measurement is entered explicitly.
   const iv = appt?.intakeVitals;
-  const initialWeight = iv?.weight ? String(iv.weight) : pet.weight ? String(pet.weight) : "";
+  const initialWeight = iv?.weight ? String(iv.weight) : "";
   const initialTemp = iv?.temp ? `${iv.temp}°C` : "not measured";
   const tempRemark = iv?.tempAnalysis ? ` (${iv.tempAnalysis.label})` : "";
   const weightRemark = iv?.weightAnalysis ? ` (${iv.weightAnalysis.label})` : "";
@@ -71,7 +71,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     diagnosis: "",
     treatment: "",
     prescription: "",
-    weight: initialWeight,
+    weight: "",
     // Vaccine administration
     giveVaccine: false,
     vaccine: "Anti-rabies",
@@ -457,17 +457,17 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
 
               <div className="fld">
-                <label htmlFor="soap-weight">Patient Weight Today (kg)</label>
+                <label htmlFor="soap-weight">New measured weight (kg, optional)</label>
                 <input
                   id="soap-weight"
                   type="number"
                   min="0" max="120"
                   aria-invalid={!!errs.weight}
                   aria-describedby={errs.weight ? "soap-weight-error" : undefined}
-                  step="0.1"
+                  step="0.01"
                   value={f.weight}
                   onChange={e => set("weight", e.target.value)}
-                  placeholder="e.g. 14.8"
+                  placeholder="Leave blank to keep saved intake"
                 />
                 {errs.weight && <span id="soap-weight-error" className="err" role="alert">{errs.weight}</span>}
               </div>

@@ -1,3 +1,5 @@
+import {weightSourceLabel} from '../vitalLabels.js';
+import VitalsHistory from './VitalsHistory.jsx';
 import { approvalVisit } from "../appointmentStatus.js";
 import ClinicDialog from "../components/ClinicDialog.jsx";
 import { PaginatedTable } from "../components/Pagination.jsx";
@@ -205,13 +207,13 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                     </button>
                   )}
 
-                  {activeAppt.status === "Scheduled" && me?.role === "assistant" && (
+                  {activeAppt.status === "Scheduled" && onCheckIn && ["assistant","vet"].includes(me?.role) && (
                     <button
                       type="button"
                       className="btn sm gold"
                       onClick={() => {
                         onClose();
-                        onCheckIn && onCheckIn(activeAppt);
+                        onCheckIn(activeAppt);
                       }}
                       style={{ fontWeight: 700 }}
                       title="Record patient intake vitals and triage"
@@ -220,17 +222,17 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                     </button>
                   )}
 
-                  {activeAppt.status === "Checked-in" && me?.role === "assistant" && (
+                  {["Checked-in","In consultation"].includes(activeAppt.status) && onCheckIn && ["assistant","vet"].includes(me?.role) && (
                     <button
                       type="button"
                       className="btn sm ghost"
                       onClick={() => {
                         onClose();
-                        onCheckIn && onCheckIn(activeAppt);
+                        onCheckIn(activeAppt);
                       }}
                       title="Adjust recorded intake vitals"
                     >
-                      Edit Vitals
+                      Record another measurement
                     </button>
                   )}
                 </>
@@ -252,13 +254,13 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                     </button>
                   )}
 
-                  {activeAppt.status === "Scheduled" && me?.role === "assistant" && (
+                  {activeAppt.status === "Scheduled" && ["assistant","vet"].includes(me?.role) && (
                     <span role="status" style={{fontSize:"12px",color:"#92400e"}}>
                       Check-in is only available on {activeAppt.date}. Use Manage appointment in the calendar to reschedule first.
                     </span>
                   )}
-                  {activeAppt.status === "Checked-in" && me?.role === "assistant" && (
-                    <button type="button" className="btn sm ghost" onClick={() => { onClose(); onCheckIn?.(activeAppt); }}>Edit Vitals</button>
+                  {["Checked-in","In consultation"].includes(activeAppt.status) && onCheckIn && ["assistant","vet"].includes(me?.role) && (
+                    <button type="button" className="btn sm ghost" onClick={() => { onClose(); onCheckIn?.(activeAppt); }}>Record another measurement</button>
                   )}
                 </>
               )}
@@ -392,7 +394,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                     <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Breed:</span> <b>{p.breed || "Mixed Breed"}</b></div>
                     <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Sex:</span> <b>{p.sex || "Male"}</b></div>
                     <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Birth Date:</span> <b>{p.birth || "—"}</b></div>
-                    <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Weight:</span> <b>{p.weight || "—"} kg</b></div>
+                    <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>{weightSourceLabel(p)}:</span> <b>{p.weight || "—"} kg</b></div>
                     <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Coat / Markings:</span> <b>{p.color || "Standard"}</b></div>
                     <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Spayed / Neutered:</span> <b>{p.neutered || "No"}</b></div>
                   </div>
@@ -518,6 +520,8 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
 
           </div>
         </div>
+
+        <VitalsHistory petId={p.id} me={me} refreshKey={activeAppt?.intakeVitals} />
 
         {/* Action row */}
         <div className="staff-pet-controls" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>

@@ -62,6 +62,7 @@ export async function clinicAccess(req, res, next) {
       if (row.status === 'Approved' || (match[2] && row.status !== 'Pending')) return fail(res, 409, 'This request has already been processed.');
       return next();
     }
+    if (/^\/pets\/[^/]+\/vitals(?:\/[^/]+\/correct)?$/.test(path)) return (req.method==='GET' && allow('owner','vet','assistant','admin') || req.method==='POST' && path.endsWith('/correct') && allow('vet','assistant')) ? next() : denied();
     if (key === 'POST /walk-in') {
       if (!allow('assistant')) return denied();
       if (req.body.addToQueue) {
@@ -73,7 +74,7 @@ export async function clinicAccess(req, res, next) {
     if (key === 'POST /owners' || key === 'POST /pets') return allow('assistant') ? fail(res, 410, 'Use reviewed in-clinic registration to create an owner or patient.') : denied();
     if (key === 'POST /vaccinations') return allow('vet') ? fail(res, 410, 'Certify administered vaccines through the assigned visit’s SOAP finalization.') : denied();
     if ((match = path.match(/^\/(?:owner\/)?pets\/([^/]+)\/(photo|weights)$/)) && req.method === 'POST') {
-      if (!allow(...(match[2] === 'weights' ? ['assistant'] : ['owner', 'assistant']))) return denied();
+      if (!allow(...(match[2] === 'weights' ? ['assistant','vet'] : ['owner', 'assistant']))) return denied();
       const id = decodeURIComponent(match[1]);
       let permitted = await petAccess(id);
       if (!permitted && match[2] === 'photo') {
@@ -138,17 +139,17 @@ export function validateStatusChange(row, body, user) {
     Scheduled: ['Checked-in', 'Cancelled', 'No-show'],
     'Checked-in': ['In consultation'],
   };
-  const allowed = { owner: ['Cancelled'], assistant: ['Scheduled', 'Checked-in', 'Cancelled', 'Rejected', 'No-show'], vet: ['In consultation'] };
-  if (!(allowed[user.role] || []).includes(body.status)) return 'Your role cannot set this visit status.';
-  const remeasure = user.role === 'assistant' && row.status === 'Checked-in' && body.status === 'Checked-in';
+  const allowed = { owner: ['Cancelled'], assistant: ['Scheduled', 'Checked-in', 'Cancelled', 'Rejected', 'No-show'], vet: ['Checked-in','In consultation'] };
+  const remeasure=['assistant','vet'].includes(user.role)&&['Checked-in','In consultation'].includes(row.status)&&body.status===row.status&&body.intakeVitals!==undefined;
+  if (!remeasure && !(allowed[user.role] || []).includes(body.status)) return 'Your role cannot set this visit status.';
   if (!remeasure && !(transitions[row.status] || []).includes(body.status)) return 'The visit has changed. Refresh and use its current next action.';
   if (user.role === 'vet' && !assignedTo(row, user)) return 'This visit is assigned to another veterinarian.';
   if (body.date !== undefined || body.time !== undefined) return 'Use rescheduling to change the appointment date or time.';
   if (body.billingStatus !== undefined) return 'Billing changes require the checkout workflow.';
-  if (user.role !== 'assistant' && ['intakeVitals', 'date', 'time', 'reason'].some(k => body[k] !== undefined)) return 'Only reception can record intake or change arrival details.';
+  if (!['assistant','vet'].includes(user.role) && ['intakeVitals','reason'].some(k=>body[k]!==undefined)) return 'Only authorized clinical staff can record intake.';
   if (body.reason !== undefined && (typeof body.reason !== 'string' || !body.reason.trim() || body.reason.length > 500)) return 'Enter a visit reason of no more than 500 characters.';
-  if (body.intakeVitals !== undefined && body.status !== 'Checked-in') return 'Vitals must be recorded during check-in.';
-  if (body.status === 'Checked-in') {
+  if (body.intakeVitals !== undefined && !['Checked-in','In consultation'].includes(body.status)) return 'Vitals must be recorded during check-in.';
+  if (body.status === 'Checked-in' || body.intakeVitals !== undefined) {
     const dateError = checkInDateError(row, clinicClock().date);
     if (dateError) return dateError;
     const error = intakeFieldsError(body.intakeVitals, body.reason === undefined ? row.reason : body.reason);

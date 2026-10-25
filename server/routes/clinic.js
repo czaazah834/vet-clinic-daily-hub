@@ -1,3 +1,5 @@
+import {ensureVitalsSchema} from '../vitals.js';
+import {vitalsRouter} from './vitals.js';
 import { approveRegistration } from '../approveRegistration.js';
 import { approveAppointment, ensureAppointmentApprovalSchema } from '../appointmentApproval.js';
 import { savePendingPatient } from '../petRegistration.js';
@@ -37,6 +39,7 @@ import { clinicAccess, assignedTo, validateStatusChange } from "../clinicAccess.
 export const clinicRouter = express.Router();
 clinicRouter.use(requireAuth, clinicAccess);
 clinicRouter.use("/checkout-inbox", checkoutRouter);
+clinicRouter.use("/pets/:petId/vitals",vitalsRouter);
 clinicRouter.use("/admin", adminRouter);
 clinicRouter.use("/clinical/note-options", noteOptionsRouter);
 clinicRouter.use('/admissions', admissionsRouter);
@@ -78,6 +81,7 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
   try {
     await ensurePetRegistrationSchema();
     await ensureAppointmentApprovalSchema();
+    await ensureVitalsSchema();
     await ensureCareSchema();
     await ensurePrescriptionSchema();
     await ensureAdmissionsSchema();
@@ -138,7 +142,7 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
         id: w.id,
         date: toDateStr(w.date),
         kg: parseFloat(w.kg),
-        by: w.recorded_by || "Clinic Front Desk"
+        by: w.recorded_by || "Unknown historical staff", origin:w.origin || (/^(owner|registration|initial registration)$/i.test(w.recorded_by || '')?'registration':'legacy_unknown'), visitId:w.appt_id || null, measuredAt:w.measured_at || null, unit:"kg",staffId:w.staff_id || null,vitalId:w.vital_id || null
       });
     }
 
@@ -152,7 +156,7 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
       breed: p.breed,
       sex: p.sex,
       birth: toDateStr(p.birth),
-      weight: parseFloat(p.weight),
+      weight: parseFloat(p.weight), weightOrigin:p.registration_status==='Pending'?'registration':p.weight_origin || 'legacy_unknown',
       color: p.color || "",
       neutered: p.neutered || "Not sure",
       allergies: p.allergies || [],
@@ -160,7 +164,7 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
       notes: p.notes || "",
       photo: p.photo || "",
       dentalOcclusion: p.dental_occlusion || "",
-      weights: weightsByPet[p.id] || (p.registration_status && p.registration_status!=='Verified' ? [] : [{ date: toDateStr(p.birth), kg: parseFloat(p.weight), by: "Initial Registration" }])
+      weights: weightsByPet[p.id] || []
     }));
 
     const owners = ownersRes.rows.map(o => ({
@@ -922,17 +926,23 @@ clinicRouter.post("/owner/pets", async (req, res) => {
 // Weight measurements use clinic dates, canonical identity and one audited transaction.
 clinicRouter.post("/pets/:id/weights", async (req, res) => {
   try {
-    const {kg} = req.body;
-    const date = req.body.date ?? clinicClock().date;
+    await ensureVitalsSchema();
+    const {kg,visitId} = req.body;
+    if(typeof visitId!=='string'||!visitId||visitId.length>50)throw registrationError('Choose the visit for this clinic measurement.');
+    if(typeof req.body.measuredAt!=='string'||!validDate(req.body.measuredAt.slice(0,10))||!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(req.body.measuredAt)||!Number.isFinite(Date.parse(req.body.measuredAt))||Date.parse(req.body.measuredAt)>Date.now())throw registrationError('Enter the actual measurement date and time with a timezone, not in the future.');
+    const date=clinicClock(new Date(req.body.measuredAt)).date;
     if (typeof kg !== 'number' || !Number.isFinite(kg) || kg < 0.05 || kg > 120 || Math.abs(kg*100-Math.round(kg*100)) > 0.000001) throw registrationError('Enter a measured weight from 0.05 to 120 kg with at most two decimal places.');
     if (!validDate(date) || date > clinicClock().date) throw registrationError('Enter a real measurement date that is not in the future.');
     const result = await withTransaction(async client => {
+      const visit=(await client.query('SELECT * FROM appointments WHERE id=$1 FOR UPDATE',[visitId])).rows[0];
+      if(!visit||visit.pet_id!==req.params.id)throw registrationError('Choose a visit for this patient.',404);
+      if(req.user.role==='vet'&&!assignedTo(visit,req.user))throw registrationError('This visit is assigned to another veterinarian.',403);
       const pet = (await client.query('SELECT * FROM pets WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];
       if (!pet) throw registrationError('Pet not found.',404);
       if (date < toDateStr(pet.birth)) throw registrationError('The measurement cannot be dated before the patient’s birth.');
-      const latest = (await client.query('SELECT date FROM pet_weights WHERE pet_id=$1 ORDER BY date DESC LIMIT 1',[pet.id])).rows[0];
-      await client.query('INSERT INTO pet_weights (pet_id,date,kg,recorded_by) VALUES ($1,$2,$3,$4)',[pet.id,date,kg,req.user.name]);
-      if (!latest || date >= toDateStr(latest.date)) await client.query('UPDATE pets SET weight=$1 WHERE id=$2',[kg,pet.id]);
+      const latest = (await client.query('SELECT date,measured_at FROM pet_weights WHERE pet_id=$1 ORDER BY date DESC,measured_at DESC NULLS LAST,created_at DESC LIMIT 1',[pet.id])).rows[0];
+      await client.query("INSERT INTO pet_weights (pet_id,date,kg,recorded_by,origin,appt_id,measured_at,staff_id,staff_role) VALUES ($1,$2,$3,$4,'clinic',$5,$6,$7,$8)",[pet.id,date,kg,req.user.name,visitId,req.body.measuredAt,req.user.id,req.user.role]);
+      if (!latest || date > toDateStr(latest.date) || date===toDateStr(latest.date) && (!latest.measured_at || Date.parse(req.body.measuredAt)>=new Date(latest.measured_at).getTime())) await client.query("UPDATE pets SET weight=$1,weight_origin='clinic' WHERE id=$2",[kg,pet.id]);
       await registrationAudit(client,req.user,`Recorded measured weight for ${pet.id} on ${date}`);
       return {petId:pet.id,date,kg,by:req.user.name};
     });
@@ -1036,6 +1046,7 @@ clinicRouter.post("/pet-requests/:id/approve", async (req, res) => {
   try {
     await ensurePetRegistrationSchema();
     await ensureAppointmentApprovalSchema();
+    await ensureVitalsSchema();
     const result = await withTransaction(async client => {
       await lockSchedule(client);
       const pending = await client.query("SELECT id FROM appointments WHERE pet_id=(SELECT pet_id FROM pet_requests WHERE id=$1) AND status='Pending Approval' LIMIT 1",[req.params.id]);
@@ -1183,6 +1194,7 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
   try {
     await ensurePetRegistrationSchema();
     await ensureAppointmentApprovalSchema();
+    await ensureVitalsSchema();
     const result = await withTransaction(async (client) => {
       // Serialize arrival/handoff with deactivation so a visit cannot join an inactive vet's queue.
       await lockSchedule(client);
@@ -1207,7 +1219,8 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
       if (intakeVitals !== undefined) {
         q += `, intake_vitals = $${pIdx++}`;
         const pet = (await client.query("SELECT species, breed, weight FROM pets WHERE id = $1", [current.pet_id])).rows[0];
-        const canonicalVitals = {weight:intakeVitals.weight,temp:intakeVitals.temp,
+        const captureId=crypto.randomUUID(),measuredAt=new Date().toISOString();
+        const canonicalVitals = {captureId,measuredAt,staffId:req.user.id,staffRole:req.user.role,measurementIds:{weight:captureId+'-weight',temp:captureId+'-temp'},weight:intakeVitals.weight,temp:intakeVitals.temp,
           triageLevel:intakeVitals.triageLevel ?? 'Routine',fasted:intakeVitals.fasted ?? false,notes:(intakeVitals.notes ?? '').trim(),
           checkedInAt:clinicClock().time,checkedInBy:req.user.name,
           weightAnalysis:assessWeight(intakeVitals.weight,pet?.species || '',pet?.breed || '',Number(pet?.weight) || null),
@@ -1238,14 +1251,14 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
       if (!upd.rows.length) throw new Error("Appointment not found");
 
       // If Checked-in and has weight in intake vitals, update pet weight log
-      if (status === "Checked-in" && intakeVitals?.weight) {
+      if (["Checked-in","In consultation"].includes(status) && intakeVitals?.weight) {
         const appt = upd.rows[0];
         const numWeight = parseFloat(intakeVitals.weight);
         if (!isNaN(numWeight)) {
           await client.query("UPDATE pets SET weight = $1 WHERE id = $2", [numWeight, appt.pet_id]);
           await client.query(
-            "INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1, $2, $3, $4)",
-            [appt.pet_id, appt.date, numWeight, actorName || "Front Desk"]
+            "INSERT INTO pet_weights (pet_id, date, kg, recorded_by,origin,appt_id,measured_at,staff_id,staff_role,vital_id) VALUES ($1,$2,$3,$4,'clinic',$5,$6,$7,$8,$9)",
+            [appt.pet_id,clinicClock().date,numWeight,req.user.name,appt.id,appt.intake_vitals.measuredAt,req.user.id,req.user.role,appt.intake_vitals.measurementIds.weight]
           );
         }
       }
@@ -1366,6 +1379,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
   const today = clinicClock().date;
 
   try {
+    await ensureVitalsSchema();
     const registration = validateWalkInRegistration(req.body);
     const patient = registration.patient;
     const requestedReason = requestedVaccineReason({service:serviceCategory, vaccineId:req.body.vaccineId,
@@ -1431,7 +1445,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
 
       // 3. Weight log
       await client.query(
-        `INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1, $2, $3, $4)`,
+        `INSERT INTO pet_weights (pet_id, date, kg, recorded_by,origin) VALUES ($1, $2, $3, $4,'registration')`,
         [petId, today, patient.weight, req.user.name]
       );
 
@@ -1719,6 +1733,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
           sex: pet.sex,
           birth: toDateStr(pet.birth),
           weight: parseFloat(pet.weight),
+          weightOrigin:'registration',
           color: pet.color || "",
           neutered: pet.neutered || "Not sure",
           allergies: pet.allergies || [],
@@ -1726,7 +1741,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
           notes: pet.notes || "",
           photo: "",
           dentalOcclusion: pet.dental_occlusion || "",
-          weights: [{date:today,kg:patient.weight,by:req.user.name}]
+          weights: [{date:today,kg:patient.weight,by:req.user.name,origin:'registration',unit:'kg',visitId:null,measuredAt:null}]
         },
         vaccs: seeded,
         appointment: appt
@@ -1768,6 +1783,7 @@ clinicRouter.post("/consultations", async (req, res) => {
   if (vaccination?.nextDue && (!/^\d{4}-\d{2}-\d{2}$/.test(vaccination.nextDue) || vaccination.nextDue <= date)) return res.status(400).json({ error: "The booster date must follow the vaccination date." });
   if (weight !== undefined && (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0 || weight > 120)) return res.status(400).json({ error: "Enter a valid weight." });
   try {
+    await ensureVitalsSchema();
     const rx = normalizePrescription(req.body.prescriptionItems, prescription);
     const services = clinicalCharges(req.body.performedServices, vaccination);
     if (!validDate(date) || date > clinicClock().date) throw bookingError("Enter a valid administration / consultation date that is not in the future.");
@@ -1809,7 +1825,7 @@ clinicRouter.post("/consultations", async (req, res) => {
       }
       if (weight !== undefined) {
         await client.query("UPDATE pets SET weight = $1 WHERE id = $2", [weight, petId]);
-        await client.query("INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1,$2,$3,$4)", [petId, date, weight, req.user.name]);
+        await client.query("INSERT INTO pet_weights (pet_id, date, kg, recorded_by,origin,appt_id,measured_at,staff_id,staff_role) VALUES ($1,$2,$3,$4,'clinic',$5,clock_timestamp(),$6,$7)", [petId,date,weight,req.user.name,apptId,req.user.id,req.user.role]);
       }
       const invoice = [...services, ...prescriptionInvoice(rx.items)];
       const savedAppointment = (await client.query("UPDATE appointments SET status = 'Completed', billing_status = 'Unpaid', invoice_items=$2 WHERE id = $1 RETURNING *", [apptId, JSON.stringify(invoice)])).rows[0];

@@ -1,3 +1,4 @@
+import {weightSourceLabel} from '../../vitalLabels.js';
 import { PaginatedTable } from "../../components/Pagination.jsx";
 import PetPortrait from "../PetPortrait.jsx";
 import {useHistoryComplete} from "../../ClinicHistory.jsx";
@@ -341,7 +342,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Sex:</span> <b>{p.sex || "—"}</b></div>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Birth Date:</span> <b>{p.birth ? fmtDate(p.birth) : "—"}</b> {p.birth && <small style={{ color: "#0284c7" }}>({petAge(p.birth)})</small>}</div>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Life Stage Protocol:</span> <b style={{ color: ageDetails?.isAdult ? "#059669" : "#2563eb" }}>{ageDetails?.lifeStageLabel || "Standard"}</b></div>
-                          <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Weight:</span> <b>{p.weight != null ? `${p.weight} kg` : "—"}</b></div>
+                          <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>{weightSourceLabel(p)}:</span> <b>{p.weight != null ? `${p.weight} kg` : "—"}</b></div>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Coat / Markings:</span> <b>{p.color || "Standard"}</b></div>
                           <div><span style={{ color: "#64748b", fontSize: "11.5px", display: "block" }}>Neutered:</span> <b>{p.neutered || "Not sure"}</b></div>
                         </div>

@@ -28,6 +28,9 @@ buildSync({
       export { default as Reports } from './src/roles/ReportsPage.jsx';
       export { default as ErrorBoundary } from './src/ErrorBoundary.jsx';
       export { SEED } from './src/lib.jsx';
+      export { VitalEntries, Correction } from './src/roles/VitalsHistory.jsx';
+      export { default as CheckInModal } from './src/roles/CheckInModal.jsx';
+      export { default as SoapConsultationModal } from './src/roles/SoapConsultationModal.jsx';
       export { emptyClinicState } from './src/clinicState.js';
     `,
     resolveDir: fileURLToPath(new URL('..', import.meta.url)),
@@ -205,4 +208,29 @@ test('registration review of a booked pending patient uses the combined approval
  db.petRequests=[request];db.appts=[{id:'linked',petId:request.petId,vetId:'v1',date:'2099-01-05',time:'10:00',reason:'Linked requested examination',status:'Pending Approval'}];
  const html=render(ui.PetApprovalModal,{...props('assistant',db),request});
  assert.match(html,/Requested visit/);assert.match(html,/Linked requested examination/);assert.match(html,/Approve appointment &amp; registration/);assert.doesNotMatch(html,/>Approve pet and issue vaccination card</);
+});
+
+
+test('vitals render clinical measurements, registration reports, original entries and linked corrections',()=>{
+ const original={id:'original',petId:'p1',visitId:'visit',kind:'temp',value:39,unit:'°C',date:'2026-10-25',measuredAt:'2026-10-25T01:00:00Z',recordedAt:'2026-10-25T01:00:01Z',staffName:'Synthetic vet',staffRole:'vet',origin:'clinic',source:'intake',supersededBy:'correction'};
+ const entries=[original,{...original,id:'correction',value:38.5,supersededBy:null,correctsId:'original',correctionReason:'Transcription error'}, {...original,id:'report',kind:'weight',value:10,unit:'kg',origin:'registration'}, {...original,id:'note',kind:'observation',value:null,unit:null,notes:'Bedside observation',source:'admission'}];
+ const html=render(ui.VitalEntries,{entries,canCorrect:true});
+ for(const text of ['Temperature: 39','Temperature: 38.5','Synthetic vet','visit','Correction of original','Corrected by correction','original retained','Transcription error','not a clinic measurement','Bedside observation'])assert.ok(html.includes(text),text);
+ assert.equal((html.match(/Correct entry/g)||[]).length,1);
+ assert.doesNotMatch(render(ui.VitalEntries,{entries,canCorrect:false}),/Correct entry/);
+});
+test('correction fields have immediate accessible inline validation and numeric bounds',()=>{
+ const html=render(ui.Correction,{entry:{kind:'temp',value:38.5,unit:'°C'},onCancel(){},onSaved(){}});
+ assert.match(html,/name="value"/);assert.match(html,/name="reason"/);assert.match(html,/min="33"/);assert.match(html,/max="45"/);assert.match(html,/maxLength="500"/);assert.match(html,/aria-live="polite"/);assert.match(html,/aria-describedby=/);assert.match(html,/original entry stays/);
+});
+test('vet intake remains available during consultation and registration weight is not a clinical baseline',()=>{
+ const db=populated(),pet={...db.pets[0],weight:90,weightOrigin:'registration',weights:[{kg:90,origin:'registration'}]};db.pets[0]=pet;
+ const appt={...db.appts.find(a=>a.petId===pet.id),status:'In consultation'};db.appts=[appt];
+ const html=render(ui.CheckInModal,{...props('vet',db),appt});
+ assert.match(html,/Measured weight/);assert.match(html,/Measured temperature/);assert.match(html,/earlier measurements/i);assert.doesNotMatch(html,/Last clinic measurement/);
+});
+test('SOAP displays saved intake but starts the new-measurement field empty',()=>{
+ const db=populated(),pet=db.pets[0],appt={...db.appts.find(a=>a.petId===pet.id),status:'In consultation',intakeVitals:{weight:10.25,temp:38.5}};db.appts=[appt];
+ const html=render(ui.SoapConsultationModal,{...props('vet',db),pet,appt});
+ assert.match(html,/New measured weight/);assert.match(html,/10.25 kg/);assert.match(html,/<input[^>]*id="soap-weight"[^>]*value=""/);
 });

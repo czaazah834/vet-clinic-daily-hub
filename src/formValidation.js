@@ -1,3 +1,4 @@
+import {vitalValueError} from './vitalValidation.js';
 import { consentErrors } from './admissionCare.js';
 const text = (value,label,max,required=false) => !String(value ?? '').trim() && required ? `${label} is required.` : String(value ?? '').length > max ? `Use at most ${max.toLocaleString()} characters.` : '';
 export const numberError = (value,label,min,max,{required=true,integer=false}={}) => {
@@ -16,8 +17,8 @@ export function admissionErrors(form,{mode,vet,visits=[]}) {
     carePlan:vet && !discharge && !release ? text(form.carePlan,'Care plan',3000,create) : '',
     ownerUpdate:text(form.ownerUpdate,'Owner message',2000,create),
     dischargeInstructions:discharge ? text(form.dischargeInstructions,'Home-care instructions',3000,true) : '',
-    temp:!discharge && !release ? numberError(form.temp,'Temperature (°C)',33,45,{required:false}) : '',
-    weight:!discharge && !release ? numberError(form.weight,'Weight (kg)',0.05,120,{required:false}) : '',
+    temp:!discharge && !release ? vitalValueError(form.temp,'temp',false) : '',
+    weight:!discharge && !release ? vitalValueError(form.weight,'weight',false) : '',
   };
 }
 // datetime-local has no timezone; clinic records always use Manila (UTC+08:00).
@@ -58,7 +59,7 @@ export function paymentErrors({items,discount,cashTendered,refNo,method,prescrib
   return errors;
 }
 export function intakeErrors({weight,temp,reason,notes}) {
-  return {weight:numberError(weight,'Weight (kg)',0.05,120),temp:numberError(temp,'Temperature (°C)',33,45),reason:text(reason,'Visit reason',500,true),notes:text(notes,'Intake notes',2000)};
+  return {weight:vitalValueError(weight,'weight'),temp:vitalValueError(temp,'temp'),reason:text(reason,'Visit reason',500,true),notes:text(notes,'Intake notes',2000)};
 }
 export function noteChoiceError(value) {
   const list=value.split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
