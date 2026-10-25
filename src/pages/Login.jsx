@@ -103,7 +103,7 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
               type="email"
               autoComplete="username"
               value={f.v.email}
-              className={f.show("email", false) ? "bad" : f.v.email && !f.e.email ? "ok" : ""}
+              className={f.show("email", false) ? "bad" : f.v.email && !f.errs.email ? "ok" : ""}
               onChange={(e) => f.set("email", e.target.value)}
               onBlur={() => f.blur("email")}
             />
@@ -120,7 +120,7 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
                 type={show ? "text" : "password"}
                 autoComplete="current-password"
                 value={f.v.password}
-                className={f.show("password", false) ? "bad" : f.v.password && !f.e.password ? "ok" : ""}
+                className={f.show("password", false) ? "bad" : f.v.password && !f.errs.password ? "ok" : ""}
                 onChange={(e) => f.set("password", e.target.value)}
                 onBlur={() => f.blur("password")}
               />
