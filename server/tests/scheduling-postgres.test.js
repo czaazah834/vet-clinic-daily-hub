@@ -379,21 +379,22 @@ test('status audit failure rolls back intake, patient weight and weight history'
 test('confirmation and consultation start reject snapshots from before rescheduling or remeasurement',async()=>{
  const {intakeVisitSnapshot}=await import('../../src/intakeVisit.js');
  const id='confirm_snapshot';
+ let confirmationDate=shiftDate(clinicClock().date,25);while(holidayName(confirmationDate))confirmationDate=shiftDate(confirmationDate,1);
  await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,'p8','v1',$2,'15:00','Confirmation examination','Pending Approval')",[id,clinicClock().date]);
  const before=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
- await query("UPDATE appointments SET date=$1,reason='Rescheduled examination' WHERE id=$2",[shiftDate(clinicClock().date,1),id]);
+ await query("UPDATE appointments SET date=$1,reason='Rescheduled examination' WHERE id=$2",[confirmationDate,id]);
  const stale=await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Scheduled',expectedVisit:intakeVisitSnapshot(before)});
  assert.equal(stale.status,409);assert.equal((await query('SELECT status FROM appointments WHERE id=$1',[id])).rows[0].status,'Pending Approval');
  const fresh=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
  const results=await Promise.all([1,2].map(()=>req('assistant','PATCH',`/appointments/${id}/status`,{status:'Scheduled',expectedVisit:intakeVisitSnapshot(fresh)})));
- assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+ assert.deepEqual(results.map(r=>r.status),[200,200]);
  await query("UPDATE appointments SET status='Checked-in',intake_vitals=$1 WHERE id=$2",[JSON.stringify({weight:5,temp:38.5}),id]);
  const measured=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
  await query("UPDATE appointments SET intake_vitals=$1 WHERE id=$2",[JSON.stringify({weight:5.5,temp:38.8}),id]);
  assert.equal((await req('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation',expectedVisit:intakeVisitSnapshot(measured)})).status,409);
  const remeasured=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
  assert.equal((await req('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation',expectedVisit:intakeVisitSnapshot(remeasured)})).status,200);
- assert.equal((await query('SELECT COUNT(*)::int n FROM audit_logs WHERE action LIKE $1',[`Updated appointment ${id}%`])).rows[0].n,2);
+ assert.equal((await query('SELECT COUNT(*)::int n FROM audit_logs WHERE action LIKE $1 OR action LIKE $2',[`Updated appointment ${id}%`,`Approved appointment ${id}%`])).rows[0].n,2);
 });
 
 const callBody=()=>({logOnly:true,requestId:crypto.randomUUID(),vaccinationId:'call_dose',petId:'call_pet',ownerId:'o1',dueDate:'2026-12-01',expectedPhone:'+639000000000',outcome:'No answer',notes:'Try again in the morning.'});

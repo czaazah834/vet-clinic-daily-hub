@@ -1162,3 +1162,32 @@ Create forms retain a stable booking ID for retry. The server serializes reserva
 Payment is separate: **Unbilled** at booking, **Unpaid** after consultation finalization creates the charges, and **Paid** only through reception checkout. Payment does not change Completed back into another clinical status; admission/discharge rules remain enforced.
 
 The one-time server/database/appointment-status.sql migration changes legacy Scheduled → Pending Approval and Confirmed → Scheduled atomically, normalizes legacy Pending billing to Unbilled, and marks existing completed visits with charges Unpaid without changing paid records. It also updates the active-follow-up uniqueness rule to release rejected requests. It runs before authenticated clinic reads/writes and through db:init. Run the new server and frontend together; the legacy Confirmed API value is retired.
+
+### Combined appointment and registration approval
+
+Apply `server/database/appointment-approval.sql` after the registration/onboarding
+migrations on existing databases. New initialization includes it; state and approval
+endpoints also apply it when the runtime role has DDL permission. This additive,
+repeatable migration preserves patient IDs, bookings and medical history. Historical
+approvals retain unknown audit timestamps/identities rather than inventing them.
+
+Reception's **Pending Appointment Requests** queue shows patient registration details
+and the requested visit together. One assistant approval uses a single transaction to
+recheck the active doctor and available slot, verify the linked pending registration,
+preserve its patient/card reference, confirm the appointment and save the authenticated
+approver's user ID, name and timestamp. Existing protocol suggestions remain unadministered.
+Standalone registration review remains available without a booking. When a pending
+visit is linked, registration review presents that visit and uses the combined action;
+the registration-only API rejects attempts to bypass its appointment review.
+
+Clients confirming a pending patient send `expectedRegistration: {id, revision}` with
+`PATCH /api/appointments/:id/status` (`status: "Scheduled"`) and the reviewed
+`expectedVisit` snapshot. Stale or declined registrations must be corrected/reviewed
+again. Approval shares the booking lock with reservations and rescheduling. Repeated
+approval of the same scheduled visit returns the saved result without another patient,
+protocol set, weight baseline or audit entry. A changed booking requires a fresh review.
+Cancellation/rejection never downgrades a verified patient. Rescheduling clears the
+appointment's current approval metadata; the earlier audit entry remains saved.
+
+Validation: `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/pawcare_test npm run test:approval:postgres`.
+The database must be disposable and local; the test uses isolated schemas and synthetic records.

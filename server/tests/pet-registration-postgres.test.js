@@ -236,7 +236,9 @@ test('new owner saves once, reloads pending patient and books before review; app
  assert.equal((await query('SELECT registration_status FROM pets WHERE id=$1',[pet.id])).rows[0].registration_status,'Pending');
  assert.equal((await call(assistant,'PATCH',`/appointments/${booked.data.appointment.id}/status`,{status:'Scheduled'})).status,409,'staff must review registration before confirming visit');
  assert.equal((await call(owner,'DELETE',`/pet-requests/${request.id}`)).status,409,'cannot erase patient or appointment history');
- const approved=await review(request.id,'approve',0);assert.equal(approved.status,200,JSON.stringify(approved));assert.equal(approved.data.pet.id,pet.id);assert.equal(approved.data.pet.registration_status,'Verified');
+ assert.equal((await review(request.id,'approve',0)).status,409,'a linked visit must use combined approval');
+ const approved=await call(assistant,'PATCH',`/appointments/${booked.data.appointment.id}/status`,{status:'Scheduled',expectedRegistration:{id:request.id,revision:0},expectedVisit:booked.data.appointment});
+ assert.equal(approved.status,200,JSON.stringify(approved));assert.equal(approved.data.registration.pet.id,pet.id);assert.equal(approved.data.registration.pet.registration_status,'Verified');
  assert.equal((await query('SELECT pet_id FROM appointments WHERE id=$1',[booked.data.appointment.id])).rows[0].pet_id,pet.id);
  assert.equal((await query('SELECT count(*)::int n FROM pets WHERE owner_id=$1',[pet.owner_id])).rows[0].n,1);
  assert.equal((await call(assistant,'PATCH',`/appointments/${booked.data.appointment.id}/status`,{status:'Scheduled'})).status,200);

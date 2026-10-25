@@ -20,7 +20,7 @@ const fakeQuery = async (sql, params = []) => {
   if (sql==='SELECT registration_status FROM pets WHERE id=$1') return rows(db.pets.filter(p=>p.id===params[0]).map(p=>({registration_status:p.registration_status || 'Verified'})));
   if (sql==="SELECT id FROM pets WHERE id=$1 AND registration_status<>'Verified'") return rows(db.pets.filter(p=>p.id===params[0] && p.registration_status && p.registration_status!=='Verified'));
   if (sql.startsWith('SELECT to_regclass')) return rows([]);
-  if (sql.startsWith('-- Rename legacy states') || sql.startsWith('-- Preserve owner-submitted') || sql.startsWith('-- Durable reception') || sql.startsWith('-- Idempotent migration') || sql.startsWith('SELECT pg_advisory_xact_lock')) return rows([]);
+  if (sql.startsWith('-- Add audit metadata') || sql.startsWith('-- Rename legacy states') || sql.startsWith('-- Preserve owner-submitted') || sql.startsWith('-- Durable reception') || sql.startsWith('-- Idempotent migration') || sql.startsWith('SELECT pg_advisory_xact_lock')) return rows([]);
   if (sql.startsWith("SELECT version FROM pawcare_schema_migrations WHERE version='admission-care-v1'")) return rows([{version:'admission-care-v1'}]);
   if (sql.startsWith('-- Admission is separate') || sql.startsWith('-- Extend existing stays')) return rows([]);
   if (sql.includes('FROM admissions WHERE appt_id') || sql.includes('FROM admission_updates e JOIN admissions')) return rows([]);
@@ -67,6 +67,12 @@ const fakeQuery = async (sql, params = []) => {
   if (sql.startsWith('UPDATE owners SET first_pet_registered_at=')) {db.owners.find(o=>o.id===params[0]).first_pet_registered_at='2026-10-25T00:00:00Z';return rows([]);}
   if (sql.startsWith('INSERT INTO pet_requests')) { const row = { id: params[12], owner_id: params[13], name: params[0], status: 'Pending',revision:0 }; db.requests.push(row); return rows([row]); }
   if (sql.startsWith('UPDATE appointments')) {
+    if (sql.startsWith("UPDATE appointments SET status='Scheduled',approved_at")) {
+      const row=db.appts.find(a=>a.id===params[0]);Object.assign(row,{status:'Scheduled',approved_at:new Date().toISOString(),approved_by:params[1],approved_by_user_id:params[2],reason:params[3]});return rows([row]);
+    }
+    if (sql.startsWith('UPDATE appointments SET approved_at=NULL')) {
+      const row=db.appts.find(a=>a.id===params[0]);Object.assign(row,{approved_at:null,approved_by:null,approved_by_user_id:null});return rows([row]);
+    }
     if (sql.startsWith('UPDATE appointments SET pet_id=$2')) {
       const row=db.appts.find(a=>a.id===params[0]);
       for(const [i,key] of ['id','pet_id','vet_id','date','time','reason','amount','service','duration_minutes','booking_kind','notes','status'].entries())row[key]=params[i];

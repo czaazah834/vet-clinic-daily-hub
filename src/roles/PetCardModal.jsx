@@ -1,3 +1,4 @@
+import { approvalVisit } from "../appointmentStatus.js";
 import ClinicDialog from "../components/ClinicDialog.jsx";
 import { PaginatedTable } from "../components/Pagination.jsx";
 import PetPortrait from "./PetPortrait.jsx";
@@ -196,7 +197,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                       type="button"
                       className="btn sm"
                       onClick={() => {
-                        moveAppt(setDb, activeAppt.id, "Scheduled", me, setActionError, activeAppt);
+                        moveAppt(setDb, activeAppt.id, "Scheduled", me, setActionError, approvalVisit(db,activeAppt));
                       }}
                       style={{ fontWeight: 600 }}
                     >
@@ -243,7 +244,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                       type="button"
                       className="btn sm"
                       onClick={() => {
-                        moveAppt(setDb, activeAppt.id, "Scheduled", me, setActionError, activeAppt);
+                        moveAppt(setDb, activeAppt.id, "Scheduled", me, setActionError, approvalVisit(db,activeAppt));
                       }}
                       style={{ fontWeight: 600 }}
                     >
