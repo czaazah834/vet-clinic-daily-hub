@@ -1,4 +1,5 @@
 import { VaccineEstimate } from "../components/VaccineBooking.jsx";
+import AdmissionsPage, { AdmissionsSummary } from './AdmissionsPage.jsx';
 import { PaginatedList } from "../components/Pagination.jsx";
 import FrontDeskApprovals from "./FrontDeskApprovals.jsx";
 import ExistingPatientCheckInModal from "./ExistingPatientCheckInModal.jsx";
@@ -87,6 +88,7 @@ function Dash({ db, setDb, me, go, say }) {
           )}
         </div>
       </Hero>
+      <AdmissionsSummary me={me} go={go} />
 
       <FrontDeskApprovals db={db} onReviewPet={setReviewReq} onOpenCard={openCard} onCalendar={() => go("cal")} onConfirm={confirmVisit} confirming={confirming} error={actionError} />
 
@@ -315,6 +317,7 @@ export const assistant = {
   Dash,
   menu: [
     { k: "home", l: "Front Desk", i: "bell", dash: 1, sub: "Visit approvals, pet registrations, arrivals and clinic operations." },
+    { k: 'admissions', l: 'Admitted Pets', i: 'hospital', Page: AdmissionsPage, sub: 'Follow veterinarian care plans, record measured observations and share owner updates.' },
     { k: "sales", l: "Daily Sales & Billing", i: "receipt", Page: DailySalesPage, sub: "Daily collections register, cashier receipts, and sales breakdown." },
     { k: "pet-requests", l: "Online Pet Requests", i: "paw", Page: PetRequestsPage, sub: "Review and approve online pet registrations with automated vaccination cards." },
     { k: "cal", l: "Appointments & Calendar", i: "calendar", Page: ClinicCalendar, sub: "Unified calendar schedules, slot booking, and appointments management." },

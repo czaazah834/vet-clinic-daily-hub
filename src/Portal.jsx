@@ -61,7 +61,7 @@ function PortalBody({ cfg, me, db, setDb, onLogout, dataLoading = false, dataErr
             <button className="btn sm" disabled={refreshing} onClick={onRetry}>{refreshing ? "Retrying…" : "Retry loading records"}</button>
           </section>}
           <ErrorBoundary key={page} inline onReset={() => go(cfg.menu[0].k)}>
-          {!dataLoading && page !== "audit" && <HistoryControls auto={!cur.dash && !["users","prices","audit","pet-requests"].includes(page)} />}
+          {!dataLoading && page !== "audit" && page !== 'admissions' && <HistoryControls auto={!cur.dash && !["users","prices","audit","pet-requests"].includes(page)} />}
           {dataLoading ? (!dataError && <section className="clinic-loading" role="status"><span className="clinic-spinner" aria-hidden="true" />Loading clinic records…</section>) : cur.Page ? <cur.Page db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.dash ? <Dash db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.rep ? <Reports db={db} me={me} /> : <EntityPage key={cur.k} ent={cur.ent} db={db} setDb={setDb} me={me} say={say} />}
           </ErrorBoundary>
         </main>

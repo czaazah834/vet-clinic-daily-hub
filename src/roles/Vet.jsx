@@ -1,4 +1,5 @@
 import { VaccineEstimate } from "../components/VaccineBooking.jsx";
+import AdmissionsPage, { AdmissionsSummary } from './AdmissionsPage.jsx';
 import { PaginatedList } from "../components/Pagination.jsx";
 import HandoffModal from "./HandoffModal.jsx";
 import VaccinationCards from "./VaccinationCards.jsx";
@@ -68,9 +69,11 @@ function Dash({ db, setDb, me, go, say }) {
             </button>
           )}
           <button className="btn" onClick={() => go("cal")}><CalendarDays size={16} aria-hidden="true" />View schedule</button>
+          <button className="btn" onClick={() => go('admissions')}>Admit or monitor a pet</button>
           <button className="btn" onClick={() => go("pets")}><Search size={16} aria-hidden="true" />Search patient EMR</button>
         </div>
       </Hero>
+      <AdmissionsSummary me={me} go={go} />
 
       <Stats
         items={[
@@ -177,6 +180,7 @@ export const vet = {
   Dash,
   menu: [
     { k: "home", l: "Clinical Queue", i: "stethoscope", dash: 1, sub: "Live patient queue, SOAP consultation notes and EMR records." },
+    { k: 'admissions', l: 'Admitted Pets', i: 'hospital', Page: AdmissionsPage, sub: 'Admit assigned patients, review observations and care plans, and approve discharge.' },
     { k: "cal", l: "Doctor Schedule", i: "calendar", Page: ClinicCalendar, sub: "View assigned visits. Reception manages bookings." },
     { k: "pets", l: "Patient EMR & Masterlist", i: "paw", Page: ClientsAndPatientsPage, sub: "Digital medical records, patient profiles, and official vaccination cards." },
     { k: "records", l: "SOAP Consultations", i: "file", Page: ConsultationsPage, sub: "Certified SOAP consultation notes, clinical diagnoses, and prescriptions." },

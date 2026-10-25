@@ -2,6 +2,7 @@ import {lockSchedule} from '../scheduling.js';
 import express from 'express';
 import { query, withTransaction } from '../db.js';
 import { ensureStaffAccessSchema } from '../staffAccess.js';
+import { ensureAdmissionsSchema } from '../admissions.js';
 export const adminRouter = express.Router();
 const problem = (message,status=400) => Object.assign(new Error(message),{status});
 adminRouter.use(async(req,res,next)=>{
@@ -36,6 +37,7 @@ adminRouter.post('/staff/:id/access',async(req,res)=>{
   if (!['deactivate','reactivate','unlock'].includes(action)) throw problem('Choose a valid staff access action.');
   if (typeof reason !== 'string' || !reason.trim() || reason.length>300 || /[\u0000-\u001f]/.test(reason)) throw problem('Record a reason for this access change (up to 300 characters).');
   if (!Number.isInteger(revision) || revision<0) throw problem('Refresh the staff list before changing access.',409);
+  if (action==='deactivate') await ensureAdmissionsSchema();
   await withTransaction(async client=>{
    await lockSchedule(client);
    const u=(await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE',[req.params.id])).rows[0];
@@ -43,8 +45,8 @@ adminRouter.post('/staff/:id/access',async(req,res)=>{
    if (u.access_revision!==revision) throw problem('This account changed. Refresh and review its current status.',409);
    if (action==='deactivate' && !u.is_active || action==='reactivate' && u.is_active || action==='unlock' && (!u.is_active || !u.is_locked)) throw problem('This action does not match the current account status. Refresh the list.',409);
    if(action==='deactivate' && u.role==='vet') {
-    const active=(await client.query("SELECT COUNT(*)::int AS count FROM appointments WHERE vet_id = ANY($1::varchar[]) AND status IN ('Checked-in','In consultation')",[[u.id,u.vet_id].filter(Boolean)])).rows[0].count;
-    if(active)throw problem(`Transfer ${active} waiting or active patient visit(s) to another veterinarian before deactivating this account.`,409);
+    const active=(await client.query("SELECT COUNT(*)::int AS count FROM appointments WHERE vet_id = ANY($1::varchar[]) AND (status IN ('Checked-in','In consultation') OR EXISTS (SELECT 1 FROM admissions d WHERE d.appt_id=appointments.id AND d.status='Admitted'))",[[u.id,u.vet_id].filter(Boolean)])).rows[0].count;
+    if(active)throw problem(`Transfer waiting or active consultations and complete any remaining admissions before deactivating this account (${active} patient visit(s) still under care).`,409);
    }
    if(action==='unlock') await client.query('UPDATE users SET is_locked=false,failed_login_attempts=0,lockout_until=NULL,access_reason=$2,access_revision=access_revision+1,updated_at=NOW() WHERE id=$1',[u.id,reason.trim()]);
    else await client.query('UPDATE users SET is_active=$2,access_reason=$3,access_revision=access_revision+1,updated_at=NOW() WHERE id=$1',[u.id,action==='reactivate',reason.trim()]);
