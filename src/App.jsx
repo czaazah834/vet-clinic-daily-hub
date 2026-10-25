@@ -83,6 +83,8 @@ export default function App() {
     let active = true;
     const specialLink = getInitialView() !== "landing";
     if (specialLink) { setRestoring(false); return; }
+    let hadStoredSession = false;
+    try { hadStoredSession = !!(localStorage.getItem("pawcare_token") || sessionStorage.getItem("pawcare_token")); } catch (_) {}
     auth.me()
       .then(result => {
         if (!active) return;
@@ -95,10 +97,12 @@ export default function App() {
       })
       .catch(error => {
         if (!active) return;
-        if (error.status === 401 || error.status === 403) { setMe(null); saveCachedUser(null); setView("login"); }
+        if (error.status === 401 || error.status === 403) {
+          setMe(null); saveCachedUser(null); setSessionUser(null);
+          if (hadStoredSession) setView("login");
+        }
         // No stored session: normal landing. A temporary server failure: allow retry.
-        if (error.status !== 401 && error.status !== 403 &&
-            (localStorage.getItem("pawcare_token") || sessionStorage.getItem("pawcare_token"))) {
+        if (error.status !== 401 && error.status !== 403 && hadStoredSession) {
           setMe(null); saveCachedUser(null);
           setNotice("Could not restore your session. Check your connection and log in again if needed.");
           setBad(true);

@@ -861,3 +861,13 @@ npm run build
 
 Database tests accept only a local disposable PostgreSQL endpoint and mock email
 and SMS delivery; they never verify production delivery.
+
+
+### Rendering regression checks
+
+Run `npm run test:ui` to render every visible portal screen with empty and
+populated records, plus vaccination history, loaded profiles and recovery UI.
+The checks bundle the real JSX with the existing Vite/esbuild toolchain and use
+synthetic local records; they do not connect to a database or send messages.
+Page rendering failures keep the portal navigation available. Production
+recovery screens show retry/home actions and keep exception details in the console.

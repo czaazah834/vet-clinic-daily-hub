@@ -1,11 +1,9 @@
 import React from "react";
 import { TriangleAlert } from "lucide-react";
+import "./error-boundary.css";
 
 export default class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+  state = { hasError: false, error: null };
 
   static getDerivedStateFromError(error) {
     return { hasError: true, error };
@@ -15,75 +13,37 @@ export default class ErrorBoundary extends React.Component {
     console.error("PawCare UI Error:", error, errorInfo);
   }
 
+  retry = () => this.setState({ hasError: false, error: null });
+
+  goHome = () => {
+    if (this.props.onReset) {
+      this.props.onReset();
+      this.retry();
+      return;
+    }
+    // Recover the default workspace without deleting login tokens or other app data.
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("pawcare_last_session_user") || "null");
+      if (saved?.id != null) sessionStorage.removeItem(`pawcare_page_${saved.id}`);
+    } catch (_) { /* Storage may be unavailable. Navigation still works. */ }
+    window.location.assign("/");
+  };
+
   render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#f8fafc",
-          padding: "24px",
-          fontFamily: "Poppins, sans-serif"
-        }}>
-          <div style={{
-            background: "#fff",
-            borderRadius: "16px",
-            padding: "32px",
-            maxWidth: "520px",
-            width: "100%",
-            boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
-            border: "1px solid #e2e8f0",
-            textAlign: "center"
-          }}>
-            <div style={{ marginBottom: "12px", color: "#b42318" }}><TriangleAlert size={42} aria-hidden="true" /></div>
-            <h2 style={{ margin: "0 0 8px", color: "var(--navy, #0f172a)", fontSize: "20px" }}>Something went wrong</h2>
-            <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: "14px" }}>
-              An error occurred while rendering the interface.
-            </p>
-            {this.state.error && (
-              <pre style={{
-                background: "#fef2f2",
-                color: "#991b1b",
-                padding: "12px",
-                borderRadius: "8px",
-                fontSize: "12px",
-                textAlign: "left",
-                overflowX: "auto",
-                border: "1px solid #fecaca",
-                marginBottom: "20px"
-              }}>
-                {String(this.state.error?.message || this.state.error)}
-              </pre>
-            )}
-            <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
-              <button
-                className="btn gold"
-                onClick={() => {
-                  this.setState({ hasError: false, error: null });
-                  window.location.reload();
-                }}
-                style={{ padding: "10px 20px" }}
-              >
-                Reload Clinic Hub
-              </button>
-              <button
-                className="btn ghost"
-                onClick={() => {
-                  localStorage.clear();
-                  window.location.href = "/";
-                }}
-                style={{ padding: "10px 20px" }}
-              >
-                Reset &amp; Home
-              </button>
-            </div>
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <section className={`ui-recovery${this.props.inline ? " ui-recovery-inline" : ""}`} role="alert" aria-labelledby="recovery-title">
+        <div className="ui-recovery-card">
+          <span className="ui-recovery-icon"><TriangleAlert size={32} aria-hidden="true" /></span>
+          <h2 id="recovery-title">We couldn’t open this page</h2>
+          <p>Your saved records are still available. Please try again, or return to your home screen.</p>
+          {import.meta.env.DEV && this.state.error && <details className="ui-recovery-details"><summary>Developer details</summary><pre>{String(this.state.error.message || this.state.error)}</pre></details>}
+          <div className="ui-recovery-actions">
+            <button className="btn gold" onClick={this.retry}>Try again</button>
+            <button className="btn ghost" onClick={this.goHome}>{this.props.inline ? "Back to dashboard" : "Return home"}</button>
           </div>
         </div>
-      );
-    }
-    return this.props.children;
+      </section>
+    );
   }
 }
-
