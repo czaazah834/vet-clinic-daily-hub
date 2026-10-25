@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { query } from './db.js';
+import {externalHistoryErrors} from '../src/externalHistory.js';
 import { clinicClock, validDate } from './scheduling.js';
 
 let ready;
@@ -10,6 +11,8 @@ export function ensurePetRegistrationSchema() {
       await query(readFileSync(new URL('./database/pet-registration.sql', import.meta.url), 'utf8'));
     if (!(await query("SELECT version FROM pawcare_schema_migrations WHERE version='owner-pet-onboarding-v1'")).rows.length)
       await query(readFileSync(new URL('./database/owner-pet-onboarding.sql', import.meta.url), 'utf8'));
+    if (!(await query("SELECT version FROM pawcare_schema_migrations WHERE version='patient-reference-history-v1'")).rows.length)
+      await query(readFileSync(new URL('./database/patient-reference-history.sql', import.meta.url), 'utf8'));
   })().catch(error => { ready = undefined; throw error; });
 }
 export const registrationError = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -43,6 +46,8 @@ export function validatePetRegistration(body) {
     if (['breed','color','notes'].includes(key) && value.trim() && !/[A-Za-zÀ-ÿ]/.test(value)) throw registrationError(`Use words in the ${key} field.`);
     return value.trim();
   };
+  const historyError=Object.values(externalHistoryErrors(body)).find(Boolean);
+  if(historyError) throw registrationError(historyError);
   const name = text('name',30,true);
   if (name.length < 2 || !/^[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 .'-]*$/.test(name) || !/[A-Za-zÀ-ÿ]/.test(name)) throw registrationError('Use a pet name with 2–30 characters, including at least one letter.');
   const species = speciesNames.get(body.species);
@@ -57,7 +62,7 @@ export function validatePetRegistration(body) {
   if (!['Yes','No','Not sure'].includes(body.neutered)) throw registrationError('Choose the spay/neuter status.');
   const dentalOcclusion = text('dentalOcclusion',100);
   if (species === 'Rodent' && !dentalStatuses.includes(dentalOcclusion)) throw registrationError('Choose the dental status, or select Not Evaluated Yet.');
-  return { name, species, speciesOther:species === 'Other' ? speciesOther : '', breed:text('breed',50), sex:body.sex, birth:body.birth, weight:body.weight, neutered:body.neutered, color:text('color',40), notes:text('notes',200), dentalOcclusion:species === 'Rodent' ? dentalOcclusion : '', photo:validatePetPhoto(body.photo ?? '') };
+  return { priorVaccines:(body.priorVaccines || []).map(v=>v.trim()),externalClinicNotes:(body.externalClinicNotes || '').trim(), name, species, speciesOther:species === 'Other' ? speciesOther : '', breed:text('breed',50), sex:body.sex, birth:body.birth, weight:body.weight, neutered:body.neutered, color:text('color',40), notes:text('notes',200), dentalOcclusion:species === 'Rodent' ? dentalOcclusion : '', photo:validatePetPhoto(body.photo ?? '') };
 }
 
 // Lock the owner before any request: create/edit/approve share this order.
@@ -88,6 +93,8 @@ export async function savePendingPatient(client, request) {
     WHERE pets.owner_id=EXCLUDED.owner_id AND pets.registration_status<>'Verified' RETURNING *`,
     [id,request.owner_id,request.name,request.species,request.species_other || '',request.breed || '',request.sex,request.birth,request.weight,request.color,request.neutered,request.notes,request.photo,request.dental_occlusion]);
   if(!rows.length) throw registrationError('This patient is already verified. Refresh your records.',409);
+  await client.query('UPDATE pets SET prior_vaccines=$2,external_clinic_notes=$3 WHERE id=$1',[id,JSON.stringify(request.prior_vaccines || []),request.external_clinic_notes || '']);
+  rows[0].prior_vaccines=request.prior_vaccines || []; rows[0].external_clinic_notes=request.external_clinic_notes || '';
   await client.query('UPDATE pet_requests SET pet_id=$2 WHERE id=$1',[request.id,id]);
   await client.query('UPDATE owners SET first_pet_registered_at=COALESCE(first_pet_registered_at,clock_timestamp()) WHERE id=$1',[request.owner_id]);
   request.pet_id=id;

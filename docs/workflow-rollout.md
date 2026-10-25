@@ -104,3 +104,13 @@ Local automated suites and a synthetic full-app rehearsal cover these boundaries
 Run the same checks on staging using the actual deployment configuration before
 publishing to the clinic. A production-like backup rehearsal and live checks remain
 necessary when real data and hosting access become available.
+
+### Reception review and previous-clinic references
+
+The front-desk request inbox is the primary approval path for booked patients. Open **View request details** and review the submitted pet details, owner contact, symptoms and requested slot. Approval still verifies registration and confirms the booking in one transaction. Each additional pet follows the same process. Registrations with a pending booking appear in that booking review; the standalone registration inbox contains pets without a pending visit. Past unresolved requests remain visible for rescheduling or rejection. Confirmed upcoming visits remain visible with the nearest date first.
+
+Owners can provide previous-clinic vaccination names and notes during registration and update reference details from a verified pet's profile. These are unverified owner reports, separate from administered vaccinations and approved booster dates. Reference edits are versioned and audited. Legacy external-guide rows retain their IDs and stored content while the card/PDF labels them as unverified references with unknown administration dates.
+
+Veterinarians select an admission reason (or describe Other), review/edit the provided care and monitoring templates, and confirm the patient-specific plan. The assistant records actual owner consent and emergency-contact details in the admission care record. Consent is an authorization received by staff, not a fabricated electronic signature. A newly created admission shows the pending assistant task; historical consent remains retained. Existing authorized clinical API clients can still submit consent they actually received. Vet discharge approval, saved payment and separate confirmed release remain distinct.
+
+New consultations default to today in Manila. Historical dates require a saved explanation and cannot precede the linked appointment or the patient's birth. Existing historical medical records are preserved. Apply the additive `patient-reference-history` migration using the migration commands above before rollout; it preserves existing IDs and adds reference storage/audit and consultation backdating metadata.

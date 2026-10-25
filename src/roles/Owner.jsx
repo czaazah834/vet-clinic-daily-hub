@@ -103,7 +103,7 @@ function Dash({ db, setDb, me, go, say }) {
     })}</PaginatedList> : null}
     {!pets.length && reqs.length > 0 && <div className="empty sm">Your saved pets are listed above. You can request an appointment while verification is pending.</div>}
     {modal && modal.form && <PetFormModal db={db} setDb={setDb} me={me} say={say} editing={modal.editing} onClose={() => setModal(null)} />}
-    {modal && modal.profile && <PetProfileModal pet={modal.profile} db={db} me={me} onClose={() => setModal(null)} onVacc={() => { pick.petId = modal.profile.id; go("vacc"); }} onBook={(pid, rsn) => book(pid || modal.profile.id, rsn)} />}
+    {modal && modal.profile && <PetProfileModal pet={modal.profile} db={db} setDb={setDb} me={me} onClose={() => setModal(null)} onVacc={() => { pick.petId = modal.profile.id; go("vacc"); }} onBook={(pid, rsn) => book(pid || modal.profile.id, rsn)} />}
   </>);
 }
 const P = (k, l, i, sub, Page, s) => ({ k, l, i, sub, Page, s });

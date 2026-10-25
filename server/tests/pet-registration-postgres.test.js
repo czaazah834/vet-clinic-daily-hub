@@ -263,3 +263,48 @@ test('onboarding migration backfills pending legacy requests, keeps approved ide
  for(const original of before) assert.deepEqual((await query('SELECT id,registration_status FROM pets WHERE id=$1',[original.id])).rows[0],original);
  assert.equal((await query("SELECT count(*)::int n FROM pets WHERE owner_id='o_legacy-pending'")).rows[0].n,1);
 });
+
+test('each new pet retains its own unverified references through review without creating certified doses',async()=>{
+ const owner=await user('references'),other=await user('references-other');
+ const requestId=crypto.randomUUID(),priorVaccines=['Anti-Rabies Vaccine','FVRCP 4-in-1 Dose 1'],externalClinicNotes='Previous clinic: Synthetic Animal Care; date unknown. Bring original booklet.';
+ const data={...base,requestId,priorVaccines,externalClinicNotes};
+ const pair=await Promise.all([call(owner,'POST','/pet-requests',data),call(owner,'POST','/pet-requests',data)]);
+ assert.deepEqual(pair.map(r=>r.status),[200,200]);assert.equal(pair[0].data.pet.id,pair[1].data.pet.id);
+ const first=pair[0].data.request;
+ assert.deepEqual(first.prior_vaccines,priorVaccines);assert.deepEqual(pair[0].data.pet.prior_vaccines,priorVaccines);
+ const approved=await review(first.id,'approve',0);assert.equal(approved.status,200,JSON.stringify(approved));
+ assert.deepEqual(approved.data.pet.prior_vaccines,priorVaccines);
+ assert.equal((await query('SELECT count(*)::int n FROM vaccinations WHERE pet_id=$1 AND done=true',[first.pet_id])).rows[0].n,0);
+ const second=await create(owner,{name:'Milo',priorVaccines:['Prior Deworming'],externalClinicNotes:'Different clinic report.'});
+ assert.notEqual(second.pet_id,first.pet_id);assert.equal(second.status,'Pending');
+ let state=(await call(owner,'GET','/state')).data.data;
+ assert.equal(state.pets.find(p=>p.id===first.pet_id).registrationStatus,'Verified');
+ assert.equal(state.pets.find(p=>p.id===second.pet_id).registrationStatus,'Pending');
+ assert.deepEqual(state.petRequests.find(r=>r.id===second.id).priorVaccines,['Prior Deworming']);
+ const path=`/pets/${first.pet_id}/reference-history`,edit={revision:0,priorVaccines:['Anti-Rabies Vaccine'],externalClinicNotes:'Original booklet now available from previous clinic.'};
+ assert.equal((await call(other,'PUT',path,edit)).status,404);
+ assert.equal((await call(assistant,'PUT',path,edit)).status,403);
+ const saved=await call(owner,'PUT',path,edit);assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.pet.reference_revision,1);
+ assert.equal((await call(owner,'PUT',path,edit)).status,200,'retry of identical data creates no new history');
+ assert.equal((await query('SELECT count(*)::int n FROM pet_reference_updates WHERE pet_id=$1',[first.pet_id])).rows[0].n,1);
+ assert.equal((await call(owner,'PUT',path,{...edit,externalClinicNotes:'Different stale details'})).status,409);
+ for(const patch of [{priorVaccines:['123']},{priorVaccines:['Rabies',' rabies ']},{priorVaccines:{}},{externalClinicNotes:'666666'}])assert.equal((await call(owner,'PUT',path,{...edit,revision:1,...patch})).status,400);
+ assert.equal((await call(owner,'PUT',`/pets/${second.pet_id}/reference-history`,edit)).status,409,'pending reference corrections use registration revisions');
+ assert.ok(!(await call(other,'GET','/state')).data.data.pets.some(p=>p.id===first.pet_id));
+ await query("CREATE FUNCTION fail_reference_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Updated owner-reported%' THEN RAISE EXCEPTION 'synthetic audit failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_reference_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION fail_reference_audit()");
+ try{assert.equal((await call(owner,'PUT',path,{...edit,revision:1,externalClinicNotes:'Correction requiring audit.'})).status,500);}finally{await query('DROP TRIGGER fail_reference_audit ON audit_logs');}
+ const row=(await query('SELECT reference_revision,external_clinic_notes FROM pets WHERE id=$1',[first.pet_id])).rows[0];assert.equal(row.reference_revision,1);assert.equal(row.external_clinic_notes,edit.externalClinicNotes);
+ assert.equal((await query('SELECT count(*)::int n FROM pet_reference_updates WHERE pet_id=$1',[first.pet_id])).rows[0].n,1);
+});
+
+test('additive reference migration preserves legacy submission retry identity and existing records',async()=>{
+ const owner=await user('legacy-reference-retry'),requestId=crypto.randomUUID();
+ const original=await call(owner,'POST','/pet-requests',{...base,requestId});assert.equal(original.status,200);
+ await query("UPDATE pet_requests SET submission_payload=submission_payload-'priorVaccines'-'externalClinicNotes' WHERE id=$1",[original.data.request.id]);
+ const petBefore=(await query('SELECT * FROM pets WHERE id=$1',[original.data.pet.id])).rows[0];
+ const source=readFileSync(new URL('../database/patient-reference-history.sql',import.meta.url),'utf8');
+ await query(source);await query(source);
+ const retry=await call(owner,'POST','/pet-requests',{...base,requestId});assert.equal(retry.status,200,JSON.stringify(retry));assert.equal(retry.data.request.id,original.data.request.id);assert.equal(retry.data.pet.id,original.data.pet.id);
+ assert.deepEqual((await query('SELECT * FROM pets WHERE id=$1',[original.data.pet.id])).rows[0],petBefore);
+ assert.equal((await query('SELECT count(*)::int n FROM pet_requests WHERE owner_id=$1',['o_legacy-reference-retry'])).rows[0].n,1);
+});

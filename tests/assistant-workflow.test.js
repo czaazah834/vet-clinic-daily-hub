@@ -77,7 +77,7 @@ test('approval inbox includes today and future Pending Approval visits independe
   const future = {...visit,id:'future',date:'2026-11-05',time:'08:00'};
   const early = {...visit,id:'early',time:'08:00'};
   const all = [future, visit, {...visit,id:'past',date:'2026-10-24'}, {...future,id:'confirmed',status:'Scheduled'}, {...future,id:'cancelled',status:'Cancelled'}, early];
-  assert.deepEqual(pendingVisitApprovals(all,date).map(a => a.id), ['early','today','future']);
+  assert.deepEqual(pendingVisitApprovals(all,date).map(a => a.id), ['early','today','future','past']);
   assert.deepEqual(assistantQueue(all,date).arrivals.map(a => a.id), []);
   assert.equal(all[0], future, 'does not reorder the clinic store');
   assert.equal(pendingVisitApprovals(all.map(a => a.id === 'future' ? {...a,status:'Scheduled'} : a),date).some(a => a.id === 'future'),false);

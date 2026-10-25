@@ -2,13 +2,15 @@ import {boosterDate} from './clinicalWorkflow.js';
 // Match the consultation endpoint's SOAP, date and weight limits before sending.
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
   && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
-export function validateSoapFields(form, today, birth) {
+export function validateSoapFields(form, today, birth, visitDate) {
   const errors = {};
   for (const [field, label] of [['symptoms','Subjective history'], ['objective','Objective examination'], ['diagnosis','Assessment / Diagnosis'], ['treatment','Plan / Treatment']]) {
     if (!String(form[field] || '').trim()) errors[field] = `${label} is required.`;
     else if (form[field].length > 10000) errors[field] = `${label} cannot exceed 10,000 characters.`;
   }
   if (!validDate(form.date) || form.date > today) errors.date = 'Enter a valid consultation date that is not in the future.';
+  if (visitDate && validDate(form.date) && form.date < visitDate) errors.date='The consultation date cannot be before the linked visit. Use today for current care.';
+  if(validDate(form.date) && form.date<today && (typeof form.backdateReason!=='string' || form.backdateReason.trim().length<5 || form.backdateReason.length>500 || !/[\p{L}]/u.test(form.backdateReason))) errors.backdateReason='Explain why this historical consultation date is being recorded (5–500 characters).';
   if (birth && validDate(form.date) && form.date < birth) errors.date = 'The consultation date cannot be before the patient’s birth.';
   if (form.weight !== '' && form.weight != null && (!Number.isFinite(Number(form.weight)) || Number(form.weight) <= 0 || Number(form.weight) > 120)) {
     errors.weight = 'Enter a weight greater than 0 and no more than 120 kg, or leave it blank.';

@@ -80,5 +80,17 @@ test('clinical dates reject pre-birth notes and overdue followups without comple
  const note={id:'p2-note-saved',apptId:'p2-note',petId:'p4',date:clinicClock().date,symptoms:'History',objective:'Exam',diagnosis:'Assessment',treatment:'Plan',prescription:'',performedServices:['srv_consult']};
  for(const patch of [{date:'2010-01-01'},{careStatus:'Recheck required',followUpDate:shiftDate(clinicClock().date,-1),followUpReason:'Review'}])assert.equal((await req('vet','POST','/consultations',{...note,...patch})).status,400);
  assert.equal((await query("SELECT status FROM appointments WHERE id='p2-note'")).rows[0].status,'In consultation');assert.equal((await query("SELECT COUNT(*)::int n FROM consultations WHERE appt_id='p2-note'")).rows[0].n,0);
- const saved=await req('vet','POST','/consultations',{...note,date:shiftDate(clinicClock().date,-1),careStatus:'Recheck required',followUpDate:clinicClock().date,followUpReason:'Review today'});assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.appointment.status,'Completed');
+ const saved=await req('vet','POST','/consultations',{...note,date:shiftDate(clinicClock().date,-1),backdateReason:'Care was provided during the overnight visit.',careStatus:'Recheck required',followUpDate:clinicClock().date,followUpReason:'Review today'});assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.appointment.status,'Completed');
+});
+
+test('consultation backdating is explicit and cannot precede its actual linked encounter',async()=>{
+ const yesterday=shiftDate(clinicClock().date,-1);
+ await makeVisit('p2-backdate','p3','In consultation',yesterday);
+ const note={id:'p2-backdate-saved',apptId:'p2-backdate',petId:'p3',date:yesterday,symptoms:'History',objective:'Exam',diagnosis:'Assessment',treatment:'Plan',prescription:'',performedServices:['srv_consult']};
+ for(const patch of [{},{backdateReason:'12345'},{backdateReason:'x'.repeat(501)},{date:shiftDate(yesterday,-1),backdateReason:'Historical visit'}])assert.equal((await req('vet','POST','/consultations',{...note,...patch})).status,400);
+ assert.equal((await query("SELECT status FROM appointments WHERE id='p2-backdate'")).rows[0].status,'In consultation');
+ assert.equal((await query("SELECT count(*)::int n FROM consultations WHERE appt_id='p2-backdate'")).rows[0].n,0);
+ const reason='Care actually provided during this overnight visit.';
+ assert.equal((await req('vet','POST','/consultations',{...note,backdateReason:reason})).status,200);
+ assert.equal((await query("SELECT backdate_reason FROM consultations WHERE id='p2-backdate-saved'")).rows[0].backdate_reason,reason);
 });

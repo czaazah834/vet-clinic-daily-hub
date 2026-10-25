@@ -24,6 +24,9 @@ buildSync({
       export { ProfileBody, PasswordBody } from './src/roles/owner/Profile.jsx';
       export { PetFormModal, PetProfileModal } from './src/roles/owner/Pets.jsx';
       export { DischargeDocument } from './src/roles/AdmissionDischargeSummary.jsx';
+      export {default as PetRequestsPage} from './src/roles/PetRequestsPage.jsx';
+      export {RequestReview} from './src/roles/FrontDeskApprovals.jsx';
+      export { default as AdmissionForm} from './src/roles/AdmissionForm.jsx';
       export { default as PetApprovalModal } from './src/roles/PetApprovalModal.jsx';
       export { default as Reports } from './src/roles/ReportsPage.jsx';
       export { default as ErrorBoundary } from './src/ErrorBoundary.jsx';
@@ -153,7 +156,7 @@ test('front desk surfaces a future booking before its arrival date', () => {
   assert.match(html, /10:00 AM/);
   assert.match(html, /Sample Vet/);
   assert.match(html, /Please call before the visit/);
-  assert.match(html, /Approve visit/);
+  assert.match(html, /View request details/);
 });
 
 
@@ -202,7 +205,9 @@ test('pending appointment queue presents linked registration and visit for one c
  db.petRequests=[{id:'review',petId:db.pets[0].id,ownerId:db.pets[0].ownerId,name:'Pending Luna',species:'Feline',breed:'Puspin',sex:'Female',birth:'2025-01-01',weight:4.25,neutered:'Not sure',notes:'Owner registration notes',status:'Pending',revision:2}];
  db.appts=[{id:'pending-visit',petId:db.pets[0].id,vetId:'v1',date:'2099-01-05',time:'10:00',status:'Pending Approval',reason:'Requested examination'}];
  const html=render(ui.assistant.Dash,props('assistant',db));
- for(const text of ['Pending Appointment Requests','Requested examination','Pet registration details','Owner-reported weight:','4.25','Owner registration notes','Approve appointment &amp; registration']) assert.ok(html.includes(text),text);
+ for(const text of ['Pending Appointment Requests','Requested examination','View request details','New pet · registration reviewed with this booking','Pets without a visit (0)']) assert.ok(html.includes(text),text);
+ const details=render(ui.RequestReview,{snapshot:{visit:db.appts[0],patient:db.petRequests[0],registration:db.petRequests[0],owner:db.owners[0],vet:db.vets[0]},db,confirming:false});
+ for(const text of ['Submitted patient details','Reported weight','4.25','Owner registration notes','Approve appointment &amp; registration','I checked the pet details'])assert.ok(details.includes(text),text);
 });
 
 test('registration review of a booked pending patient uses the combined approval action',()=>{
@@ -249,4 +254,13 @@ test('Other reason renders an accessible textbox only for the selected Other cho
  const html=render(ui.BookingReason,{service:'checkup',choice:'Other',other:'12',onChoice(){},onOther(){},errors:{otherReason:'Describe symptoms in words.'}});
  assert.match(html,/name="otherReason"/);assert.match(html,/aria-invalid="true"/);assert.match(html,/Describe symptoms in words/);
  assert.doesNotMatch(render(ui.BookingReason,{service:'checkup',choice:'Annual check-up',other:'12'}),/textarea/);
+});
+
+test('standalone registration page excludes booked pending pets while retaining past decisions',()=>{
+ const db=populated();
+ db.petRequests=[{id:'booked',petId:'p1',name:'Booked New Patient',status:'Pending',ownerId:db.owners[0].id},{id:'standalone',petId:'p2',name:'Unbooked New Patient',status:'Pending',ownerId:db.owners[0].id}];
+ db.appts=[{id:'pending',petId:'p1',status:'Pending Approval',date:'2099-01-01',time:'10:00'}];
+ const html=render(ui.PetRequestsPage,props('assistant',db));
+ assert.ok(html.includes('Unbooked New Patient'));assert.ok(!html.includes('Booked New Patient'));
+ assert.ok(html.includes('Pending (1)'));
 });

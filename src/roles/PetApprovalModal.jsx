@@ -1,3 +1,4 @@
+import {ExternalHistorySummary} from '../components/ExternalHistory.jsx';
 import { changeAppointmentStatus } from "../appointmentStatus.js";
 import { sameIntakeVisit } from "../intakeVisit.js";
 import { fmt12 } from "../booking.js";
@@ -101,6 +102,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
         {(changed || conflict || visitChanged) && <p className="err" role="alert">This request changed or was already processed. Close this review and reopen the latest request before making a decision.</p>}
         {request.status !== "Pending" && <section role="status"><b>Registration {request.status}</b>{request.declineReason && <p style={{whiteSpace:"pre-wrap"}}>{request.declineReason}</p>}<p>{request.status === "Declined" ? "The owner must correct and resubmit this request before it can be reviewed again." : "This registration has already been processed."}</p></section>}
         {saveError && <p className="err" role="alert">{saveError}</p>}
+        <ExternalHistorySummary patient={request} />
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px", marginBottom: "14px" }}>
           <div>

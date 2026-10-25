@@ -1,3 +1,4 @@
+import {admissionReasons,carePlanTemplates,monitoringTemplates} from '../admissionTemplates.js';
 import { useFormValidation } from '../components/useFormValidation.jsx';
 import { medicineEventTime, admissionErrors } from '../formValidation.js';
 import { useEffect, useRef, useState } from 'react';
@@ -9,15 +10,16 @@ import './admissions.css';
 export default function AdmissionForm({mode,admission,visits = [],consultationContext,me,onClose,onSaved}) {
   const context = useRef(consultationContext).current;
   const sources = useRef(visits).current, revision = useRef(admission?.revision).current;
-  const [form,setForm] = useState({apptId:consultationContext ? visits[0]?.id || '' : '',clinicalNote:'',carePlan:'',ownerUpdate:'',temp:'',weight:'',dischargeInstructions:'',nextObservationAt:'',observationInstructions:'',completeObservation:false,consentConfirmed:false,consentName:'',consentMethod:'',emergencyName:'',emergencyPhone:'',emergencyRelationship:''});
+  const [form,setForm] = useState({reasonChoice:'',planTemplate:'',observationTemplate:'',planConfirmed:false,apptId:consultationContext ? visits[0]?.id || '' : '',clinicalNote:'',carePlan:'',ownerUpdate:'',temp:'',weight:'',dischargeInstructions:'',nextObservationAt:'',observationInstructions:'',completeObservation:false,consentConfirmed:false,consentName:'',consentMethod:'',emergencyName:'',emergencyPhone:'',emergencyRelationship:''});
   const [error,setError] = useState(''), [saving,setSaving] = useState(false), [discard,setDiscard] = useState(false);
   const pending = useRef(false), request = useRef(null);
-  const create = mode === 'create', discharge = mode === 'discharge', release = mode === 'release';
+  const create = mode === 'create', discharge = mode === 'discharge', release = mode === 'release', consent=mode==='consent';
   const validation = useFormValidation(admissionErrors(form,{mode,vet:me.role==='vet',visits:sources}));
   const visit = sources.find(row => row.id === form.apptId);
   const dirty = Object.entries(form).some(([key,value]) => key !== 'apptId' && value !== '' && value !== false);
   const review = useSubmissionReview([form,visit,admission?.revision,admission?.status]);
-  const set = (key,value) => setForm(previous => ({...previous,[key]:value}));
+  const set = (key,value) => setForm(previous => ({...previous,[key]:value,...(['carePlan','observationInstructions','planTemplate','observationTemplate'].includes(key)?{planConfirmed:false}:{})}));
+  const template=(key,value,field,templates)=>setForm(previous=>({...previous,[key]:value,[field]:templates[value] || '',planConfirmed:false}));
   const close = () => { if (!pending.current) dirty ? setDiscard(true) : onClose(); };
   useEffect(() => {
     if (!dirty) return;
@@ -32,14 +34,15 @@ export default function AdmissionForm({mode,admission,visits = [],consultationCo
     setError('');
     if (!validation.validate(event)) return;
     if (create && !visit) return setError('Choose an assigned consultation. Refresh visits if it is missing.');
-    const body = {clinicalNote:form.clinicalNote.trim(),ownerUpdate:form.ownerUpdate.trim(),measurements:{},
-      ...(create ? {apptId:visit.id,expectedVisit:visit} : {revision}),
-      ...(me.role === 'vet' && !discharge && !release ? {carePlan:form.carePlan.trim()} : {}),
+    const body = {clinicalNote:consent ? 'Admission consent and emergency contact received.' : form.clinicalNote.trim(),ownerUpdate:form.ownerUpdate.trim(),measurements:{},
+      ...(create ? {reasonChoice:form.reasonChoice,apptId:visit.id,expectedVisit:visit} : {revision}),
+      ...(me.role === 'vet' && !discharge && !release ? {carePlan:form.carePlan.trim(),planTemplate:form.planTemplate,observationTemplate:form.observationTemplate,planConfirmed:form.planConfirmed} : {}),
       ...(discharge ? {dischargeInstructions:form.dischargeInstructions.trim()} : {})};
     if (me.role === 'vet' && !discharge && !release) {
       if (create || form.nextObservationAt || form.observationInstructions) Object.assign(body,{nextObservationAt:new Date(medicineEventTime(form.nextObservationAt)).toISOString(),observationInstructions:form.observationInstructions.trim()});
-      if (create || form.consentConfirmed) for (const key of ['consentConfirmed','consentName','consentMethod','emergencyName','emergencyPhone','emergencyRelationship']) body[key] = typeof form[key]==='string' ? form[key].trim() : form[key];
+
     }
+    if(consent || me.role==='assistant' && form.consentConfirmed) for(const key of ['consentConfirmed','consentName','consentMethod','emergencyName','emergencyPhone','emergencyRelationship']) body[key]=typeof form[key]==='string'?form[key].trim():form[key];
     if (mode==='update' && form.completeObservation) body.completeObservation = true;
     for (const key of ['temp','weight']) if (form[key] !== '') body.measurements[key] = Number(form[key]);
     if (!body.clinicalNote || (create && (!body.carePlan || !body.ownerUpdate)) || (discharge && !body.dischargeInstructions)) return setError('Complete the required notes and instructions.');
@@ -62,7 +65,7 @@ export default function AdmissionForm({mode,admission,visits = [],consultationCo
       onSaved(result.admission);
     } catch (e) { setError(e.message); pending.current = false; setSaving(false); }
   };
-  const title = create ? context ? `Admit ${context.petName}` : 'Admit a pet' : release ? `Release ${admission.petName} to owner` : discharge ? `Discharge ${admission.petName}` : `${admission.petName} · ${me.role === 'vet' ? 'Veterinarian update' : 'Care observation'}`;
+  const title = consent ? `Consent and emergency contact · ${admission.petName}` : create ? context ? `Admit ${context.petName}` : 'Admit a pet' : release ? `Release ${admission.petName} to owner` : discharge ? `Discharge ${admission.petName}` : `${admission.petName} · ${me.role === 'vet' ? 'Veterinarian update' : 'Care observation'}`;
   return <ClinicDialog label={title} onClose={close}>
     <section className="card admission-form">
       {review.card}<h2>{title}</h2>
@@ -80,21 +83,25 @@ export default function AdmissionForm({mode,admission,visits = [],consultationCo
           {create && !context && <label>Consultation visit *<select required {...validation.field('apptId')} value={form.apptId} onChange={event => set('apptId',event.target.value)}>
             <option value="">Choose a consultation</option>{sources.map(row => <option key={row.id} value={row.id}>{row.petName} · {row.ownerName} · {row.date} {row.time} · {row.status}</option>)}
           </select>{validation.feedback('apptId')}</label>}
-          <label>{create ? 'Reason for admission (clinic only)' : release ? 'Release confirmation (clinic only)' : discharge ? 'Discharge summary (clinic only)' : 'Observations / care provided (clinic only)'} *
-            <textarea required rows={3} maxLength={3000} {...validation.field('clinicalNote')} value={form.clinicalNote} onChange={event => set('clinicalNote',event.target.value)} />{validation.feedback('clinicalNote')}</label>
+          {create && <label>Reason for admission *<select required {...validation.field('reasonChoice')} value={form.reasonChoice} onChange={e=>setForm(previous=>({...previous,reasonChoice:e.target.value,clinicalNote:e.target.value==='Other'?'':e.target.value}))}><option value="">Choose an admission reason</option>{admissionReasons.map(v=><option key={v}>{v}</option>)}</select>{validation.feedback('reasonChoice')}</label>}
+          {(!create || form.reasonChoice==='Other') && !consent && <label>{create ? 'Other reason for admission (clinic only)' : release ? 'Release confirmation (clinic only)' : discharge ? 'Discharge summary (clinic only)' : 'Observations / care provided (clinic only)'} *
+            <textarea required rows={3} maxLength={3000} {...validation.field('clinicalNote')} value={form.clinicalNote} onChange={event => set('clinicalNote',event.target.value)} />{validation.feedback('clinicalNote')}</label>}
+          {me.role==='vet' && !discharge && !release && <label>Care plan template<select {...validation.field('planTemplate')} value={form.planTemplate} onChange={e=>template('planTemplate',e.target.value,'carePlan',carePlanTemplates)}><option value="">Choose a starting template (optional)</option>{Object.keys(carePlanTemplates).map(v=><option key={v}>{v}</option>)}<option value="Custom">Custom plan</option></select>{validation.feedback('planTemplate')}</label>}
           {me.role === 'vet' && !discharge && !release && <label>{create ? 'Care plan and monitoring instructions *' : 'Updated care plan (optional; leave blank to keep the current plan)'}
             <textarea required={create} rows={3} maxLength={3000} {...validation.field('carePlan')} value={form.carePlan} onChange={event => set('carePlan',event.target.value)} />{validation.feedback('carePlan')}</label>}
           {me.role === 'vet' && !discharge && !release && <fieldset><legend>Next observation · veterinarian schedule</legend>
             <p>{create ? 'Set the first check for the assistant to follow.' : 'Leave both fields blank to keep the saved task. To schedule another check after completion, enter a new time and instructions.'} Times are in Manila (UTC+08:00).</p>
             <label>Next observation (Manila) {create && '*'}<input type="datetime-local" required={create} {...validation.field('nextObservationAt')} value={form.nextObservationAt} disabled={form.completeObservation} onChange={e=>set('nextObservationAt',e.target.value)} />{validation.feedback('nextObservationAt')}</label>
+            <label>Monitoring template<select {...validation.field('observationTemplate')} value={form.observationTemplate} onChange={e=>template('observationTemplate',e.target.value,'observationInstructions',monitoringTemplates)}><option value="">Choose a starting template (optional)</option>{Object.keys(monitoringTemplates).map(v=><option key={v}>{v}</option>)}<option value="Custom">Custom instructions</option></select>{validation.feedback('observationTemplate')}</label>
             <label>What staff should check {create && '*'}<textarea maxLength={1000} required={create} rows={2} {...validation.field('observationInstructions')} value={form.observationInstructions} disabled={form.completeObservation} onChange={e=>set('observationInstructions',e.target.value)} />{validation.feedback('observationInstructions')}</label>
           </fieldset>}
+          {me.role==='vet' && !discharge && !release && <><p>Templates provide documentation prompts. Review and edit the plan for this patient; medicine orders are saved separately.</p><label className="admission-check"><input type="checkbox" {...validation.field('planConfirmed')} checked={form.planConfirmed} onChange={e=>set('planConfirmed',e.target.checked)} />I reviewed this patient’s care plan and monitoring instructions.</label>{validation.feedback('planConfirmed')}{create && <p>After admission, the assistant records owner consent and emergency contact details in the care record.</p>}</>}
           {mode==='update' && admission.nextObservationAt && !admission.observationCompletedAt && <section className="admission-plan"><h3>Scheduled observation</h3><p>{new Date(admission.nextObservationAt).toLocaleString('en-PH',{timeZone:'Asia/Manila'})} · {admission.observationInstructions}</p>
             <label className="admission-check"><input type="checkbox" checked={form.completeObservation} disabled={!!form.nextObservationAt || !!form.observationInstructions} onChange={e=>set('completeObservation',e.target.checked)} />I performed this scheduled check now. Record findings above.</label><p>Save completion first; the veterinarian can then schedule the next check. A general care update does not complete this task.</p></section>}
-          {me.role === 'vet' && !discharge && !release && <fieldset><legend>Owner consent and emergency contact</legend>
+          {me.role === 'assistant' && (consent || mode==='update') && <fieldset><legend>Owner consent and emergency contact</legend>
             <p>Record consent received for this admission and care plan. This records staff confirmation, not an electronic owner signature. {admission?.consent && 'New confirmation replaces the displayed contact details; the previous record stays in the care timeline.'}</p>
-            <label className="admission-check"><input type="checkbox" required={create} {...validation.field('consentConfirmed')} checked={form.consentConfirmed} onChange={e=>set('consentConfirmed',e.target.checked)} />I received consent from the owner or authorized representative {create && '*'}</label>{validation.feedback('consentConfirmed')}
-            {(create || form.consentConfirmed) && <>
+            <label className="admission-check"><input type="checkbox" required={consent} {...validation.field('consentConfirmed')} checked={form.consentConfirmed} onChange={e=>set('consentConfirmed',e.target.checked)} />I received consent from the owner or authorized representative {consent && '*'}</label>{validation.feedback('consentConfirmed')}
+            {(consent || form.consentConfirmed) && <>
               <label>Consenting person *<input required maxLength={150} {...validation.field('consentName')} value={form.consentName} onChange={e=>set('consentName',e.target.value)} />{validation.feedback('consentName')}</label>
               <label>Consent received *<select required {...validation.field('consentMethod')} value={form.consentMethod} onChange={e=>set('consentMethod',e.target.value)}><option value="">Choose method</option>{['In person','Phone','Written'].map(v=><option key={v}>{v}</option>)}</select>{validation.feedback('consentMethod')}</label>
               <label>Emergency contact name *<input required maxLength={150} {...validation.field('emergencyName')} value={form.emergencyName} onChange={e=>set('emergencyName',e.target.value)} />{validation.feedback('emergencyName')}</label>
@@ -102,11 +109,11 @@ export default function AdmissionForm({mode,admission,visits = [],consultationCo
               <label>Relationship to owner *<input required maxLength={100} {...validation.field('emergencyRelationship')} value={form.emergencyRelationship} onChange={e=>set('emergencyRelationship',e.target.value)} />{validation.feedback('emergencyRelationship')}</label>
             </>}
           </fieldset>}
-          {!discharge && !release && <div className="admission-measurements">
+          {!discharge && !release && !consent && <div className="admission-measurements">
             <label>Measured temperature (°C)<input type="number" min="33" max="45" step="0.1" {...validation.field('temp')} value={form.temp} onChange={event => set('temp',event.target.value)} />{validation.feedback('temp')}</label>
             <label>Measured weight (kg)<input type="number" min="0.05" max="120" step="0.01" {...validation.field('weight')} value={form.weight} onChange={event => set('weight',event.target.value)} />{validation.feedback('weight')}</label>
           </div>}
-          <label>Message visible to owner {create ? '*' : '(optional)'}<textarea required={create} rows={3} maxLength={2000} {...validation.field('ownerUpdate')} value={form.ownerUpdate} onChange={event => set('ownerUpdate',event.target.value)} placeholder="A clear update about the pet’s care and next steps" />{validation.feedback('ownerUpdate')}</label>
+          {!consent && <label>Message visible to owner {create ? '*' : '(optional)'}<textarea required={create} rows={3} maxLength={2000} {...validation.field('ownerUpdate')} value={form.ownerUpdate} onChange={event => set('ownerUpdate',event.target.value)} placeholder="A clear update about the pet’s care and next steps" />{validation.feedback('ownerUpdate')}</label>}
           {discharge && <label>Discharge and home-care instructions visible to owner *<textarea required rows={4} maxLength={3000} {...validation.field('dischargeInstructions')} value={form.dischargeInstructions} onChange={event => set('dischargeInstructions',event.target.value)} />{validation.feedback('dischargeInstructions')}</label>}
           {error && <p role="alert" className="err">{error} Your entries remain in this form.</p>}
           <div className="row end"><button type="button" className="btn ghost" onClick={close}>Cancel</button><button className="btn gold">{saving ? 'Saving…' : 'Review and save'}</button></div>

@@ -201,7 +201,7 @@ test('closed/restarted workstation releases or expires claims, and stale tokens 
 test('vet handoff is atomic, scoped, race-safe and exposes instructions to the receiving vet', async () => {
  await query(`INSERT INTO users(id,first_name,last_name,birthday,password_hash,email,role,vet_id,mobile_number,email_verified_at,mobile_verified) VALUES('u_vet2','Second','Doctor','1990-01-01','unused','vet2@example.invalid','vet','v2','+639000000002',NOW(),true)`);
  await query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,'u_vet2',NOW()+INTERVAL '1 day')",[sha256('test-vet2')]);
- await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,status,reason) VALUES('vet-handoff','p8','v1',$1,'11:00','In consultation','Clinical handoff')",[date]);
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,status,reason) VALUES('vet-handoff','p8','v1',$1,'11:00','In consultation','Clinical handoff')",[clinicClock().date]);
  const body={vetId:'v2',note:'Monitor hydration; treatment not yet administered.'};
  for(const role of ['owner','assistant','admin','vet2']) assert.equal((await req(role,'POST','/appointments/vet-handoff/handoff',body)).status,403);
  assert.equal((await req('vet','POST','/appointments/vet-handoff/handoff',{...body,note:''})).status,400);
@@ -292,11 +292,11 @@ test('unprescribed medicine and diets cannot be added at checkout; retail guide 
 });
 
 test('confirmed services, vaccine schedule and Rx persist atomically and mandatory charges cannot be removed or doubled',async()=>{
- await prepareVisit('service-atomic');
+ await prepareVisit('service-atomic','In consultation',shiftDate(clinicClock().date,-2));
  await query("UPDATE pets SET vaccination_card_id='VACC-PROCESS' WHERE id='p7'");
  const administered=shiftDate(clinicClock().date,-2);
  const vaccination={vaccine:'Anti-rabies',brand:'Synthetic',batch:'TEST-ONLY',doseNo:2,doseOf:3,intervalDays:28,scheduleApproved:true,nextDue:shiftDate(administered,28)};
- const body={...consultation('service-atomic'),date:administered,performedServices:['srv_consult','srv_rabies'],vaccination,prescriptionItems:[{catalogId:'product_multivitamin',quantity:1,instructions:'Synthetic instructions'}]};
+ const body={...consultation('service-atomic'),date:administered,backdateReason:'Care was provided during this historical visit.',performedServices:['srv_consult','srv_rabies'],vaccination,prescriptionItems:[{catalogId:'product_multivitamin',quantity:1,instructions:'Synthetic instructions'}]};
  for(const patch of [{doseNo:0},{doseNo:4},{doseOf:1},{scheduleApproved:false},{intervalDays:0},{nextDue:shiftDate(clinicClock().date,28)}]) assert.equal((await req('vet','POST','/consultations',{...body,vaccination:{...vaccination,...patch}})).status,400);
  const result=await req('vet','POST','/consultations',body);assert.equal(result.status,200,JSON.stringify(result));
  assert.deepEqual(result.data.invoiceItems.map(i=>[i.catalogId,i.qty,i.price]),[['srv_consult',1,500],['srv_rabies',1,350],['product_multivitamin',1,250]]);

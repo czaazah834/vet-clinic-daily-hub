@@ -1,3 +1,4 @@
+import {admissionChoiceErrors} from './admissionTemplates.js';
 import {vitalValueError} from './vitalValidation.js';
 import { consentErrors } from './admissionCare.js';
 const text = (value,label,max,required=false) => !String(value ?? '').trim() && required ? `${label} is required.` : String(value ?? '').length > max ? `Use at most ${max.toLocaleString()} characters.` : '';
@@ -7,18 +8,19 @@ export const numberError = (value,label,min,max,{required=true,integer=false}={}
   return !Number.isFinite(n) || n<min || n>max || (integer && !Number.isInteger(n)) ? `${label} must be ${integer?'a whole number ':''}between ${min} and ${max}.` : '';
 };
 export function admissionErrors(form,{mode,vet,visits=[]}) {
-  const create=mode==='create', discharge=mode==='discharge', release=mode==='release';
+  const create=mode==='create', discharge=mode==='discharge', release=mode==='release',consent=mode==='consent';
   return {
-    ...(vet && !discharge && !release ? consentErrors(form,create) : {}),
+    ...(consent ? consentErrors(form,true) : !vet && mode==='update' ? consentErrors(form,false) : {}),
     nextObservationAt:vet && !discharge && !release && (create || form.nextObservationAt || form.observationInstructions) ? !Number.isFinite(medicineEventTime(form.nextObservationAt)) ? 'Enter the next observation date and time (Manila).' : medicineEventTime(form.nextObservationAt)<=Date.now() ? 'Choose a future observation time.' : '' : '',
     observationInstructions:vet && !discharge && !release ? text(form.observationInstructions,'Observation instructions',1000,create || !!form.nextObservationAt) : '',
     apptId:create && !visits.some(v=>v.id===form.apptId) ? 'Choose an assigned consultation.' : '',
-    clinicalNote:text(form.clinicalNote,'Clinic note',3000,true),
+    clinicalNote:consent ? '' : text(form.clinicalNote,'Clinic note',3000,true),
     carePlan:vet && !discharge && !release ? text(form.carePlan,'Care plan',3000,create) : '',
     ownerUpdate:text(form.ownerUpdate,'Owner message',2000,create),
     dischargeInstructions:discharge ? text(form.dischargeInstructions,'Home-care instructions',3000,true) : '',
-    temp:!discharge && !release ? vitalValueError(form.temp,'temp',false) : '',
-    weight:!discharge && !release ? vitalValueError(form.weight,'weight',false) : '',
+    temp:!discharge && !release && !consent ? vitalValueError(form.temp,'temp',false) : '',
+    weight:!discharge && !release && !consent ? vitalValueError(form.weight,'weight',false) : '',
+    ...admissionChoiceErrors(form,{create,vet}),
   };
 }
 // datetime-local has no timezone; clinic records always use Manila (UTC+08:00).

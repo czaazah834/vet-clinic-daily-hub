@@ -1,3 +1,5 @@
+import ExternalHistory, {ExternalHistorySummary} from '../../components/ExternalHistory.jsx';
+import {externalHistoryErrors} from '../../externalHistory.js';
 import VitalsHistory from '../VitalsHistory.jsx';
 import {weightSourceLabel} from '../../vitalLabels.js';
 import ClinicDialog from '../../components/ClinicDialog.jsx';
@@ -201,7 +203,7 @@ export const OLDEST = yearsBefore(40);
 
 /* v = form values, taken = lower-case names this owner already has (pets and requests). Returns { field: message }. */
 export function validatePet(v, taken = []) {
-  const e = {}, name = v.name.trim();
+  const e = {...externalHistoryErrors(v)}, name = v.name.trim();
   if (!name) e.name = "Enter your pet’s name";
   else if (name.length < 2) e.name = "Use at least 2 characters";
   else if (name.length > 30) e.name = "Keep the name under 30 characters";
@@ -284,6 +286,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSet
     neutered: e0.neutered || "",
     color: e0.color || "",
     dentalOcclusion: e0.dentalOcclusion || "Not Evaluated Yet",
+    priorVaccines:e0.priorVaccines || [],externalClinicNotes:e0.externalClinicNotes || "",
     notes: e0.notes || ""
   }, v => validatePet(v, taken));
 
@@ -368,6 +371,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSet
       neutered: v.neutered,
       color: v.color.trim(),
       dentalOcclusion: canonicalSpecies === "Rodent" ? v.dentalOcclusion : "",
+      priorVaccines:v.priorVaccines.map(v=>v.trim()),externalClinicNotes:v.externalClinicNotes.trim(),
       notes: v.notes.trim(),
       photo
     };
@@ -379,7 +383,8 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSet
         ["Species",`${data.speciesLabel}${data.speciesOther ? ` (${data.speciesOther})` : ""}`],
         ["Breed",data.breed],
         ["Sex / birth date",`${data.sex} / ${data.birth}`],
-        ["Weight",`${data.weight} kg`],
+        ["Owner-reported weight",`${data.weight} kg`],
+        ["Previous-clinic references (unverified)",data.priorVaccines.join(", ") || "None"],["Reference notes",data.externalClinicNotes],
         ["Neutered",data.neutered],
         ["Color",data.color],
         ["Dental status",data.dentalOcclusion],
@@ -497,6 +502,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSet
           <div className="full"><Field id="pm" label="Anything the clinic should know (optional)" type="textarea" rows={2} max={200} value={v.notes} onChange={x => f.set("notes", x)} onBlur={() => f.blur("notes")} error={f.show("notes")} valid={f.ok("notes")} hint="Health problems, behavior or past treatments" /></div>
         </div>
 
+        <ExternalHistory form={f} species={normSpecies} />
         </fieldset>
         {top && <p className="err" role="alert">{top}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
@@ -559,7 +565,7 @@ export function RequestList({ db, setDb, me, say, onEdit, onBook }) {
 }
 
 /* ---------- Full profile of an approved pet ---------- */
-export function PetProfileModal({ pet, db, me, onClose, onVacc, onBook }) {
+export function PetProfileModal({ pet, db, setDb, me, onClose, onVacc, onBook }) {
   const historyComplete=useHistoryComplete();
   const p=db.pets.find(row=>row.id===pet.id)||pet;
   const V = scope(db, me, "vacc").filter(v => v.petId === p.id), A = scope(db, me, "appts").filter(a => a.petId === p.id);
@@ -592,6 +598,7 @@ export function PetProfileModal({ pet, db, me, onClose, onVacc, onBook }) {
       {(p.allergies || []).length > 0 && <div className="op-sec"><h4>Allergies</h4><ul className="ow-tags">{p.allergies.map(a => <li className="ow-tag" key={a}>{a}</li>)}</ul></div>}
       {p.notes && <div className="op-sec"><h4>Care notes</h4><p>{p.notes}</p></div>}
       
+      <OwnerReferenceHistory pet={p} setDb={setDb} />
       <VitalsHistory petId={p.id} me={me} />
       <div className="op-sec">
         <h4>Health at a glance</h4>
@@ -603,4 +610,23 @@ export function PetProfileModal({ pet, db, me, onClose, onVacc, onBook }) {
       <div className="row end"><button className="btn ghost" onClick={onVacc}>Vaccination card</button><button className="btn" onClick={onBook}>Book a visit</button></div>
     </Modal>
   );
+}
+
+function OwnerReferenceHistory({pet,setDb}) {
+  const [editing,setEditing]=useState(false), [error,setError]=useState(''),[saving,setSaving]=useState(false);
+  const busy=useRef(false), baseline=useRef(pet.referenceRevision || 0);
+  const f=useLive({priorVaccines:pet.priorVaccines || [],externalClinicNotes:pet.externalClinicNotes || ''},externalHistoryErrors);
+  const review=useSubmissionReview([f.v,baseline.current]);
+  const submit=async event=>{
+    event.preventDefault();if(busy.current)return;f.submit();if(!f.valid)return;
+    if(!await review.ask({title:'Review previous-clinic references',confirmLabel:'Save references',description:'Owner-reported guide only. Existing clinic measurements, administered doses and approved booster dates remain separately recorded.',fields:[['Vaccines',f.v.priorVaccines.join(', ') || 'None reported'],['Previous clinic and notes',f.v.externalClinicNotes || 'None reported']]}))return;
+    busy.current=true;setSaving(true);setError('');
+    try {
+      const result=await api.put(`/api/pets/${pet.id}/reference-history`,{...f.v,priorVaccines:f.v.priorVaccines.map(v=>v.trim()),revision:baseline.current});
+      if(!result.success || result.pet?.id!==pet.id)throw Error('The clinic did not confirm this save. Keep your entries and retry.');
+      const saved={priorVaccines:result.pet.prior_vaccines,externalClinicNotes:result.pet.external_clinic_notes,referenceRevision:result.pet.reference_revision};
+      setDb(previous=>({...previous,pets:previous.pets.map(p=>p.id===pet.id?{...p,...saved}:p)}));baseline.current=saved.referenceRevision;setEditing(false);
+    } catch(e){setError(e.message);} finally{busy.current=false;setSaving(false);}
+  };
+  return <section className="op-sec">{review.card}<ExternalHistorySummary patient={pet} />{editing?<form onSubmit={submit} noValidate><fieldset disabled={saving}><ExternalHistory form={f} species={pet.species} />{error&&<p className="err" role="alert">{error}</p>}<div className="row end"><button className="btn ghost" type="button" onClick={()=>setEditing(false)}>Cancel</button><button className="btn">{saving?'Saving…':'Review references'}</button></div></fieldset></form>:<button type="button" className="btn sm ghost" onClick={()=>{baseline.current=pet.referenceRevision || 0;f.quiet({priorVaccines:pet.priorVaccines || [],externalClinicNotes:pet.externalClinicNotes || ''});setEditing(true);}}>Add / update previous-clinic references</button>}</section>;
 }

@@ -1,4 +1,4 @@
-import {chronologicalAppointments} from './appointmentOrder.js';
+import {chronologicalAppointments,upcomingAppointments} from './appointmentOrder.js';
 import { ownerBill } from './ownerBilling.js';
 import { today } from './booking.js';
 
@@ -66,6 +66,11 @@ export function assistantQueue(appointments, date = today()) {
 
 // Keep future requests visible independently of today's arrival/triage queue.
 export function pendingVisitApprovals(appointments, date = today()) {
-  return appointments.filter(a => a.status === 'Pending Approval' && a.date >= date)
-    .sort(chronologicalAppointments);
+  return appointments.filter(a => a.status === 'Pending Approval')
+    .sort((a,b)=>upcomingAppointments(a,b,date));
+}
+
+export function registrationsWithoutVisit(db) {
+ const booked=new Set((db.appts || []).filter(a=>a.status==='Pending Approval').map(a=>a.petId));
+ return (db.petRequests || []).filter(r=>r.status==='Pending' && !booked.has(r.petId));
 }

@@ -1,4 +1,5 @@
 export function eventTitle(event){
+ if(event.kind==='reference')return `Previous-clinic reference · ${event.vaccine} · Unverified`;
  if(event.kind==='vaccination')return `Administered vaccine · ${event.vaccine}`;
  if(event.kind==='planned')return `Planned vaccine · ${event.vaccine} · Not administered`;
  if(event.kind==='registration')return 'Owner-entered registration weight · Not clinic measured';

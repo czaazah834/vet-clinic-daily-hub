@@ -1,3 +1,4 @@
+import {admissionChoiceErrors} from '../src/admissionTemplates.js';
 import {vitalValueError} from '../src/vitalValidation.js';
 import { readFileSync } from 'node:fs';
 import { query } from './db.js';
@@ -25,21 +26,27 @@ export function admissionInput(body, action, role) {
   if (!isUuid(body.requestId)) throw admissionError('Reopen the admission form before saving.');
   body.requestId = body.requestId.toLowerCase();
   if (action !== 'create' && (!Number.isInteger(body.revision) || body.revision < 0)) throw admissionError('Refresh the admission before saving.',409);
-  if ((action === 'release' ? role !== 'assistant' : role !== 'vet' && !['update','medication'].includes(action)) || (role !== 'vet' && (body.carePlan !== undefined || body.dischargeInstructions !== undefined))) throw admissionError('Only a veterinarian can change the care plan or discharge a pet.',403);
+  if(action==='consent' && role!=='assistant') throw admissionError('An assistant records admission consent and emergency contacts.',403);
+  if ((action === 'release' ? role !== 'assistant' : role !== 'vet' && !['update','medication','consent'].includes(action)) || (role !== 'vet' && (body.carePlan !== undefined || body.dischargeInstructions !== undefined))) throw admissionError('Only a veterinarian can change the care plan or discharge a pet.',403);
   const data = {action,...(action === 'create' ? {} : {revision:body.revision}),clinicalNote:text(body.clinicalNote,'Clinical note',3000,true),ownerUpdate:text(body.ownerUpdate,'Owner update',2000,action === 'create'),measurements:{}};
   if (action === 'create') {
     if (typeof body.apptId !== 'string' || !body.apptId || body.apptId.length > 50) throw admissionError('Choose the consultation visit.');
     data.apptId = body.apptId;
     data.carePlan = text(body.carePlan,'Care plan',3000,true);
   } else if (role === 'vet' && action === 'update') data.carePlan = text(body.carePlan,'Care plan',3000);
+  const templateError=Object.values(admissionChoiceErrors(body,{create:action==='create',vet:role==='vet'})).find(Boolean);
+  if(templateError) throw admissionError(templateError);
+  if(action==='create' && body.reasonChoice && body.reasonChoice!=='Other' && body.clinicalNote.trim()!==body.reasonChoice) throw admissionError('The admission reason does not match the selected choice.');
+  for(const key of ['reasonChoice','planTemplate','observationTemplate','planConfirmed']) if(body[key]!==undefined) data[key]=body[key];
   const careFields = ['nextObservationAt','observationInstructions','consentConfirmed','consentName','consentMethod','emergencyName','emergencyPhone','emergencyRelationship'];
-  if (careFields.some(key => body[key] !== undefined) && (role !== 'vet' || !['create','update'].includes(action))) throw admissionError('Only a veterinarian can set observation tasks or record admission consent.',403);
+  if (careFields.slice(0,2).some(key => body[key] !== undefined) && (role !== 'vet' || !['create','update'].includes(action))) throw admissionError('Only a veterinarian can set observation tasks.',403);
+  if(careFields.slice(2).some(key=>body[key]!==undefined) && (!['vet','assistant'].includes(role) || !['create','update','consent'].includes(action))) throw admissionError('Only care staff can record admission consent.',403);
   if (action === 'create' || body.nextObservationAt !== undefined || body.observationInstructions !== undefined) {
     if (typeof body.nextObservationAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(body.nextObservationAt) || !Number.isFinite(Date.parse(body.nextObservationAt)) || new Date(`${body.nextObservationAt.slice(0,10)}T00:00:00Z`).toISOString().slice(0,10)!==body.nextObservationAt.slice(0,10)) throw admissionError('Set the next observation date and time with a timezone.');
     data.nextObservationAt = new Date(body.nextObservationAt).toISOString();
     data.observationInstructions = text(body.observationInstructions,'Observation instructions',1000,true);
   }
-  if (action === 'create' || careFields.slice(2).some(key => body[key] !== undefined)) {
+  if (action === 'consent' || careFields.slice(2).some(key => body[key] !== undefined)) {
     const error = Object.values(consentErrors(body)).find(Boolean);
     if (error) throw admissionError(error);
     data.consent = {name:body.consentName.trim(),method:body.consentMethod,emergencyName:body.emergencyName.trim(),emergencyPhone:body.emergencyPhone.trim(),emergencyRelationship:body.emergencyRelationship.trim()};

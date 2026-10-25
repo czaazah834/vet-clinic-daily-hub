@@ -21,14 +21,14 @@ export async function vetCardPdf(document){
  line('Total history entries',String(snapshot.events.length));
  for(const event of snapshot.events){
   const visit=snapshot.visits.find(v=>v.id===event.visitId);
-  const title=event.kind==='vaccination'?`Administered vaccine: ${event.vaccine}`:event.kind==='planned'?`PLANNED vaccine - NOT ADMINISTERED: ${event.vaccine}`:event.kind==='registration'?'Owner-entered registration weight - NOT clinic measured':event.kind==='weight'?(event.origin==='legacy_unknown'?'Historical weight - source unknown':'Measured weight'):event.kind==='temp'?(event.origin==='legacy_unknown'?'Historical temperature - source unknown':'Measured temperature'):'Historical observation';
+  const title=event.kind==='reference'?`UNVERIFIED previous-clinic reference: ${event.vaccine}`:event.kind==='vaccination'?`Administered vaccine: ${event.vaccine}`:event.kind==='planned'?`PLANNED vaccine - NOT ADMINISTERED: ${event.vaccine}`:event.kind==='registration'?'Owner-entered registration weight - NOT clinic measured':event.kind==='weight'?(event.origin==='legacy_unknown'?'Historical weight - source unknown':'Measured weight'):event.kind==='temp'?(event.origin==='legacy_unknown'?'Historical temperature - source unknown':'Measured temperature'):'Historical observation';
   heading(`${event.date || 'Date not recorded'} | ${title}`);
   line('Entry reference',event.id);
-  if(event.kind==='vaccination'||event.kind==='planned'){
+  if(['vaccination','planned','reference'].includes(event.kind)){
    line('Brand / batch',`${event.brand || 'Not recorded'} / ${event.batch || 'Not recorded'}`);
-   line(event.administered?'Administered date':'Plan recorded date',event.date);
+   line(event.kind==='reference'?'Reference entered date (dose date unknown)':event.administered?'Administered date':'Plan recorded date',event.date);
    line('Dose',event.doseNo?`${event.doseNo}${event.doseOf?` of ${event.doseOf}`:''}`:'Not recorded');
-   line('Recording veterinarian',event.vetName);line('Recorded by',event.recordedBy);line('Next due / planned',event.nextDue);line('Provenance',event.provenance);
+   line('Recording veterinarian',event.kind==='reference'?'Unverified external report; no clinic certification':event.vetName);line('Recorded by',event.recordedBy);line('Next due / planned',event.nextDue);line('Provenance',event.provenance);
   }else{
    if(event.value!=null)line('Value',`${event.value} ${event.unit || ''}`);
    line('Measured at',event.measuredAt || (event.kind==='registration'?'Owner report; not measured in clinic':'Historical time not recorded'));

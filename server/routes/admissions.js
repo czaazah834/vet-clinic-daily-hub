@@ -108,7 +108,7 @@ async function saveCareDetails(client,req,id,data,row) {
     if (row) await client.query('UPDATE admissions SET next_observation_at=$2,observation_instructions=$3,observation_completed_at=NULL WHERE id=$1',[id,data.nextObservationAt,data.observationInstructions]);
   }
   if (data.consent) {
-    details.consent = {...data.consent,recordedAt:now.toISOString(),recordedBy:req.user.name};
+    details.consent = {...data.consent,recordedAt:now.toISOString(),recordedBy:req.user.name,staffId:req.user.id,staffRole:req.user.role};
     if (row) await client.query('UPDATE admissions SET consent=$2 WHERE id=$1',[id,JSON.stringify(details.consent)]);
   }
   if (data.completeObservation) {
@@ -144,7 +144,7 @@ admissionsRouter.post('/', async (req,res) => {
       if (visit.status === 'Completed' && !(await client.query('SELECT id FROM consultations WHERE appt_id=$1',[visit.id])).rows.length) throw admissionError('A completed visit needs saved SOAP notes before admission.',409);
       await client.query('SELECT id FROM pets WHERE id=$1 FOR UPDATE',[visit.pet_id]);
       const careDetails = await saveCareDetails(client,req,id,data);
-      await client.query('INSERT INTO admissions (id,pet_id,appt_id,reason,care_plan,next_observation_at,observation_instructions,consent) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',[id,visit.pet_id,visit.id,data.clinicalNote,data.carePlan,data.nextObservationAt,data.observationInstructions,JSON.stringify(careDetails.consent)]);
+      await client.query('INSERT INTO admissions (id,pet_id,appt_id,reason,care_plan,next_observation_at,observation_instructions,consent) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',[id,visit.pet_id,visit.id,data.clinicalNote,data.carePlan,data.nextObservationAt,data.observationInstructions,JSON.stringify(careDetails.consent || null)]);
       await addUpdate(client,req,id,'Admission',{...data,careDetails},data);
       await audit(client,req.user,`Admitted pet ${visit.pet_id} for visit ${visit.id} (${id})`);
       return readAdmission(client.query.bind(client),id,req.user);
@@ -157,7 +157,7 @@ admissionsRouter.post('/:id/:action', async (req,res) => {
     const {action} = req.params;
     const id = req.params.id.toLowerCase();
     if (!isUuid(id)) throw admissionError('Admission not found.',404);
-    if (!['update','discharge','release','order','stop-medication','medication','correct-medication'].includes(action)) throw admissionError('Admission action not found.',404);
+    if (!['update','consent','discharge','release','order','stop-medication','medication','correct-medication'].includes(action)) throw admissionError('Admission action not found.',404);
     const data = admissionInput(req.body,action,req.user.role);
     if (action === 'discharge') await ensureCheckoutInboxSchema();
     const saved = await withTransaction(async client => {
@@ -173,13 +173,13 @@ admissionsRouter.post('/:id/:action', async (req,res) => {
         await client.query("UPDATE admissions SET status='Discharged',discharged_at=clock_timestamp(),revision=revision+1 WHERE id=$1",[id]);
         await addUpdate(client,req,id,'Release',data);
       } else {
-        if (row.status !== 'Admitted') throw admissionError('Care recording is closed after discharge approval. Refresh admission records.',409);
+        if (row.status !== 'Admitted' && !(action==='consent' && row.status==='Ready for discharge')) throw admissionError('Care recording is closed after discharge approval. Refresh admission records.',409);
         if (action === 'discharge') {
           if (visit.status !== 'Completed' || !(await client.query('SELECT id FROM consultations WHERE appt_id=$1',[visit.id])).rows.length) throw admissionError('Finalize the consultation SOAP notes before approving discharge.',409);
           await client.query("UPDATE admissions SET status='Ready for discharge',discharge_approved_at=clock_timestamp(),discharge_instructions=$2,revision=revision+1 WHERE id=$1",[id,data.dischargeInstructions]);
           await createCheckoutTask(client,visit.id);
           await addUpdate(client,req,id,'Discharge',data);
-        } else if (action === 'update') {
+        } else if (action === 'update' || action==='consent') {
           await client.query("UPDATE admissions SET care_plan=COALESCE(NULLIF($2,''),care_plan),revision=revision+1 WHERE id=$1",[id,data.carePlan || '']);
           const careDetails = await saveCareDetails(client,req,id,data,row);
           await addUpdate(client,req,id,req.user.role === 'vet' ? 'Veterinarian update' : 'Observation',{...data,careDetails},data);

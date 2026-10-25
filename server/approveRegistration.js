@@ -14,7 +14,7 @@ export async function approveRegistration(client, reqId, user, revision) {
   const r = qReq.rows[0];
   if (r.status !== "Pending") throw Object.assign(new Error("This request has already been processed."), { status: 409 });
   checkRequestRevision(r,revision);
-  validatePetRegistration({ ...r, weight:Number(r.weight), speciesOther:r.species_other, dentalOcclusion:r.dental_occlusion });
+  validatePetRegistration({ ...r, weight:Number(r.weight), speciesOther:r.species_other, dentalOcclusion:r.dental_occlusion,priorVaccines:r.prior_vaccines || [],externalClinicNotes:r.external_clinic_notes || '' });
 
   // Preserve the patient identity already used by pending appointment requests.
   if(r.pet_id) {
@@ -27,6 +27,8 @@ export async function approveRegistration(client, reqId, user, revision) {
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
     [newPetId, r.owner_id, r.name, r.species, r.species_other || "", r.breed || "Mixed Breed", r.sex, r.birth, r.weight, r.color || "", r.neutered || "Not sure", cardId, r.notes || "", r.photo || "", r.dental_occlusion || ""]
   );
+
+  await client.query('UPDATE pets SET prior_vaccines=$2,external_clinic_notes=$3 WHERE id=$1',[newPetId,JSON.stringify(r.prior_vaccines || []),r.external_clinic_notes || '']);
 
   // 2. Insert weight baseline
   await client.query(

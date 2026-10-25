@@ -1,3 +1,4 @@
+import {ExternalHistorySummary} from '../components/ExternalHistory.jsx';
 import {useFormValidation} from '../components/useFormValidation.jsx';
 import AdmissionForm from './AdmissionForm.jsx';
 import { useClinicRead } from '../useClinicRead.js';
@@ -66,7 +67,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const triageRemark = iv?.triageLevel && iv.triageLevel !== "Routine" ? ` [TRIAGE: ${iv.triageLevel.toUpperCase()}]` : "";
 
   const initialForm = {
-    date: TODAY,
+    date: TODAY,backdateReason:"",
     symptoms: appt?.reason ? `Chief Complaint: ${appt.reason}${triageRemark}` : "",
     objective: `Temp: ${initialTemp}${tempRemark}, Weight: ${initialWeight ? `${initialWeight} kg` : "—"}${weightRemark}.`,
     diagnosis: "",
@@ -130,7 +131,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     return () => { active = false; };
   }, [catalogAttempt]);
   const [actionErrors,setActionErrors] = useState({});
-  const validation = useFormValidation(validateSoapFields(f,TODAY,pet.birth));
+  const validation = useFormValidation(validateSoapFields(f,TODAY,pet.birth,appt?.date));
   const errs = {...actionErrors,...validation.errors};
   const touch = validation.touch;
   const set = (k,v) => {
@@ -178,7 +179,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       petId: pet.id,
       vetId: effectiveVetId,
       apptId: appt ? appt.id : null,
-      date: f.date,
+      date: f.date,backdateReason:f.date<TODAY ? (f.backdateReason || "").trim() : "",
       symptoms: f.symptoms.trim(),
       objective: f.objective.trim(),
       diagnosis: f.diagnosis.trim(),
@@ -222,6 +223,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         ["Patient / owner",`${pet.name} / ${owner.name}`],
         ["Veterinarian",me.name],
         ["Consultation date",newRecord.date],
+        ...(newRecord.backdateReason ? [["Historical date explanation",newRecord.backdateReason]] : []),
         ["Subjective",newRecord.symptoms],
         ["Objective",newRecord.objective],
         ["Assessment",newRecord.diagnosis],
@@ -257,7 +259,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     <ClinicDialog labelledBy="soap-title" onClose={requestClose}>
       <div className="modal clinical-soap" style={{ width: "min(760px, 100%)", maxHeight: "94vh" }}>
         <HistoryControls auto />
-        {review.card}
+        {review.card}<ExternalHistorySummary patient={pet} />
         {admissionOpen && <AdmissionForm mode="create" me={me}
           visits={[{...expectedVisit,petName:pet.name,ownerName:owner.name}]}
           consultationContext={{petName:pet.name,ownerName:owner.name,diagnosis:f.diagnosis,treatment:f.treatment}}
@@ -463,6 +465,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                 <input
                   id="soap-date"
                   type="date"
+                  min={appt?.date || pet.birth}
                   max={TODAY}
                   aria-invalid={!!errs.date}
                   aria-describedby={errs.date ? "soap-date-error" : undefined}
@@ -470,6 +473,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                   onChange={e => set("date", e.target.value)}
                 />
                 {errs.date && <span id="soap-date-error" className="err" role="alert">{errs.date}</span>}
+                <p className="ow-hint">Today in Manila is {TODAY}. Historical dates are for care actually provided during this linked visit and require an explanation.</p>
+                {f.date<TODAY && <label>Reason for historical consultation date *<input {...validation.field("backdateReason")} maxLength={500} value={f.backdateReason || ""} onChange={e=>set("backdateReason",e.target.value)} />{validation.feedback("backdateReason")}</label>}
               </div>
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>

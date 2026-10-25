@@ -148,3 +148,16 @@ test('new unpaid visits never erase the existing card or enter its published PDF
  await query("UPDATE appointments SET status='Cancelled' WHERE id=$1",[newVisit]);
  const cancelled=(await card(f.pet)).data.document;assert.equal(cancelled.reference,original.reference);assert.equal(cancelled.revision,original.revision);
 });
+
+test('previous-clinic guide rows retain their identity while history and complete PDF identify unverified provenance',async()=>{
+ const f=await fixture({vaccinate:false});
+ const id='external-'+crypto.randomUUID();
+ await query("INSERT INTO vaccinations(id,pet_id,card_id,vaccine,brand,batch,date,done,protocol_type,recorded_by) VALUES($1,$2,'EXTERNAL-REF','Previous Rabies Report','External Clinic Record','EXTERNAL-HIST','2024-01-01',true,'External History (Guide)','Previous Vet (External Guide)')",[id,f.pet]);
+ const p=await payment(f);assert.equal((await p.save()).status,200);
+ const history=await card(f.pet),event=history.data.history.events.find(e=>e.id===id);
+ assert.equal(event.kind,'reference');assert.equal(event.administered,false);assert.match(event.provenance,/administration date unknown/);
+ assert.equal((await query('SELECT done FROM vaccinations WHERE id=$1',[id])).rows[0].done,true,'legacy stored record remains intact');
+ const out=await card(f.pet,'owner','/pdf');assert.equal(out.status,200);
+ const doc=await getDocument({data:out.data,isEvalSupported:false}).promise;let text='';for(let n=1;n<=doc.numPages;n++)text+=(await (await doc.getPage(n)).getTextContent()).items.map(v=>v.str).join(' ');await doc.destroy();
+ assert.ok(text.includes('UNVERIFIED previous-clinic reference: Previous Rabies Report'));assert.ok(!text.includes('Administered vaccine: Previous Rabies Report'));assert.match(text.replace(/\s+/g,' '),/administration date unknown/);
+});
