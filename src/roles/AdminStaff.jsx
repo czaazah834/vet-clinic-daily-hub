@@ -357,7 +357,7 @@ export default function AdminStaff({ onInvite }) {
           </div>
         ) : (
           <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: "14px" }}>
-            <PaginatedTable label="Staff invitations" className="tbl" style={{ margin: 0, fontSize: "12.5px" }}>
+            <PaginatedTable label="Staff invitations" className="tbl staff-invitation-table" style={{ margin: 0, fontSize: "12.5px" }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
                   <th style={{ padding: "10px 14px" }}>Staff Member</th>
@@ -373,11 +373,11 @@ export default function AdminStaff({ onInvite }) {
                   const isAccepted = i.status === 'Accepted';
                   return (
                     <tr key={i.id} className="staff-clickable" onClick={event=>rowClick(event,i,'invitation')}>
-                      <td style={{ padding: "10px 14px" }}>
+                      <td data-label="Staff member" style={{ padding: "10px 14px" }}>
                         <button type="button" className="staff-detail-link" aria-label={`View invitation for ${i.name || i.email}`} onClick={()=>openDetails(i,'invitation')}>{i.name || i.email}</button>
                         <div style={{ fontSize: "11.5px", color: "#64748b" }}>{i.email}</div>
                       </td>
-                      <td style={{ padding: "10px 14px" }}>
+                      <td data-label="Role" style={{ padding: "10px 14px" }}>
                         <span style={{
                           display: "inline-flex",
                           alignItems: "center",
@@ -393,7 +393,7 @@ export default function AdminStaff({ onInvite }) {
                           {i.role === 'vet' ? 'Veterinarian' : 'Vet Assistant'}
                         </span>
                       </td>
-                      <td style={{ padding: "10px 14px" }}>
+                      <td data-label="Status" style={{ padding: "10px 14px" }}>
                         <span style={{
                           fontSize: "11px",
                           fontWeight: 700,
@@ -406,10 +406,10 @@ export default function AdminStaff({ onInvite }) {
                           {i.status}
                         </span>
                       </td>
-                      <td style={{ padding: "10px 14px", color: "#64748b", whiteSpace: "nowrap" }}>
+                      <td data-label="Link expiration" style={{ padding: "10px 14px", color: "#64748b", whiteSpace: "nowrap" }}>
                         {new Date(i.expiresAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                       </td>
-                      <td style={{ padding: "10px 14px", textAlign: "right" }}>
+                      <td data-label="Action" style={{ padding: "10px 14px", textAlign: "right" }}>
                         {isPending ? (
                           <button
                             type="button"

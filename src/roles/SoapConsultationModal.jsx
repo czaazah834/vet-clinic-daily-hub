@@ -343,7 +343,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div className="soap-fields" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: "12px" }}>
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
                 <label>
                   <b>S - Subjective (Chief Complaint &amp; History)</b><i> *</i>
@@ -463,7 +463,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                 </label>
 
                 {f.giveVaccine && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "12px" }}>
+                  <div className="soap-fields" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: "10px", marginTop: "12px" }}>
                     <div className="fld">
                       <label>Vaccine Type<i> *</i></label>
                       <select value={f.vaccine} onChange={e => set("vaccine", e.target.value)}>
@@ -558,7 +558,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                       ))}
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "10px" }}>
+                    <div className="soap-fields" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,2fr)", gap: "10px" }}>
                       <div className="fld">
                         <label>Target Follow-up Date<i> *</i></label>
                         <input

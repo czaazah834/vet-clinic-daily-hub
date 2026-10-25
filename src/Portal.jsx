@@ -13,7 +13,8 @@ import { Avatar } from "./roles/owner/ui.jsx";
 import StaffHeader from "./roles/StaffHeader.jsx";
 import ReportsPage from "./roles/ReportsPage.jsx";
 import "./staff-modern.css";
-import "./portal-polish.css";   // owner and assistant workspace polish
+import "./portal-polish.css";
+import "./clinical-admin-workspace.css";
 
 function Reports({ db, me }) {
   return <ReportsPage db={db} me={me} />;
@@ -46,14 +47,14 @@ function PortalBody({ cfg, me, db, setDb, onLogout, dataLoading = false, dataErr
   return (
     <div className={`shell th-${me.role}`} data-page={page}>
       <a className="portal-skip" href="#portal-main">Skip to page content</a>
-      <aside className={open ? "side open" : "side"}>
+      <aside id="workspace-navigation" className={open ? "side open" : "side"}>
         <div className="brand"><Logo /><div><b>PawCare</b><small>{cfg.portal}</small></div></div>
         <nav aria-label="Main">{cfg.menu.filter(m => !m.hide).map(m => <button key={m.k} className={m.k === page ? "on" : ""} aria-current={m.k === page ? "page" : undefined} onClick={() => go(m.k)}><I e={m.i} size={19} />{m.l}</button>)}</nav>
         <div className="sidefoot"><div className="me"><Avatar src={account.photo} fallback={String(account.name || "U").replace(/^Dr\.?\s+/i, "")[0]} size={46} /><div><b>{me.name}</b><small>{ROLES[me.role][0]}</small></div></div><button className="btn gold sm wide" onClick={onLogout}><LogOut size={15} aria-hidden="true" />Log out</button></div>
       </aside>
-      {open && <div className="veil" onClick={() => setOpen(false)} />}
+      {open && <button type="button" className="veil" aria-label="Close navigation" onClick={() => setOpen(false)} />}
       <div className="main">
-        <header className="top"><button className="burger" onClick={() => setOpen(true)} aria-label="Open menu" aria-expanded={open}><Menu size={20} aria-hidden="true" /></button><div className="portal-heading"><span className="portal-context">{me.role === "owner" ? "Your pet care" : "Clinic workspace"}</span><h1>{cur.l}</h1><p>{cur.sub}</p></div>{cfg.Header ? <cfg.Header db={db} setDb={setDb} me={me} go={go} say={say} onLogout={onLogout} /> : <StaffHeader db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} />}</header>
+        <header className="top"><button className="burger" onClick={() => setOpen(true)} aria-label="Open menu" aria-expanded={open} aria-controls="workspace-navigation"><Menu size={20} aria-hidden="true" /></button><div className="portal-heading"><span className="portal-context">{me.role === "owner" ? "Your pet care" : "Clinic workspace"}</span><h1>{cur.l}</h1><p>{cur.sub}</p></div>{cfg.Header ? <cfg.Header db={db} setDb={setDb} me={me} go={go} say={say} onLogout={onLogout} /> : <StaffHeader db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} />}</header>
         <main id="portal-main" tabIndex={-1} className="content" aria-busy={dataLoading && refreshing}>
           {dataError && <section className="clinic-data-error" role="alert">
             <p>{dataLoading ? "Clinic records could not load." : "Records may be out of date. Changes still require a successful server save."} {dataError}</p>
