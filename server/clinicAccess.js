@@ -1,3 +1,4 @@
+import { ensureAppointmentStatusSchema } from './database/appointmentStatusSchema.js';
 import { checkInDateError, intakeFieldsError } from '../src/intakeVisit.js';
 import { clinicClock, minutes, validDate } from './scheduling.js';
 import { query } from './db.js';
@@ -27,6 +28,7 @@ export async function clinicAccess(req, res, next) {
   };
   const appointment = async id => (await query('SELECT * FROM appointments WHERE id = $1', [id])).rows[0];
   try {
+    await ensureAppointmentStatusSchema();
     if (key === 'GET /admissions/eligible') return allow('vet') ? next() : denied();
     if (path === '/admissions' || /^\/admissions\/[^/]+(?:\/(update|discharge|release|order|stop-medication|medication|correct-medication|discharge-summary))?$/.test(path)) {
       if (req.method === 'GET' && ! /\/(update|discharge|release|order|stop-medication|medication|correct-medication)$/.test(path)) return allow('owner','vet','assistant','admin') ? next() : denied();
@@ -97,14 +99,14 @@ export async function clinicAccess(req, res, next) {
       if (!row || (role === 'owner' && !await petAccess(row.pet_id))) return fail(res, 404, 'Appointment not found.');
       if (role === 'vet' && !assignedTo(row, req.user)) return denied();
       if (!action) {
-        if (!['Scheduled', 'Confirmed'].includes(row.status)) return fail(res, 409, 'Only upcoming appointments can be edited.');
+        if (!['Pending Approval', 'Scheduled'].includes(row.status)) return fail(res, 409, 'Only upcoming appointments can be edited.');
         if (req.body.petId && !await petAccess(req.body.petId)) return fail(res, 404, 'Pet not found.');
-        if (req.body.status && !['Scheduled', 'Confirmed'].includes(req.body.status)) return fail(res, 403, 'Use the authorized visit workflow to change status.');
+        if (req.body.status && !['Pending Approval', 'Scheduled'].includes(req.body.status)) return fail(res, 403, 'Use the authorized visit workflow to change status.');
         if (req.body.vetId !== undefined) {
           req.body.vetId = await selectDoctor(req.body.vetId);
           if (!req.body.vetId) return fail(res, 400, 'Choose a current veterinarian.');
         }
-        req.body.status = 'Scheduled';
+        req.body.status = 'Pending Approval';
       }
       return next();
     }
@@ -132,11 +134,11 @@ export async function clinicAccess(req, res, next) {
 
 export function validateStatusChange(row, body, user) {
   const transitions = {
-    Scheduled: ['Confirmed', 'Checked-in', 'Cancelled', 'No-show'],
-    Confirmed: ['Checked-in', 'Cancelled', 'No-show'],
+    'Pending Approval': ['Scheduled', 'Cancelled', 'Rejected'],
+    Scheduled: ['Checked-in', 'Cancelled', 'No-show'],
     'Checked-in': ['In consultation'],
   };
-  const allowed = { owner: ['Cancelled'], assistant: ['Confirmed', 'Checked-in', 'Cancelled', 'No-show'], vet: ['In consultation'] };
+  const allowed = { owner: ['Cancelled'], assistant: ['Scheduled', 'Checked-in', 'Cancelled', 'Rejected', 'No-show'], vet: ['In consultation'] };
   if (!(allowed[user.role] || []).includes(body.status)) return 'Your role cannot set this visit status.';
   const remeasure = user.role === 'assistant' && row.status === 'Checked-in' && body.status === 'Checked-in';
   if (!remeasure && !(transitions[row.status] || []).includes(body.status)) return 'The visit has changed. Refresh and use its current next action.';
@@ -152,8 +154,8 @@ export function validateStatusChange(row, body, user) {
     const error = intakeFieldsError(body.intakeVitals, body.reason === undefined ? row.reason : body.reason);
     if (error) return error;
   }
-  if (body.status === 'Cancelled' && (typeof body.cancelReason !== 'string' || !body.cancelReason.trim() || body.cancelReason.length > 500)) return 'Enter a cancellation reason of no more than 500 characters.';
-  if (body.cancelReason !== undefined && body.status !== 'Cancelled') return 'Cancellation reasons belong to cancelled visits.';
+  if (['Cancelled','Rejected'].includes(body.status) && (typeof body.cancelReason !== 'string' || !body.cancelReason.trim() || body.cancelReason.length > 500)) return 'Enter a cancellation or rejection reason of no more than 500 characters.';
+  if (body.cancelReason !== undefined && !['Cancelled','Rejected'].includes(body.status)) return 'Reasons belong to cancelled or rejected visits.';
   if (body.status === 'No-show') {
     const now = clinicClock();
     if (!validDate(row.date) || !Number.isFinite(minutes(row.time))) return 'Correct the saved appointment date and time before marking a no-show.';

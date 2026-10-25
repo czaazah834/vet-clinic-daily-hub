@@ -18,6 +18,7 @@ mock.module('../services.js',{exports:{sendMail:async()=>({ok:true,via:'syntheti
 process.env.PSGC_API_URL='http://127.0.0.1:1';
 const {query,pool}=await import('../db.js');
 await query(readFileSync(new URL('../database/schema.sql',import.meta.url),'utf8'));
+await query(readFileSync(new URL('../database/appointment-status.sql',import.meta.url),'utf8'));
 const {ensureSchedulingSchema}=await import('../database/schedulingSchema.js');
 await ensureSchedulingSchema();
 const {clinicClock,shiftDate}=await import('../scheduling.js');
@@ -39,7 +40,7 @@ await query("INSERT INTO owners(id,name,email,phone,address) VALUES('o1','Synthe
 for(let i=1;i<=8;i++)await query("INSERT INTO pets(id,owner_id,name,birth) VALUES($1,$2,$3,'2020-01-01')",[`p${i}`,i===8?'o2':'o1',`Synthetic ${i}`]);
 
 const tomorrow=shiftDate(clinicClock().date,1);
-const makeVisit=async(id,pet,status='Scheduled',date=clinicClock().date)=>query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,$2,'v1',$3,'16:30','Synthetic validation audit',$4)",[id,pet,date,status]);
+const makeVisit=async(id,pet,status='Pending Approval',date=clinicClock().date)=>query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,$2,'v1',$3,'16:30','Synthetic validation audit',$4)",[id,pet,date,status]);
 const signup = {first_name:'Synthetic',last_name:'Owner',middle_initial:'A.',birthday:'01/01/1990',country:'PH',state:'Metro Manila',city:'Quezon City',zip_code:'1100',house_street:'12 Synthetic St',mobile:'09171234567',email:'p2.synthetic@gmail.com',password:'Synthetic123!',confirm_password:'Synthetic123!'};
 test('signup rejects malformed form fields individually before creating any account records',async()=>{
  const patches=[{first_name:'123'},{last_name:'!'},{middle_initial:'AB'},{middle_initial:42},{birthday:'2099-01-01'},{birthday:'02/30/1990'},{birthday:shiftDate(clinicClock().date,-365)},{email:'not-email'},{email:'x@private.invalid'},{mobile:'abc'},{password:{bad:true}},{confirm_password:'Mismatch'},{house_street:''},{country:'Invented'},{state:'Wrong'},{city:'Wrong'},{zip_code:'9999'}];
@@ -59,6 +60,7 @@ test('signup commits canonical owner, address and verification together and roll
 });
 test('intake rejects malformed triage/types/reason and saves only canonical measured metadata',async()=>{
  await makeVisit('p2-intake','p3');
+ await query("UPDATE appointments SET status='Scheduled' WHERE id='p2-intake'");
  const vitals={weight:5,temp:38.5};
  for(const patch of [{triageLevel:'Emergancy'},{fasted:'no'},{notes:'x'.repeat(2001)},{notes:[]},{triageLevel:null}]) assert.equal((await req('assistant','PATCH','/appointments/p2-intake/status',{status:'Checked-in',intakeVitals:{...vitals,...patch}})).status,409);
  for(const reason of ['', ' ', null, {}, 'x'.repeat(501)])assert.equal((await req('assistant','PATCH','/appointments/p2-intake/status',{status:'Checked-in',intakeVitals:vitals,reason})).status,409);
@@ -67,11 +69,11 @@ test('intake rejects malformed triage/types/reason and saves only canonical meas
  assert.equal(saved.status,200);const v=saved.data.appointment.intake_vitals;assert.equal(v.triageLevel,'Emergency');assert.equal(v.fasted,true);assert.equal(v.notes,'Measured');assert.equal(v.checkedInBy,'Test assistant');assert.match(v.checkedInAt,/^\d{2}:\d{2}$/);assert.notEqual(v.tempAnalysis.label,'Invented');assert.equal(v.arbitrary,undefined);
 });
 test('future no-shows fail and cancellation requires bounded reasons for owner and reception',async()=>{
- await makeVisit('p2-future','p2','Confirmed',tomorrow);
+ await makeVisit('p2-future','p2','Scheduled',tomorrow);
  assert.equal((await req('assistant','PATCH','/appointments/p2-future/status',{status:'No-show'})).status,409);
  for(const role of ['owner','assistant'])for(const cancelReason of [undefined,' ',42,'x'.repeat(501)])assert.equal((await req(role,'PATCH','/appointments/p2-future/status',{status:'Cancelled',cancelReason})).status,409);
  const result=await req('owner','PATCH','/appointments/p2-future/status',{status:'Cancelled',cancelReason:' Schedule conflict '});assert.equal(result.status,200);assert.equal(result.data.appointment.cancel_reason,'Schedule conflict');
- await makeVisit('p2-missed','p2','Confirmed',shiftDate(clinicClock().date,-1));assert.equal((await req('assistant','PATCH','/appointments/p2-missed/status',{status:'No-show'})).status,200);
+ await makeVisit('p2-missed','p2','Scheduled',shiftDate(clinicClock().date,-1));assert.equal((await req('assistant','PATCH','/appointments/p2-missed/status',{status:'No-show'})).status,200);
 });
 test('clinical dates reject pre-birth notes and overdue followups without completing care; historical overnight note remains valid',async()=>{
  await makeVisit('p2-note','p4','In consultation',shiftDate(clinicClock().date,-1));

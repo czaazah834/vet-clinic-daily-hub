@@ -108,7 +108,7 @@ export const ROLES = { admin: ["Clinic Administrator", "Governance, staff access
 export const SEED = {
   owners: [{ id: "o1", name: "Maria Santos", email: "maria@example.com", phone: "09171234567", address: "Caloocan City" }, { id: "o2", name: "Jose Reyes", email: "jose@example.com", phone: "09189876543", address: "Quezon City" }],
   pets: [{ id: "p1", ownerId: "o1", name: "Bantay", species: "Dog", breed: "Aspin", sex: "Male", birth: "2022-03-14", weight: 14.5, allergies: ["Chicken"], notes: "Afraid of loud noises, especially fireworks and thunder.", weights: [{ date: plus(-200), kg: 13.2, by: "clinic" }, { date: plus(-100), kg: 14, by: "clinic" }, { date: plus(-20), kg: 14.5, by: "clinic" }] }, { id: "p2", ownerId: "o1", name: "Mingming", species: "Cat", breed: "Puspin", sex: "Female", birth: "2023-06-01", weight: 4.2, allergies: [], notes: "Hides when she meets new people. Please keep her carrier covered.", weights: [{ date: plus(-120), kg: 3.9, by: "clinic" }, { date: plus(-30), kg: 4.2, by: "clinic" }] }, { id: "p3", ownerId: "o2", name: "Choco", species: "Dog", breed: "Shih Tzu", sex: "Male", birth: "2021-11-20", weight: 6.8, allergies: ["Penicillin", "Flea bites"], notes: "", weights: [{ date: plus(-90), kg: 6.8, by: "clinic" }] }],
-  appts: [{ id: "a1", petId: "p1", vetId: "v1", date: TODAY, time: "09:00", reason: "Annual check-up", status: "Confirmed", billingStatus: "Unbilled", amount: 650 }, { id: "a2", petId: "p3", vetId: "v1", date: TODAY, time: "10:30", reason: "Rabies booster", status: "Scheduled", billingStatus: "Unbilled", amount: 500 }, { id: "a3", petId: "p2", vetId: "v2", date: plus(2), time: "14:00", reason: "Deworming", status: "Scheduled", billingStatus: "Unbilled", amount: 350 }],
+  appts: [{ id: "a1", petId: "p1", vetId: "v1", date: TODAY, time: "09:00", reason: "Annual check-up", status: "Scheduled", billingStatus: "Unbilled", amount: 650 }, { id: "a2", petId: "p3", vetId: "v1", date: TODAY, time: "10:30", reason: "Rabies booster", status: "Pending Approval", billingStatus: "Unbilled", amount: 500 }, { id: "a3", petId: "p2", vetId: "v2", date: plus(2), time: "14:00", reason: "Deworming", status: "Pending Approval", billingStatus: "Unbilled", amount: 350 }],
   vacc: [{ id: "v1", petId: "p1", vaccine: "Anti-rabies", brand: "Defensor 3", batch: "DEF-2025-09", date: plus(-350), nextDue: plus(15), notes: "" }, { id: "v2", petId: "p3", vaccine: "5-in-1", brand: "Vanguard Plus 5", batch: "VAN-2025-11", date: plus(-380), nextDue: plus(-15), notes: "" }],
   records: [{ id: "r1", petId: "p1", vetId: "v1", date: plus(-30), symptoms: "Excessive itching and ear scratching for 3 days", objective: "Temp: 38.6°C, Wt: 14.5 kg. Mild ventral erythema.", diagnosis: "Mild skin allergy", treatment: "Medicated hypoallergenic shampoo twice weekly", prescription: "Cetirizine 5 mg daily for 7 days" }],
   petRequests: [
@@ -160,12 +160,12 @@ export const E = {
   pets: { title: "Pets", sub: "Every furry, feathery and fluffy patient.", one: "pet", cols: ["name", "ownerId", "species", "breed", "weight"], perm: { admin: "crud", vet: "cru", assistant: "cru", owner: "r" },
     f: [{ k: "ownerId", l: "Owner", t: "select", o: db => db.owners.map(o => [o.id, o.name]), req: 1 }, { k: "name", l: "Pet name", req: 1, max: 40 }, { k: "species", l: "Species", t: "select", o: () => Object.keys(ICON), req: 1 }, { k: "breed", l: "Breed", max: 40 }, { k: "sex", l: "Sex", t: "select", o: () => ["Male", "Female"], req: 1 }, { k: "birth", l: "Birth date", t: "date", req: 1 }, { k: "weight", l: "Weight (kg)", t: "number", lo: 0.1, hi: 120, req: 1 }],
     chk: (d, id, db) => { const e = {}; if (d.birth > currentClinicDate()) e.birth = "Birth date can’t be in the future"; if (db.pets.some(p => p.id !== id && p.ownerId === d.ownerId && p.name.toLowerCase() === d.name.trim().toLowerCase())) e.name = "This owner already has a pet with that name"; return e; } },
-  appts: { title: "Appointments", sub: "Schedule, update and track clinic visits.", one: "appointment", cols: ["date", "time", "petId", "vetId", "reason", "status"], perm: { admin: "crud", vet: "cru", assistant: "cru", owner: "cru" }, sort: (a, b) => (a.date + a.time).localeCompare(b.date + b.time), def: { status: "Scheduled" },
+  appts: { title: "Appointments", sub: "Schedule, update and track clinic visits.", one: "appointment", cols: ["date", "time", "petId", "vetId", "reason", "status"], perm: { admin: "crud", vet: "cru", assistant: "cru", owner: "cru" }, sort: (a, b) => (a.date + a.time).localeCompare(b.date + b.time), def: { status: "Pending Approval" },
     f: [{ k: "petId", l: "Pet", t: "select", o: petOpts, req: 1 }, { k: "vetId", l: "Veterinarian", t: "select", o: () => VETS, req: 1 }, { k: "date", l: "Date", t: "date", req: 1 }, { k: "time", l: "Time (08:00–17:00)", t: "time", req: 1 }, { k: "reason", l: "Reason for visit", t: "textarea", req: 1, min: 3, max: 200 }],
     chk: (d, id, db) => { const e = {}, live = !["Cancelled", "Completed"].includes(d.status), old = db.appts.find(a => a.id === id);
       if (live && d.date < currentClinicDate() && (!old || old.date !== d.date)) e.date = "Date can’t be in the past";
       if (d.time < "08:00" || d.time > "17:00") e.time = "Clinic hours are 08:00–17:00";
-      else if (live && db.appts.some(a => a.id !== id && a.vetId === d.vetId && a.date === d.date && a.time === d.time && a.status !== "Cancelled")) e.time = "This veterinarian is already booked then";
+      else if (live && db.appts.some(a => a.id !== id && a.vetId === d.vetId && a.date === d.date && a.time === d.time && !["Cancelled","Rejected","No-show"].includes(a.status))) e.time = "This veterinarian is already booked then";
       return e; } },
   vacc: { title: "Vaccinations", sub: "History and upcoming shots for every pet.", one: "vaccination", cols: ["petId", "vaccine", "brand", "batch", "date", "nextDue", "_due"], perm: { admin: "crud", vet: "crud", assistant: "cru", owner: "r" }, sort: (a, b) => b.date.localeCompare(a.date),
     f: [{ k: "petId", l: "Pet", t: "select", o: petOpts, req: 1 }, { k: "vaccine", l: "Vaccine", t: "select", o: () => ["Anti-rabies", "5-in-1", "Kennel cough", "Feline 4-in-1", "Deworming", "Other"], req: 1 }, { k: "brand", l: "Brand", max: 40 }, { k: "batch", l: "Batch / Lot #", max: 40 }, { k: "date", l: "Date given", t: "date", req: 1 }, { k: "nextDue", l: "Next dose due (auto-calculated, editable)", t: "date" }, { k: "notes", l: "Notes", t: "textarea", max: 200 }],
@@ -209,7 +209,7 @@ export function Logo({ size = 44 }) {
   );
 }
 export function Badge({ v }) {
-  const c = { Completed: "ok", Confirmed: "ok", "On track": "ok", Cancelled: "er", "No-show": "er", Overdue: "er", "Due soon": "wa" }[v] || "wa";
+  const c = { Completed: "ok", Scheduled: "ok", "On track": "ok", Rejected: "er", Cancelled: "er", "No-show": "er", Overdue: "er", "Due soon": "wa" }[v] || "wa";
   return v ? <span className={`badge ${c}`}>{v}</span> : "—";
 }
 export function Cell({ db, x, k }) {
@@ -225,7 +225,7 @@ export function Table({ db, ent, list, acts, me, onEdit, onDel, onMove, onView }
     <div className="tw"><PaginatedTable label={c.title} resetKey={list.map(x => x.id)}><thead><tr>{c.cols.map(k => <th key={k}>{LAB[k] || (c.f.find(f => f.k === k) || {}).l || k}</th>)}{showActs && <th />}</tr></thead>
       <tbody>{list.map(x => (
         <tr key={x.id}>{c.cols.map(k => <td key={k}><Cell db={db} x={x} k={k} /></td>)}
-          {showActs && <td className="act">{ent === "owners" && onView && <button className="btn ghost sm" onClick={() => onView(x)}>View</button>} {ent === "appts" && onMove && (me.role === "vet" && x.status === "In consultation" ? <button className="btn sm" onClick={() => onMove(x, "WRITE")}>Write consultation</button> : nextSteps(x, me).map(s => <button key={s} className={s === "Cancelled" || s === "No-show" ? "btn danger sm" : "btn sm"} onClick={() => onMove(x, s)}>{LABEL[s]}</button>))} {can(ent, me, "u") && (ent !== "appts" || ["Scheduled", "Confirmed"].includes(x.status)) && <button className="btn ghost sm" onClick={() => onEdit(x)}>Edit</button>} {can(ent, me, "d") && <button className="btn danger sm" onClick={() => onDel(x)}>Delete</button>}</td>}
+          {showActs && <td className="act">{ent === "owners" && onView && <button className="btn ghost sm" onClick={() => onView(x)}>View</button>} {ent === "appts" && onMove && (me.role === "vet" && x.status === "In consultation" ? <button className="btn sm" onClick={() => onMove(x, "WRITE")}>Write consultation</button> : nextSteps(x, me).map(s => <button key={s} className={s === "Cancelled" || s === "No-show" ? "btn danger sm" : "btn sm"} onClick={() => onMove(x, s)}>{LABEL[s]}</button>))} {can(ent, me, "u") && (ent !== "appts" || ["Pending Approval", "Scheduled"].includes(x.status)) && <button className="btn ghost sm" onClick={() => onEdit(x)}>Edit</button>} {can(ent, me, "d") && <button className="btn danger sm" onClick={() => onDel(x)}>Delete</button>}</td>}
         </tr>))}</tbody></PaginatedTable></div>
   );
 }
@@ -279,10 +279,10 @@ export function Hero({title,text,children,emoji,icons}){
 
 SEED.log = [];
 export const INTERVAL = { "Anti-rabies": 365, "5-in-1": 365, "Kennel cough": 365, "Feline 4-in-1": 365, "Deworming": 90 };
-export const FLOW = { Scheduled: ["Confirmed", "Cancelled", "No-show"], Confirmed: ["Checked-in", "Cancelled", "No-show"], "Checked-in": ["In consultation", "Cancelled"], "In consultation": ["Completed"], Completed: [], Cancelled: [], "No-show": [] };
-export const ACT = { Confirmed: ["assistant"], "Checked-in": [], "In consultation": ["vet"], Completed: [], Cancelled: ["assistant", "owner"], "No-show": ["assistant"] };
-export const LABEL = { Confirmed: "Confirm", "Checked-in": "Check in", "In consultation": "Start consultation", Completed: "Complete visit", Cancelled: "Cancel", "No-show": "No-show" };
-export const nextSteps = (a, me) => (FLOW[a.status] || []).filter(s => (ACT[s] || []).includes(me.role) && !(me.role === "owner" && !["Scheduled", "Confirmed"].includes(a.status)));
+export const FLOW = { 'Pending Approval': ["Scheduled", "Cancelled"], Scheduled: ["Checked-in", "Cancelled", "No-show"], "Checked-in": ["In consultation"], "In consultation": ["Completed"], Completed: [], Cancelled: [], "No-show": [] };
+export const ACT = { Scheduled: ["assistant"], "Checked-in": [], "In consultation": ["vet"], Completed: [], Cancelled: ["assistant", "owner"], "No-show": ["assistant"] };
+export const LABEL = { Scheduled: "Approve visit", "Checked-in": "Check in", "In consultation": "Start consultation", Completed: "Complete visit", Cancelled: "Cancel", "No-show": "No-show" };
+export const nextSteps = (a, me) => (FLOW[a.status] || []).filter(s => (ACT[s] || []).includes(me.role) && !(me.role === "owner" && !["Pending Approval", "Scheduled"].includes(a.status)));
 export const addLog = (p, me, msg) => {
   const at = new Date().toLocaleString("en-PH");
   const newEntry = {

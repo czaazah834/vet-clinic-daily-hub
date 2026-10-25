@@ -8,6 +8,7 @@ if(!['localhost','127.0.0.1'].includes(url.hostname))throw Error('Set TEST_DATAB
 const admin=new pg.Pool({connectionString:url.href}),schema=`test_recovery_${crypto.randomUUID().replaceAll('-','')}`;
 await admin.query(`CREATE SCHEMA ${schema}`);url.searchParams.set('options',`-c search_path=${schema},public`);process.env.DATABASE_URL=url.href;
 const {query,pool}=await import('../db.js');await query(readFileSync(new URL('../database/schema.sql',import.meta.url),'utf8'));
+await query(readFileSync(new URL('../database/appointment-status.sql',import.meta.url),'utf8'));
 let messages=[],delivery='synthetic';
 mock.module('../services.js',{exports:{sendMail:async(to,subject,text)=>{messages.push({to,subject,text});if(delivery==='throw')throw Error('Synthetic provider failure');return{ok:delivery!=='failed',via:delivery};},sendSms:async()=>({ok:true,via:'synthetic'}),serverOutbox:[]}});
 const {sha256,hashPassword,verifyPassword}=await import('../security.js');

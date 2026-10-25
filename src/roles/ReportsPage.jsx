@@ -46,7 +46,7 @@ const REPORT_CONFIG = {
         o.name || "",
         vet,
         x.reason || x.service || "",
-        x.status || "Scheduled"
+        x.status || "Pending Approval"
       ];
     }
   },
@@ -467,7 +467,7 @@ export default function ReportsPage({ db, me }) {
                     <tr key={item.id || idx}>
                       {row.map((cell, cIdx) => (
                         <td key={cIdx} style={{ padding: "8px 12px" }}>
-                          {cIdx === row.length - 1 && ["Scheduled", "Confirmed", "Completed", "Cancelled", "Overdue", "On Track"].includes(cell) ? (
+                          {cIdx === row.length - 1 && ["Pending Approval", "Scheduled", "Completed", "Cancelled", "Overdue", "On Track"].includes(cell) ? (
                             <Badge v={cell} />
                           ) : (
                             <span>{cell || "—"}</span>

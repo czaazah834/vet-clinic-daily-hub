@@ -7,6 +7,7 @@ if(!['localhost','127.0.0.1'].includes(url.hostname))throw Error('Use a local di
 const admin=new pg.Pool({connectionString:url.href}),schema=`test_system_p2_${crypto.randomUUID().replaceAll('-','')}`;
 await admin.query(`CREATE SCHEMA ${schema}`);url.searchParams.set('options',`-c search_path=${schema},public`);process.env.DATABASE_URL=url.href;
 const {query,pool}=await import('../db.js');await query(readFileSync(new URL('../database/schema.sql',import.meta.url),'utf8'));
+await query(readFileSync(new URL('../database/appointment-status.sql',import.meta.url),'utf8'));
 let mode='synthetic',messages=[];
 const delivery=async(kind,to,text)=>{messages.push({kind,to,text});if(mode==='throw')throw Error('Synthetic delivery failure');return mode==='unknown'?undefined:{ok:mode!=='failed',via:mode};};
 mock.module('../services.js',{exports:{sendMail:async(to,subject,text)=>delivery('email',to,text),sendSms:async(to,text)=>delivery('sms',to,text),serverOutbox:[]}});
@@ -63,7 +64,7 @@ async function historyFixture(){
  await query(readFileSync(new URL('../database/state-read-indexes.sql',import.meta.url),'utf8'));
  await query(readFileSync(new URL('../database/state-read-indexes.sql',import.meta.url),'utf8'));
  const day=clinicClock().date;
- for(const [id,pet,doctor,status,date] of [['today','patient-a',v.id,'Completed',day],['overnight','patient-a',v.id,'In consultation','2025-01-01'],['unpaid','patient-a',v.id,'Completed','2025-01-01'],['foreign','patient-b',otherVet.id,'Confirmed',day]])await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status,billing_status,amount) VALUES($1,$2,$3,$4,'09:00','Synthetic',$5,'Unbilled',100)",[id,pet,doctor,date,status]);
+ for(const [id,pet,doctor,status,date] of [['today','patient-a',v.id,'Completed',day],['overnight','patient-a',v.id,'In consultation','2025-01-01'],['unpaid','patient-a',v.id,'Completed','2025-01-01'],['foreign','patient-b',otherVet.id,'Scheduled',day]])await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status,billing_status,amount) VALUES($1,$2,$3,$4,'09:00','Synthetic',$5,'Unbilled',100)",[id,pet,doctor,date,status]);
  await query("INSERT INTO consultations(id,pet_id,vet_id,appt_id,date,symptoms,objective,diagnosis,treatment) VALUES('today','patient-a',$1,'today','2025-01-01','Saved today','Saved vitals','Saved diagnosis','Saved care')",[v.id]);
  fixture={a,b,v,otherVet,assistant,administrator};return fixture;
 }

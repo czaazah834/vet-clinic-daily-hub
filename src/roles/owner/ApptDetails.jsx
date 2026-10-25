@@ -5,7 +5,7 @@ import { Badge } from "../../lib.jsx";
 import { Modal, fmt12 } from "./ui.jsx";
 import { SERVICES, addMin, durOf, durText } from "./services.jsx";
 
-const OPEN = ["Scheduled", "Confirmed"];
+const OPEN = ["Pending Approval", "Scheduled"];
 
 /* Pop-up card with the full details of one visit. Edit and Cancel show only while the visit can still change. */
 export default function ApptDetails({ a, db, note, onClose, onEdit, onCancel }) {
@@ -15,7 +15,7 @@ export default function ApptDetails({ a, db, note, onClose, onEdit, onCancel }) 
     ["Date", a.date], ["Time", `${fmt12(a.time)}${S ? ` to ${fmt12(addMin(a.time, durOf(a)))}` : ""}`],
     ["Pet", p.name], ["Veterinarian", (db.vets || []).find(v => v.id === a.vetId)?.name || "Veterinarian details unavailable"],
     ["Service", S ? `${S.label} · ${durText(durOf(a))}` : ""], ["Reason", a.reason],
-    ["Your note", a.notes], ["Cancel reason", a.cancelReason],
+    ["Payment status", a.billingStatus || "Unbilled"], ["Your note", a.notes], [a.status === "Rejected" ? "Rejection reason" : "Cancel reason", a.cancelReason],
   ].filter(([, x]) => x);
   return (
     <Modal title="Visit details" onClose={onClose}>

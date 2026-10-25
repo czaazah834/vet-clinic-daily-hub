@@ -8,7 +8,7 @@ const booking = {petId:'pet',vetId:'vet',service:'vaccination',vaccineId:'rabies
 const validate = (patch = {}, extra = {}) => validateOwnerBooking({...booking,...patch},{...context,...extra});
 
 test('one pet cannot book twice on the same day, across veterinarians and services', () => {
-  for (const status of ['Scheduled','Confirmed','Checked-in','In consultation','Completed']) {
+  for (const status of ['Pending Approval','Scheduled','Checked-in','In consultation','Completed']) {
     const existing={id:'original',petId:'pet',date:booking.date,time:'08:00',vetId:'other-vet',service:'checkup',status};
     assert.ok(validate({}, {appointments:[existing]}).date, status);
     assert.equal(bookingDayConflict([existing],'pet',booking.date),existing);
@@ -17,7 +17,7 @@ test('one pet cannot book twice on the same day, across veterinarians and servic
 });
 test('cancelled and no-show visits allow rebooking, as do different pets and different days', () => {
   for(const patch of [{status:'Cancelled'},{status:'No-show'},{petId:'other-pet'},{date:'2026-10-27'}]) {
-    assert.deepEqual(validate({}, {appointments:[{id:'old',petId:'pet',date:booking.date,status:'Confirmed',...patch}]}),{});
+    assert.deepEqual(validate({}, {appointments:[{id:'old',petId:'pet',date:booking.date,status:'Scheduled',...patch}]}),{});
   }
 });
 test('real calendar dates, clinic holidays and the rolling booking window are enforced', () => {
@@ -41,8 +41,8 @@ test('follow-ups must belong to the pet and cannot already have a booked or comp
   const record={id:'follow',petId:'pet',careStatus:'Recheck required',followUpDate:'2026-11-10'};
   assert.deepEqual(validate({followUpId:'follow'},{records:[record]}),{});
   for(const patch of [{petId:'someone-elses-pet'},{careStatus:'Routine care'},{followUpDate:null}])assert.ok(validate({followUpId:'follow'},{records:[{...record,...patch}]}).followUpId);
-  const visit={id:'linked',petId:'pet',date:'2026-11-10',status:'Confirmed',followUpId:'follow'};
-  for(const status of ['Scheduled','Completed'])assert.ok(validate({followUpId:'follow'},{records:[record],appointments:[{...visit,status}]}).followUpId);
+  const visit={id:'linked',petId:'pet',date:'2026-11-10',status:'Scheduled',followUpId:'follow'};
+  for(const status of ['Pending Approval','Completed'])assert.ok(validate({followUpId:'follow'},{records:[record],appointments:[{...visit,status}]}).followUpId);
   assert.equal(validate({followUpId:'follow'},{records:[record],appointments:[visit],editing:visit}).followUpId,undefined);
   assert.equal(validate({followUpId:'follow'},{records:[record],appointments:[{...visit,status:'Cancelled'}]}).followUpId,undefined);
 });

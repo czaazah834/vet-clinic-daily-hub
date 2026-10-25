@@ -19,10 +19,10 @@ import { SERVICES, MAX_DAYS, ServicePicker, SlotPicker, inferService, serviceOf,
 
 const liveDoctors = db => (db.vets || []).map(v => [v.id, v.name]);
 const isTouch = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
-const OPEN = ["Scheduled", "Confirmed"], BUSY = ["Cancelled", "No-show"];
+const OPEN = ["Pending Approval", "Scheduled"], BUSY = ["Cancelled", "Rejected", "No-show"];
 const NOTE_IDEAS = ["My pet is nervous around other animals.", "Please call me before the visit.", "My pet hasn’t eaten today.", "My pet is on medication.", "Bringing vaccine card."];
 const CANCEL_WHY = ["Schedule conflict", "My pet is feeling better", "Booked by mistake", "Need a different date", "Other"];
-const STATUS_NOTE = { Scheduled: "Waiting for the clinic to confirm", Confirmed: "Confirmed. Please arrive 10 minutes early", "Checked-in": "You’re checked in. The vet will call you in", "In consultation": "The vet is seeing your pet now", Completed: "Done. See Visit History for notes", Cancelled: "This visit was cancelled", "No-show": "Marked as missed" };
+const STATUS_NOTE = { 'Pending Approval': "Waiting for the clinic to confirm", Scheduled: "Approved. Please arrive 10 minutes early", "Checked-in": "You’re checked in. The vet will call you in", "In consultation": "The vet is seeing your pet now", Completed: "Done. See Visit History for notes", Cancelled: "This visit was cancelled", "No-show": "Marked as missed", Rejected: "The clinic declined this request. Open it to read the reason" };
 const mkRules = (db, me, editing) => v => validateOwnerBooking(v, {
   pets: scope(db, me, "pets").filter(p=>p.registrationStatus!=="Declined"), vets: db.vets || [], appointments: db.appts, records: db.records, editing
 });
@@ -40,6 +40,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
     return () => { document.body.style.overflow = overflow; };
   }, []);
   const bookingFlight = useRef(false);
+  const bookingId = useRef("a_" + crypto.randomUUID());
   const [changingDate, setChangingDate] = useState(!start?.date || !!editing);
   const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const { v } = f, S = SERVICES[v.service];
@@ -51,7 +52,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
   const nextDay = null;
   const timeHint = conflict ? "This pet already has a visit that day. Review it or choose another date." : availability.error || (availability.loading && !times.length ? "Checking available times…" : "") || (!S ? "Choose a service first" : !ready ? "Choose a veterinarian and date to see open times" : times.length ? `${times.length} open time${times.length > 1 ? "s" : ""} for ${S.label.toLowerCase()} (${durText(S.dur)}) with ${vetName}` : holidayName(v.date) ? `Closed for ${holidayName(v.date)}.` : `No open times for ${S.label.toLowerCase()} (${durText(S.dur)}) that day.`);
   const review = useSubmissionReview([v, editing, db.appts.find(a => a.id === editing?.id), db.vets, pets]);
-  const moved = editing && editing.status === "Confirmed" && (editing.date !== v.date || editing.time !== v.time || editing.vetId !== v.vetId || editing.petId !== v.petId || editing.service !== v.service || (v.service === "vaccination" && editing.reason !== vaccineReason(v.vaccineId, v.vaccineId === "vet-review" ? initialReason : "")));
+  const moved = editing && editing.status === "Scheduled" && (editing.date !== v.date || editing.time !== v.time || editing.vetId !== v.vetId || editing.petId !== v.petId || editing.service !== v.service || (v.service === "vaccination" && editing.reason !== vaccineReason(v.vaccineId, v.vaccineId === "vet-review" ? initialReason : "")));
   const submit = async e => {
     e.preventDefault(); if (bookingFlight.current) return; f.submit(); if (!f.valid) return;
     setSaveError("");
@@ -59,10 +60,11 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
     if (!scope(db, me, "pets").some(p => p.id === v.petId)) { say("You can only book for your own pets"); return onClose(); }
     if (editing) { const cur = db.appts.find(a => a.id === editing.id); if (!cur || !OPEN.includes(cur.status)) { say("This visit can no longer be changed"); return onClose(); } }
     const reason = v.service === "vaccination" ? vaccineReason(v.vaccineId, v.vaccineId === "vet-review" ? initialReason : "") : (v.service === svc0 && (editing?.reason || start?.reason) ? (editing?.reason || start.reason) : S.label), notes = (v.notes || "").trim();
-    const apptId = editing ? editing.id : ("a_" + uid());
+    const apptId = editing ? editing.id : bookingId.current;
 
     const payload = {
       id: apptId,
+      ...(editing ? {expectedVisit:intakeVisitSnapshot(editing)} : {}),
       followUpId: v.followUpId || null,
       petId: v.petId,
       vetId: v.vetId,
@@ -71,7 +73,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
       reason,
       service: v.service,
       ...(v.service === "vaccination" ? {vaccineId:v.vaccineId} : {}),
-      status: moved ? "Scheduled" : (editing ? editing.status : "Scheduled"),
+      status: moved ? "Pending Approval" : (editing ? editing.status : "Pending Approval"),
       notes,
       actorName: me.name,
       actorRole: "owner"
@@ -125,7 +127,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
           </div>
         )}
         {!pets.length && <p className="ow-note">You have no pets on your account yet. Add your pet from My Pets, then request an appointment immediately.</p>}
-        {moved && <p className="ow-note">Changing the service, date, time or veterinarian sends this visit back to “Scheduled” so the clinic can re-confirm it.</p>}
+        {moved && <p className="ow-note">Changing the service, date, time or veterinarian sends this visit back to “Pending Approval” so the clinic can re-confirm it.</p>}
         {!changingDate && !f.show("date") ? <section className="ow-book-date" aria-label="Selected visit date">
           <CalendarDays size={24} aria-hidden="true" />
           <div><small>Your selected visit date</small><strong>{new Date(v.date + "T00:00:00").toLocaleDateString("en-PH", {weekday:"long",month:"long",day:"numeric",year:"numeric"})}</strong><span>Complete the details to request this visit.</span></div>
@@ -258,14 +260,16 @@ export default function OwnerAppts({ db, setDb, me, say }) {
   if (day) list = list.filter(a => a.date === day && a.status !== "Cancelled");
   else if (view === "upcoming") list = list.filter(a => live(a) && a.date >= TODAY);
   else if (view === "past") list = list.filter(a => a.status === "Completed" || a.status === "No-show" || (live(a) && a.date < TODAY)).reverse();
+  else if (view === "rejected") list = list.filter(a => a.status === "Rejected");
   else if (view === "cancelled") list = list.filter(a => a.status === "Cancelled");
   if (pet) list = list.filter(a => a.petId === pet);
   if (svc) list = list.filter(a => serviceOf(a) === svc);
   if (q.trim()) list = list.filter(a => [petName(db, a.petId), a.reason, (SERVICES[serviceOf(a)] || {}).label, a.status, a.date, (liveDoctors(db).find(v => v[0] === a.vetId) || [])[1]].join(" ").toLowerCase().includes(q.trim().toLowerCase()));
   const ev = buildEvents(db, me, pet, svc, q), hol = day ? holidayName(day) : "", dayVacc = day ? (ev[day] || []).filter(x => x.vacc) : [];
   const dayNice = day ? new Date(day + "T00:00:00").toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "";
-  const waiting = scope(db, me, "appts").filter(a => a.status === "Scheduled" && a.date >= TODAY).length;
+  const waiting = scope(db, me, "appts").filter(a => a.status === "Pending Approval" && a.date >= TODAY).length;
   return (<>
+    {scope(db,me,"appts").some(a=>a.status==="Rejected" && a.date>=TODAY) && <p className="ow-note" role="status">The clinic declined an appointment request. <button className="btn ghost sm" onClick={()=>{setDay("");setView("rejected");}}>View reason</button></p>}
     <div className="ow-appt-toolbar">
       <div style={{ flex: "2 1 240px", minWidth: 0 }}>
         <label className="ow-lbl" htmlFor="ap-q">Search</label>
@@ -273,7 +277,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
       </div>
       <div style={{ flex: "1 1 150px", minWidth: 0 }}>
         <label className="ow-lbl" htmlFor="ap-view">Show</label>
-        <select id="ap-view" value={view} onChange={e => setView(e.target.value)} disabled={!!day} title={day ? "Clear the selected day to change this" : ""} style={{ width: "100%" }}><option value="upcoming">Upcoming visits</option><option value="past">Past visits</option><option value="cancelled">Cancelled</option><option value="all">All visits</option></select>
+        <select id="ap-view" value={view} onChange={e => setView(e.target.value)} disabled={!!day} title={day ? "Clear the selected day to change this" : ""} style={{ width: "100%" }}><option value="upcoming">Upcoming visits</option><option value="past">Past visits</option><option value="cancelled">Cancelled</option><option value="rejected">Rejected requests</option><option value="all">All visits</option></select>
       </div>
       <div style={{ flex: "1 1 150px", minWidth: 0 }}>
         <label className="ow-lbl" htmlFor="ap-pet">Pet</label>
@@ -379,7 +383,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
                       <td>{fmt12(a.time)}{a.service && SERVICES[a.service] && <small className="ow-sub">to {fmt12(addMin(a.time, durOf(a)))}</small>}</td>
                       <td><span className="who"><span className="av"><I e={ICON[p.species]} size={16} /></span>{p.name}</span></td>
                       <td>{(liveDoctors(db).find(v => v[0] === a.vetId) || [])[1] || "—"}</td>
-                      <td>{a.reason}<VaccineEstimate appointment={a} compact />{a.service && SERVICES[a.service] && <small className="ow-sub">{SERVICES[a.service].label} · {durText(durOf(a))}</small>}{a.notes && <small className="ow-sub">Note: {a.notes}</small>}{a.cancelReason && <small className="ow-sub">Cancelled: {a.cancelReason}</small>}</td>
+                      <td>{a.reason}<VaccineEstimate appointment={a} compact />{a.service && SERVICES[a.service] && <small className="ow-sub">{SERVICES[a.service].label} · {durText(durOf(a))}</small>}{a.notes && <small className="ow-sub">Note: {a.notes}</small>}{a.cancelReason && <small className="ow-sub">{a.status === "Rejected" ? "Rejected" : "Cancelled"}: {a.cancelReason}</small>}</td>
                       <td><Badge v={a.status} /><small className="ow-sub">{STATUS_NOTE[a.status]}</small></td>
                       <td className="act">{open && <><button className="btn ghost sm" onClick={e => { e.stopPropagation(); setModal({ book: true, editing: a }); }}>Edit</button> <button className="btn danger sm" onClick={e => { e.stopPropagation(); setModal({ cancel: a }); }}>Cancel</button></>}</td>
                     </tr>

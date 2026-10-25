@@ -19,14 +19,14 @@ test('rejects malformed/rolled dates, holidays, passed starts and visits beyond 
   assert.throws(() => validateSchedule({...visit,service:'surgery',time:'15:30'},now));
 });
 test('availability respects the full stored duration and legacy AM/PM times', () => {
-  const rows=[{id:'a', time:'09:00 AM', duration_minutes:120,status:'Confirmed'}];
+  const rows=[{id:'a', time:'09:00 AM', duration_minutes:120,status:'Scheduled'}];
   const slots=availableSlots(rows,visit,now);
   assert.ok(!slots.includes('08:30')); assert.ok(!slots.includes('10:30'));
   assert.ok(slots.includes('08:00')); assert.ok(slots.includes('11:00'));
   assert.equal(minutes('02:00 PM'),840); assert.equal(minutes('12:00 AM'),0); assert.ok(Number.isNaN(minutes('13:00 PM')));
 });
 test('editing excludes only the authorized visit; cancellations and walk-in arrivals do not reserve slots', () => {
-  const rows=[{id:'a',time:'10:00',duration_minutes:60,status:'Scheduled'}];
+  const rows=[{id:'a',time:'10:00',duration_minutes:60,status:'Pending Approval'}];
   assert.ok(availableSlots(rows,{...visit,excludeId:'a'},now).includes('10:00'));
   assert.ok(!availableSlots(rows,visit,now).includes('10:00'));
   for (const patch of [{status:'Cancelled'},{status:'No-show'},{booking_kind:'walk-in'}]) assert.ok(availableSlots([{...rows[0],...patch}],visit,now).includes('10:00'));
@@ -46,7 +46,7 @@ test('recall includes completed certified doses and retires old/superseded sched
 
 test('reception timeline blocks every part of a longer reservation and ignores cancelled arrivals',async()=>{
  const {reservationCovers}=await import('../../src/booking.js');
- const appointment={time:'10:00',durationMinutes:120,status:'Confirmed'};
+ const appointment={time:'10:00',durationMinutes:120,status:'Scheduled'};
  assert.equal(reservationCovers(appointment,'11:30'),true);assert.equal(reservationCovers(appointment,'12:00'),false);
  assert.equal(reservationCovers({...appointment,status:'Cancelled'},'11:00'),false);
  assert.equal(reservationCovers({...appointment,bookingKind:'walk-in'},'11:00'),false);

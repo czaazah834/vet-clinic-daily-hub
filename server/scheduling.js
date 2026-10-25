@@ -30,12 +30,12 @@ export function validateSchedule(v, now = new Date()) {
 }
 export function availableSlots(rows, v, now = new Date()) {
   const slots = [];
-  if (rows.some(a => a.id !== v.excludeId && a.booking_kind !== "walk-in" && !["Cancelled", "No-show"].includes(a.status) && !Number.isFinite(minutes(a.time)))) return slots;
+  if (rows.some(a => a.id !== v.excludeId && a.booking_kind !== "walk-in" && !["Cancelled", "Rejected", "No-show"].includes(a.status) && !Number.isFinite(minutes(a.time)))) return slots;
   for (let m = 480; m < 1020; m += 30) {
     const time = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
     try {
       const duration = validateSchedule({ ...v, time }, now);
-      if (!rows.some(a => a.id !== v.excludeId && a.booking_kind !== 'walk-in' && !['Cancelled', 'No-show'].includes(a.status) && m < minutes(a.time) + (a.duration_minutes || 30) && minutes(a.time) < m + duration)) slots.push(time);
+      if (!rows.some(a => a.id !== v.excludeId && a.booking_kind !== 'walk-in' && !['Cancelled', 'Rejected', 'No-show'].includes(a.status) && m < minutes(a.time) + (a.duration_minutes || 30) && minutes(a.time) < m + duration)) slots.push(time);
     } catch { /* Invalid dates and slots have no availability. */ }
   }
   return slots;
@@ -48,7 +48,7 @@ export async function lockSchedule(client) {
 export async function assertAvailable(client, v, excludeId) {
   const duration = validateSchedule(v);
   const rows = (await client.query("SELECT * FROM appointments WHERE date = $1 AND (vet_id = $2 OR pet_id = $3)", [v.date, v.vetId, v.petId])).rows;
-  const other = rows.filter(a => a.id !== excludeId && !['Cancelled', 'No-show'].includes(a.status));
+  const other = rows.filter(a => a.id !== excludeId && !['Cancelled', 'Rejected', 'No-show'].includes(a.status));
   if (other.some(a => a.pet_id === v.petId)) throw bookingError('This pet already has a visit that day. Review or reschedule that visit.', 409);
   if (!availableSlots(other.filter(a => a.vet_id === v.vetId), { ...v, excludeId }).includes(v.time)) throw bookingError('That slot was just taken. Choose another available time.', 409);
   return duration;

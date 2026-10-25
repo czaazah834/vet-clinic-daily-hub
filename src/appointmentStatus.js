@@ -19,7 +19,7 @@ export async function changeAppointmentStatus(setDb, id, status, onError = () =>
     const fields = Object.fromEntries(Object.entries(saved).filter(([,value]) => value !== undefined));
     setDb(previous => ({...previous,appts:previous.appts.map(visit => {
       if (visit.id !== id || (expected && !sameIntakeVisit(visit,expected))) return visit;
-      return {...visit,...fields,...(status === 'Cancelled' ? {cancelReason:response.appointment.cancelReason ?? response.appointment.cancel_reason} : {})};
+      return {...visit,...fields,...(['Cancelled','Rejected'].includes(status) ? {cancelReason:response.appointment.cancelReason ?? response.appointment.cancel_reason} : {})};
     })}));
     return true;
   } catch (error) {

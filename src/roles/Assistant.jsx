@@ -1,3 +1,4 @@
+import CancellationDialog from '../components/CancellationDialog.jsx';
 import { VaccineEstimate } from "../components/VaccineBooking.jsx";
 import AdmissionsPage, { AdmissionsSummary } from './AdmissionsPage.jsx';
 import { PaginatedList } from "../components/Pagination.jsx";
@@ -42,6 +43,7 @@ function Dash({ db, setDb, me, go, say }) {
   const [billingAppt, setBillingAppt] = useState(null);
   const [checkInAppt, setCheckInAppt] = useState(null);
   const [reviewReq, setReviewReq] = useState(null);
+  const [rejecting,setRejecting] = useState(null);
   const [cardPetId, setCardPetId] = useState(null);
   const [cardAppt, setCardAppt] = useState(null);
   const [logCallTarget, setLogCallTarget] = useState(null);
@@ -63,8 +65,8 @@ function Dash({ db, setDb, me, go, say }) {
     confirmingRef.current.add(a.id);
     setActionError(""); setConfirming(p => ({...p,[a.id]:true}));
     try {
-      const saved = await moveAppt(setDb, a.id, "Confirmed", me, setActionError, a);
-      if (saved) say("Appointment confirmed.");
+      const saved = await moveAppt(setDb, a.id, "Scheduled", me, setActionError, a);
+      if (saved) say("Appointment approved and scheduled.");
     } finally {
       confirmingRef.current.delete(a.id);
       setConfirming(p => ({...p,[a.id]:false}));
@@ -90,7 +92,9 @@ function Dash({ db, setDb, me, go, say }) {
       </Hero>
       <AdmissionsSummary me={me} go={go} />
 
-      <FrontDeskApprovals db={db} onReviewPet={setReviewReq} onOpenCard={openCard} onCalendar={() => go("cal")} onConfirm={confirmVisit} confirming={confirming} error={actionError} />
+      <FrontDeskApprovals onReject={a=>{setActionError("");setRejecting(a);}} db={db} onReviewPet={setReviewReq} onOpenCard={openCard} onCalendar={() => go("cal")} onConfirm={confirmVisit} confirming={confirming} error={actionError} />
+
+      {rejecting && <CancellationDialog reject visit={rejecting} currentVisit={db.appts.find(a=>a.id===rejecting.id)} error={actionError} onClose={()=>setRejecting(null)} onSubmit={async cancelReason=>{if(await moveAppt(setDb,rejecting.id,"Rejected",me,setActionError,rejecting,{cancelReason})){setRejecting(null);say("Appointment request rejected.");}}} />}
 
       <Stats
         items={[
@@ -172,10 +176,10 @@ function Dash({ db, setDb, me, go, say }) {
                     <div className="sf-row-act">
                       <Badge v={a.status} />
                       <button className="btn sm ghost" onClick={() => openCard(pet.id || a.petId, a)}>Digital card</button>
-                      {a.status === "Scheduled" && (
-                        <button className="btn sm" disabled={!!confirming[a.id]} onClick={() => confirmVisit(a)}>{confirming[a.id] ? "Confirming…" : "Confirm"}</button>
+                      {a.status === "Pending Approval" && (
+                        <button className="btn sm" disabled={!!confirming[a.id]} onClick={() => confirmVisit(a)}>{confirming[a.id] ? "Approving…" : "Approve"}</button>
                       )}
-                      {["Scheduled", "Confirmed"].includes(a.status) && (
+                      {a.status === "Scheduled" && (
                         <button className="btn sm gold" title="Arrival check-in and vitals intake" onClick={() => setCheckInAppt(a)}>Check in</button>
                       )}
                       {a.status === "Checked-in" && (
@@ -223,11 +227,11 @@ function Dash({ db, setDb, me, go, say }) {
                       <div className="sf-sub"><Phone size={12} aria-hidden="true" style={{ verticalAlign: "-1px" }} /> {o.phone || "No phone on file"}</div>
                     </div>
                     <div className="sf-row-act">
-                      <Badge v={hasAppt ? "Scheduled" : vaccinationStatus(v, calls)} />
+                      <Badge v={hasAppt ? hasAppt.status : vaccinationStatus(v, calls)} />
                       <button className="btn sm ghost" onClick={() => openCard(p.id || v.petId)}>Card</button>
                       {hasAppt ? (
                         <button className="btn sm ghost" style={{ color: "#15803d", borderColor: "#86efac", background: "#f0fdf4" }} onClick={() => go("cal")} title="View scheduled appointment in calendar">
-                          ✓ Scheduled
+                          {hasAppt.status}
                         </button>
                       ) : (
                         <button className="btn sm gold" title="Book the booster visit in the clinic calendar" onClick={() => { setPrefill(vaccinationBooking(v)); go("cal"); say(`Booking booster for ${p.name || "patient"} (${v.vaccine}).`); }}>Book booster</button>

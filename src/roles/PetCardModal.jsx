@@ -53,7 +53,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
   if (!p.id) return null;
   if (walkIn) return <ExistingPatientCheckInModal db={db} setDb={setDb} me={me} initialPetId={p.id} onClose={() => setWalkIn(false)} onCheckIn={visit => { onClose(); onCheckIn?.(visit); }} />;
 
-  const activeAppt = appt ? (db.appts || []).find(a => a.id === appt.id && a.petId === p.id) : (db.appts || []).find(a => a.petId === p.id && a.date === bookingToday() && a.status !== "Cancelled");
+  const activeAppt = appt ? (db.appts || []).find(a => a.id === appt.id && a.petId === p.id) : (db.appts || []).find(a => a.petId === p.id && a.date === bookingToday() && !["Cancelled","Rejected","No-show"].includes(a.status));
   const ageDetails = p.birth ? computeAgeDetails(p.birth) : null;
   const vaccs = (db.vacc || db.vaccs || [])
     .filter(v => v.petId === p.id)
@@ -191,20 +191,20 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               {/* If booked for TODAY */}
               {activeAppt.date === bookingToday() && (
                 <>
-                  {activeAppt.status === "Scheduled" && me?.role === "assistant" && (
+                  {activeAppt.status === "Pending Approval" && me?.role === "assistant" && (
                     <button
                       type="button"
                       className="btn sm"
                       onClick={() => {
-                        moveAppt(setDb, activeAppt.id, "Confirmed", me, setActionError, activeAppt);
+                        moveAppt(setDb, activeAppt.id, "Scheduled", me, setActionError, activeAppt);
                       }}
                       style={{ fontWeight: 600 }}
                     >
-                      Confirm Appointment
+                      Approve appointment
                     </button>
                   )}
 
-                  {["Scheduled", "Confirmed"].includes(activeAppt.status) && me?.role === "assistant" && (
+                  {activeAppt.status === "Scheduled" && me?.role === "assistant" && (
                     <button
                       type="button"
                       className="btn sm gold"
@@ -238,20 +238,20 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               {/* A different clinic day requires rescheduling before initial arrival. */}
               {activeAppt.date !== bookingToday() && (
                 <>
-                  {activeAppt.status === "Scheduled" && me?.role === "assistant" && (
+                  {activeAppt.status === "Pending Approval" && me?.role === "assistant" && (
                     <button
                       type="button"
                       className="btn sm"
                       onClick={() => {
-                        moveAppt(setDb, activeAppt.id, "Confirmed", me, setActionError, activeAppt);
+                        moveAppt(setDb, activeAppt.id, "Scheduled", me, setActionError, activeAppt);
                       }}
                       style={{ fontWeight: 600 }}
                     >
-                      Confirm Booking ({activeAppt.date})
+                      Approve request ({activeAppt.date})
                     </button>
                   )}
 
-                  {["Scheduled", "Confirmed"].includes(activeAppt.status) && me?.role === "assistant" && (
+                  {activeAppt.status === "Scheduled" && me?.role === "assistant" && (
                     <span role="status" style={{fontSize:"12px",color:"#92400e"}}>
                       Check-in is only available on {activeAppt.date}. Use Manage appointment in the calendar to reschedule first.
                     </span>

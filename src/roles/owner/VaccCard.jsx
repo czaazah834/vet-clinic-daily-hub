@@ -768,7 +768,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                     style={{ color: "#15803d", borderColor: "#86efac", background: "#f0fdf4", fontWeight: 700 }}
                     onClick={() => { setDet(null); go("appts"); }}
                   >
-                    ✓ Scheduled for {fmtDate(detAppt.date)} at {fmt12(detAppt.time)}
+                    {detAppt.status} for {fmtDate(detAppt.date)} at {fmt12(detAppt.time)}
                   </button>
                 );
               }

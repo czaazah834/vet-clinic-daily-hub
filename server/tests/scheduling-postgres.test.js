@@ -16,6 +16,7 @@ url.searchParams.set('options',`-c search_path=${schema},public`);
 process.env.DATABASE_URL=url.href;
 const {query,pool}=await import('../db.js');
 await query(readFileSync(new URL('../database/schema.sql',import.meta.url),'utf8'));
+await query(readFileSync(new URL('../database/appointment-status.sql',import.meta.url),'utf8'));
 const {ensureSchedulingSchema}=await import('../database/schedulingSchema.js');
 await ensureSchedulingSchema();
 const {clinicClock,shiftDate}=await import('../scheduling.js');
@@ -47,9 +48,9 @@ test('PostgreSQL booking races, duration, editing, availability privacy and arri
  const saved=results.find(r=>r.status===200).data.appointment;
  assert.equal(saved.durationMinutes,120);
  assert.equal((await query("SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.oid='vaccination_reminders'::regclass")).rows[0].nspname,schema);
- await query("UPDATE appointments SET status='Confirmed',amount=775 WHERE id=$1",[saved.id]);
+ await query("UPDATE appointments SET status='Scheduled',amount=775 WHERE id=$1",[saved.id]);
  const note=await req('owner','PUT',`/appointments/${saved.id}`,{notes:'Synthetic unchanged slot',amount:-99});
- assert.equal(note.status,200);assert.equal(note.data.appointment.status,'Confirmed');assert.equal(note.data.appointment.amount,775);
+ assert.equal(note.status,200);assert.equal(note.data.appointment.status,'Scheduled');assert.equal(note.data.appointment.amount,775);
  assert.equal((await req('assistant','POST','/appointments',booking({petId:'p3',time:'11:30',service:'vaccination'}))).status,409);
  const next=await req('assistant','POST','/appointments',booking({petId:'p3',time:'12:00',service:'vaccination'}));assert.equal(next.status,200);
  const edited=await req('assistant','PUT',`/appointments/${saved.id}`,booking({petId:saved.petId,time:'10:00'}));assert.equal(edited.status,200,JSON.stringify(edited));
@@ -177,7 +178,7 @@ test('failed payment keeps the checkout claim; successful payment completes its 
  CREATE TRIGGER fail_payment_fixture BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_payment_audit()`);
  const body={...payment,claimToken:winningClaim};
  assert.equal((await req(winningRole,'POST','/appointments/handoff-rollback/billing',body)).status,500);
- assert.equal((await query("SELECT billing_status FROM appointments WHERE id='handoff-rollback'")).rows[0].billing_status,'Unbilled');
+ assert.equal((await query("SELECT billing_status FROM appointments WHERE id='handoff-rollback'")).rows[0].billing_status,'Unpaid');
  assert.equal((await query("SELECT status FROM checkout_tasks WHERE appointment_id='handoff-rollback'")).rows[0].status,'claimed');
  await query('DROP TRIGGER fail_payment_fixture ON audit_logs');
  assert.equal((await req(winningRole,'POST','/appointments/handoff-rollback/billing',body)).status,200);
@@ -306,7 +307,7 @@ test('confirmed services, vaccine schedule and Rx persist atomically and mandato
  const pay=items=>req('assistant','POST','/appointments/service-atomic/billing',{invoiceItems:items,amount:items.reduce((sum,i)=>sum+i.price*i.qty,0),paymentMethod:'Cash',cashTendered:3000,claimToken:claim.data.claimToken});
  assert.equal((await pay(lines.slice(1))).status,400);
  assert.equal((await pay([...lines,lines[0]])).status,400);
- assert.equal((await query("SELECT billing_status FROM appointments WHERE id='service-atomic'")).rows[0].billing_status,'Unbilled');
+ assert.equal((await query("SELECT billing_status FROM appointments WHERE id='service-atomic'")).rows[0].billing_status,'Unpaid');
  assert.equal((await pay(lines)).status,200);
 });
 
@@ -326,6 +327,7 @@ test('follow-up links enforce ownership and pet, survive reschedule/cancellation
  assert.equal((await req('assistant','PATCH',`/appointments/${saved.id}/status`,{status:'Cancelled',cancelReason:'Synthetic schedule change'})).status,200);
  const rebook=await req('assistant','POST','/appointments',{...b,time:'13:00'});assert.equal(rebook.status,200,JSON.stringify(rebook));
  const id=rebook.data.appointment.id;
+ assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Scheduled'})).status,200);
  // Reach the reserved clinic day before initial arrival. Only this encounter completes the request.
  t.mock.timers.enable({apis:['Date'],now:new Date(`${target}T13:00:00+08:00`)});
  assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',intakeVitals:{weight:10,temp:38}})).status,200);
@@ -377,13 +379,13 @@ test('status audit failure rolls back intake, patient weight and weight history'
 test('confirmation and consultation start reject snapshots from before rescheduling or remeasurement',async()=>{
  const {intakeVisitSnapshot}=await import('../../src/intakeVisit.js');
  const id='confirm_snapshot';
- await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,'p8','v1',$2,'15:00','Confirmation examination','Scheduled')",[id,clinicClock().date]);
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,'p8','v1',$2,'15:00','Confirmation examination','Pending Approval')",[id,clinicClock().date]);
  const before=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
  await query("UPDATE appointments SET date=$1,reason='Rescheduled examination' WHERE id=$2",[shiftDate(clinicClock().date,1),id]);
- const stale=await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Confirmed',expectedVisit:intakeVisitSnapshot(before)});
- assert.equal(stale.status,409);assert.equal((await query('SELECT status FROM appointments WHERE id=$1',[id])).rows[0].status,'Scheduled');
+ const stale=await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Scheduled',expectedVisit:intakeVisitSnapshot(before)});
+ assert.equal(stale.status,409);assert.equal((await query('SELECT status FROM appointments WHERE id=$1',[id])).rows[0].status,'Pending Approval');
  const fresh=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
- const results=await Promise.all([1,2].map(()=>req('assistant','PATCH',`/appointments/${id}/status`,{status:'Confirmed',expectedVisit:intakeVisitSnapshot(fresh)})));
+ const results=await Promise.all([1,2].map(()=>req('assistant','PATCH',`/appointments/${id}/status`,{status:'Scheduled',expectedVisit:intakeVisitSnapshot(fresh)})));
  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
  await query("UPDATE appointments SET status='Checked-in',intake_vitals=$1 WHERE id=$2",[JSON.stringify({weight:5,temp:38.5}),id]);
  const measured=(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
@@ -463,12 +465,12 @@ test('locked saved day gates initial arrival, rejects slot rewrites and preserve
  t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-24T16:05:00Z')});
  const id='scheduled_day_intake',today=clinicClock().date;
  assert.equal(today,'2026-10-25'); // Manila has crossed midnight; UTC has not.
- await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,'p6','v1',$2,'16:30','Scheduled-day check','Scheduled')",[id,today]);
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,'p6','v1',$2,'16:30','Scheduled-day check','Pending Approval')",[id,today]);
  const saved=async()=>(await query('SELECT * FROM appointments WHERE id=$1',[id])).rows[0];
  const weights=async()=>(await query("SELECT COUNT(*)::int n FROM pet_weights WHERE pet_id='p6'")).rows[0].n;
  const audits=async()=>(await query('SELECT COUNT(*)::int n FROM audit_logs WHERE action LIKE $1',[`%${id}%`])).rows[0].n;
  const initialWeights=await weights(),initialAudits=await audits();
- for(const status of ['Scheduled','Confirmed'])for(const offset of [-1,1]){
+ for(const status of ['Pending Approval','Scheduled'])for(const offset of [-1,1]){
    await query('UPDATE appointments SET date=$1,status=$2 WHERE id=$3',[shiftDate(today,offset),status,id]);
    const original=await saved();
    for(const override of [{},{date:today,time:clinicClock().time}]){
@@ -478,7 +480,7 @@ test('locked saved day gates initial arrival, rejects slot rewrites and preserve
      assert.equal(await weights(),initialWeights);assert.equal(await audits(),initialAudits);
    }
  }
- await query("UPDATE appointments SET date=$1,status='Confirmed' WHERE id=$2",[today,id]);
+ await query("UPDATE appointments SET date=$1,status='Scheduled' WHERE id=$2",[today,id]);
  for(const override of [{date:today},{time:'00:05'}])assert.equal((await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',intakeVitals:{weight:6,temp:38.6},...override})).status,409);
  const original=await saved();
  const arrival=await req('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',expectedVisit:intakeVisitSnapshot(original),intakeVitals:{weight:6,temp:38.6}});
@@ -526,10 +528,52 @@ test('vaccine request saves are canonical, species checked and re-confirmed afte
  const a=saved.data.appointment;assert.equal(a.reason,'Vaccination: Anti-rabies');assert.equal(a.service,'vaccination');
  assert.equal((await query('SELECT reason FROM appointments WHERE id=$1',[a.id])).rows[0].reason,a.reason);
  assert.equal((await query("SELECT COUNT(*)::int n FROM vaccinations WHERE pet_id='request-dog' AND done=true")).rows[0].n,0);
- await query("UPDATE appointments SET status='Confirmed' WHERE id=$1",[a.id]);
+ await query("UPDATE appointments SET status='Scheduled' WHERE id=$1",[a.id]);
  const changed=await req('owner','PUT',`/appointments/${a.id}`,{...body,vaccineId:'canine-core'});
- assert.equal(changed.status,200,JSON.stringify(changed));assert.equal(changed.data.appointment.status,'Scheduled');assert.equal(changed.data.appointment.reason,'Vaccination: 5-in-1');
+ assert.equal(changed.status,200,JSON.stringify(changed));assert.equal(changed.data.appointment.status,'Pending Approval');assert.equal(changed.data.appointment.reason,'Vaccination: 5-in-1');
  const log=(await query("SELECT action FROM audit_logs WHERE action LIKE $1 ORDER BY created_at DESC",[`%${a.id}%`])).rows;assert.ok(log.some(l=>l.action.includes('Vaccination: 5-in-1')));
  const cat=await req('assistant','POST','/appointments',{...body,petId:'request-cat',bookingKind:'walk-in',vaccineId:'canine-core'});assert.equal(cat.status,400);
  const arrival=await req('assistant','POST','/appointments',{...body,petId:'request-cat',bookingKind:'walk-in',vaccineId:'feline-core'});assert.equal(arrival.status,200,JSON.stringify(arrival));assert.equal(arrival.data.appointment.reason,'Vaccination: Feline 4-in-1');assert.equal(arrival.data.appointment.bookingKind,'walk-in');
+});
+
+test('request retries, rejection reasons, slot release and reapproval preserve separate payment state',async()=>{
+ let day=shiftDate(date,30);while(holidayName(day))day=shiftDate(day,1);
+ const payload=booking({id:'request-retry',petId:'p1',date:day,time:'08:00',service:'checkup',reason:'Check-up'});
+ const both=await Promise.all([req('owner','POST','/appointments',payload),req('owner','POST','/appointments',payload)]);
+ assert.deepEqual(both.map(r=>r.status),[200,200]);
+ assert.equal(both[0].data.appointment.id,both[1].data.appointment.id);
+ assert.equal(both[0].data.appointment.status,'Pending Approval');
+ assert.equal(both[0].data.appointment.billingStatus,'Unbilled');
+ assert.equal((await query("SELECT COUNT(*)::int n FROM appointments WHERE id='request-retry'")).rows[0].n,1);
+ assert.equal((await req('owner','POST','/appointments',{...payload,time:'09:00'})).status,409);
+ assert.equal((await req('assistant','POST','/appointments',{...payload,id:'conflict-request',petId:'p2'})).status,409);
+ const status=body=>req('assistant','PATCH','/appointments/request-retry/status',body);
+ assert.equal((await status({status:'Checked-in',intakeVitals:{weight:5,temp:38.5}})).status,409);
+ assert.equal((await req('owner','PATCH','/appointments/request-retry/status',{status:'Rejected',cancelReason:'Forged decision'})).status,409);
+ assert.equal((await status({status:'Rejected',cancelReason:' '})).status,409);
+ const rejected=await status({status:'Rejected',cancelReason:'Veterinarian unavailable; please choose another date'});
+ assert.equal(rejected.status,200);assert.equal(rejected.data.appointment.cancel_reason,'Veterinarian unavailable; please choose another date');
+ assert.equal(rejected.data.appointment.billing_status,'Unbilled');
+ const visible=(await req('owner','GET','/state')).data.data.appts.find(a=>a.id==='request-retry');
+ assert.equal(visible.status,'Rejected');assert.equal(visible.cancelReason,rejected.data.appointment.cancel_reason);
+ const replacement=await req('owner','POST','/appointments',{...payload,id:'request-replacement'});
+ assert.equal(replacement.status,200); // rejection releases both pet-day and doctor slot
+ assert.equal((await req('assistant','PATCH','/appointments/request-replacement/status',{status:'Scheduled'})).status,200);
+ const moved=await req('owner','PUT','/appointments/request-replacement',{...payload,id:'request-replacement',time:'10:00'});
+ assert.equal(moved.status,200);assert.equal(moved.data.appointment.status,'Pending Approval');assert.equal(moved.data.appointment.billingStatus,'Unbilled');
+ assert.equal((await req('owner','PATCH','/appointments/request-replacement/status',{status:'Cancelled',cancelReason:'Owner schedule changed'})).status,200);
+});
+
+test('legacy status migration preserves meaning and is repeatable',async()=>{
+ const legacy='legacy_'+crypto.randomUUID().replaceAll('-','');
+ const c=await admin.connect();
+ try {
+  await c.query('BEGIN');await c.query('CREATE SCHEMA '+legacy);await c.query('SET LOCAL search_path TO '+legacy);
+  await c.query("CREATE TABLE appointments(id TEXT PRIMARY KEY,status TEXT DEFAULT 'Scheduled' CONSTRAINT appointments_status_check CHECK(status IN ('Scheduled','Confirmed','Completed')),billing_status TEXT DEFAULT 'Unbilled',invoice_items JSONB)");
+  await c.query("INSERT INTO appointments VALUES('request','Scheduled','Unbilled',NULL),('approved','Confirmed','Unpaid',NULL),('paid','Completed','Paid','[]')");
+  const sql=readFileSync(new URL('../database/appointment-status.sql',import.meta.url),'utf8').replace('BEGIN;','').replace('COMMIT;','');
+  await c.query(sql);await c.query(sql);
+  assert.deepEqual((await c.query('SELECT id,status,billing_status FROM appointments ORDER BY id')).rows,[
+   {id:'approved',status:'Scheduled',billing_status:'Unpaid'},{id:'paid',status:'Completed',billing_status:'Paid'},{id:'request',status:'Pending Approval',billing_status:'Unbilled'}]);
+ } finally {await c.query('ROLLBACK');c.release();}
 });

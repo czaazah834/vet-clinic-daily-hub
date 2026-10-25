@@ -10,6 +10,7 @@ if(!['localhost','127.0.0.1'].includes(url.hostname))throw Error('Local database
 const admin=new pg.Pool({connectionString:url.href}),schema=`test_admin_${crypto.randomUUID().replaceAll('-','')}`;
 await admin.query(`CREATE SCHEMA ${schema}`);url.searchParams.set('options',`-c search_path=${schema},public`);process.env.DATABASE_URL=url.href;
 const {query,pool}=await import('../db.js');await query(readFileSync(new URL('../database/schema.sql',import.meta.url),'utf8'));
+await query(readFileSync(new URL('../database/appointment-status.sql',import.meta.url),'utf8'));
 let messages=[];
 mock.module('../services.js',{namedExports: {sendMail:async(...args)=>{messages.push(args);return{ok:true,via:'synthetic'};},sendSms:async(...args)=>{messages.push(args);return{ok:true,via:'synthetic'};},serverOutbox:[]}});
 const {sha256,hashPassword}=await import('../security.js');const {authRouter}=await import('../routes/auth.js');const{clinicRouter}=await import('../routes/clinic.js');
@@ -142,7 +143,7 @@ async function careDoctor(){
  await query("INSERT INTO users(id,first_name,last_name,birthday,password_hash,email,role,vet_id,mobile_number,email_verified_at,mobile_verified) VALUES($1,'Synthetic','Doctor','1990-01-01',$2,$3,'vet',$4,'+639170000001',NOW(),true)",[id,hash,`${id}@example.invalid`,vetId]);
  await query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '1 day')",[sha256(id),id]);return{id,vetId};
 }
-async function careVisit(doctor,status='Confirmed'){
+async function careVisit(doctor,status='Scheduled'){
  const id=`care-visit-${careSeq}`;
  await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,status,reason) VALUES($1,'pet',$2,$3,'09:00',$4,'Synthetic measured exam')",[id,doctor.vetId,(await import('../scheduling.js')).clinicClock().date,status]);return id;
 }
@@ -163,7 +164,7 @@ test('deactivation racing check-in cannot leave an arrived visit assigned to an 
  const doctor=await careDoctor(),id=await careVisit(doctor);
  const result=await Promise.all([change(doctor.id,'deactivate',0),call('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',intakeVitals:{weight:5,temp:38.5}})]);
  assert.ok(result.some(r=>r.status===409),JSON.stringify(result));assert.ok(result.some(r=>r.status===200),JSON.stringify(result));
- const row=(await query('SELECT u.is_active,a.status FROM users u JOIN appointments a ON a.vet_id=u.vet_id WHERE a.id=$1',[id])).rows[0];assert.ok(row.is_active || row.status==='Confirmed');
+ const row=(await query('SELECT u.is_active,a.status FROM users u JOIN appointments a ON a.vet_id=u.vet_id WHERE a.id=$1',[id])).rows[0];assert.ok(row.is_active || row.status==='Scheduled');
 });
 test('deactivation racing a handoff cannot orphan the receiving veterinarian queue',async()=>{
  const source=await careDoctor(),target=await careDoctor(),id=await careVisit(source,'In consultation');

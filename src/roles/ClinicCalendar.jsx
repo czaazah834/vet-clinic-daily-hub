@@ -1,3 +1,5 @@
+import CancellationDialog from '../components/CancellationDialog.jsx';
+import { intakeVisitSnapshot } from '../intakeVisit.js';
 import LiveControl from '../components/LiveControl.jsx';
 import { VaccinePicker, VaccineEstimate, useBookingCatalog } from '../components/VaccineBooking.jsx';
 import { vaccineChoiceError, vaccineIdFromReason, vaccineReason, vaccinePriceLabel } from '../vaccineBooking.js';
@@ -100,6 +102,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const [sel, setSel] = useFollowingClinicDay();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const bookingRequest = useRef(null);
   const confirmingRef = useRef(new Set());
   const [confirming, setConfirming] = useState({});
   const [actionError, setActionError] = useState("");
@@ -112,6 +115,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 
   // Modals
   const [bookingSlot, setBookingSlot] = useState(() => { const start = prefill.data; prefill.data = null; return canBook && start ? {...start, time:"", vetId:""} : null; }); // { date, time, vetId }
+  const [closingVisit,setClosingVisit] = useState(null);
   const [checkInAppt, setCheckInAppt] = useState(null);
   const [activeSoap, setActiveSoap] = useState(null);
   const [billingAppt, setBillingAppt] = useState(null);
@@ -119,7 +123,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
   const [cardAppt, setCardAppt] = useState(null);
 
   const slotsByVet = Object.fromEntries(visibleDoctors.map(([id]) => [id, openSlots(db, { vetId: id, date: sel, service: "vaccination" })]));
-  const appts = db.appts.filter(a => (!vetFilter || a.vetId === vetFilter) && a.status !== "Cancelled");
+  const appts = db.appts.filter(a => (!vetFilter || a.vetId === vetFilter) && !["Cancelled","Rejected","No-show"].includes(a.status));
 
   const ev = {};
   const add = (d, e) => { if (d) (ev[d] = ev[d] || []).push(e); };
@@ -204,23 +208,27 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
     return null;
   };
 
-  const manageAppointment = visit => me.role === "assistant" && ["Scheduled", "Confirmed"].includes(visit.status)
-    ? <button className="btn sm ghost" onClick={() => setBookingSlot({...visit, editing:true})}>Manage appointment</button> : null;
+  const manageAppointment = visit => me.role === "assistant" && ["Pending Approval", "Scheduled"].includes(visit.status)
+    ? <><button className="btn sm ghost" onClick={() => setBookingSlot({...visit, editing:true})}>Reschedule / edit</button>
+      <button className="btn danger sm" onClick={()=>{setActionError("");setClosingVisit({visit,status:"Cancelled"});}}>Cancel visit</button>
+      {visit.status==="Pending Approval" && <button className="btn danger sm" onClick={()=>{setActionError("");setClosingVisit({visit,status:"Rejected"});}}>Reject request</button>}</> : null;
 
   // Quick booking submit saved to PostgreSQL backend
   const handleQuickBook = async (petId, serviceName, reasonText, targetVetId, targetDate, targetTime, followUpId, vaccineId) => {
     if (!canBook) throw new Error("Only owners and reception can book visits.");
     const previous = bookingSlot?.editing ? bookingSlot : null;
     if (previous && me.role !== "assistant") throw new Error("Reception manages appointment reassignment.");
-    const newApptId = previous?.id || "a_" + uid();
+    if (bookingRequest.current?.slot !== bookingSlot) bookingRequest.current = {slot:bookingSlot,id:"a_"+crypto.randomUUID()};
+    const newApptId = previous?.id || bookingRequest.current.id;
     const reason = serviceName === "vaccination" ? reasonText : previous && previous.service === serviceName && previous.reason === reasonText ? reasonText
       : serviceName ? `${SERVICES[serviceName]?.label || serviceName}: ${reasonText}` : reasonText;
     const payload = {
+      ...(previous ? {expectedVisit:intakeVisitSnapshot(previous)} : {}),
       id: newApptId, followUpId: followUpId || null, petId, vetId: targetVetId,
       date: targetDate, time: targetTime, service: serviceName, reason,
       ...(serviceName === "vaccination" ? {vaccineId} : {}),
       notes: previous?.notes || "",
-      status: previous && previous.petId === petId && previous.vetId === targetVetId && previous.date === targetDate && previous.time === targetTime && previous.service === serviceName && (serviceName !== "vaccination" || previous.reason === reason) ? previous.status : "Scheduled",
+      status: previous && previous.petId === petId && previous.vetId === targetVetId && previous.date === targetDate && previous.time === targetTime && previous.service === serviceName && (serviceName !== "vaccination" || previous.reason === reason) ? previous.status : "Pending Approval",
       actorName: me.name, actorRole: me.role,
     };
     const response = previous ? await api.put(`/api/appointments/${previous.id}`, payload) : await api.post("/api/appointments", payload);
@@ -247,6 +255,8 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 
   return (
     <div className="clinic-calendar">
+      {closingVisit && <CancellationDialog reject={closingVisit.status==="Rejected"} visit={closingVisit.visit} currentVisit={db.appts.find(a=>a.id===closingVisit.visit.id)} error={actionError} onClose={()=>setClosingVisit(null)}
+        onSubmit={async cancelReason=>{if(await moveAppt(setDb,closingVisit.visit.id,closingVisit.status,me,setActionError,closingVisit.visit,{cancelReason})){setClosingVisit(null);say?.("Appointment "+closingVisit.status.toLowerCase());}}} />}
       {startingId && <p role="status">Starting consultation… Please wait for confirmation.</p>}
       {selectedRecord && <ConsultationDetailModal record={selectedRecord} db={db} setDb={setDb} me={me} onClose={() => setSelectedRecord(null)} />}
       {actionError && <p className="err" role="alert">{actionError}</p>}
@@ -594,18 +604,18 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                   <Badge v={apptMatch.status} />
 
                                   {/* Assistant Actions */}
-                                  {me.role === "assistant" && apptMatch.status === "Scheduled" && (
+                                  {me.role === "assistant" && apptMatch.status === "Pending Approval" && (
                                     <button
                                       className="btn sm"
                                       disabled={!!confirming[apptMatch.id]}
-                                      onClick={() => handleAction(apptMatch.appt, "Confirmed")}
+                                      onClick={() => handleAction(apptMatch.appt, "Scheduled")}
                                       style={{ fontSize: "12px", padding: "4px 8px" }}
                                     >
-                                      {confirming[apptMatch.id] ? "Confirming…" : "Confirm"}
+                                      {confirming[apptMatch.id] ? "Approving…" : "Approve"}
                                     </button>
                                   )}
 
-                                  {me.role === "assistant" && ["Scheduled", "Confirmed"].includes(apptMatch.status) && (
+                                  {me.role === "assistant" && apptMatch.status === "Scheduled" && (
                                     <button
                                       className="btn sm gold"
                                       onClick={() => setCheckInAppt(apptMatch.appt)}
@@ -687,7 +697,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
             <div>
               <h3 style={{ margin: "0 0 4px", fontSize: "18px" }}>
-                Visits Scheduled on {niceDate} {sel === TODAY ? "(Today)" : ""}
+                Visits on {niceDate} {sel === TODAY ? "(Today)" : ""}
               </h3>
               <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
                 {dayEvents.length} patient visit(s) scheduled on this date
@@ -738,10 +748,10 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 
                     <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                       <Badge v={e.status} />
-                      {me.role === "assistant" && e.status === "Scheduled" && (
-                        <button className="btn sm" disabled={!!confirming[e.id]} onClick={() => handleAction(e.appt, "Confirmed")}>{confirming[e.id] ? "Confirming…" : "Confirm"}</button>
+                      {me.role === "assistant" && e.status === "Pending Approval" && (
+                        <button className="btn sm" disabled={!!confirming[e.id]} onClick={() => handleAction(e.appt, "Scheduled")}>{confirming[e.id] ? "Approving…" : "Approve"}</button>
                       )}
-                      {me.role === "assistant" && ["Scheduled", "Confirmed"].includes(e.status) && (
+                      {me.role === "assistant" && e.status === "Scheduled" && (
                         <button className="btn sm gold" disabled={!!checkInDateError(e.appt, bookingToday())} title={checkInDateError(e.appt, bookingToday()) || "Record intake vitals"} onClick={() => setCheckInAppt(e.appt)}>Check in</button>
                       )}
                       {manageAppointment(e.appt)}
@@ -778,7 +788,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                 style={{ padding: "7px 10px", fontSize: "13px", borderRadius: "8px", border: "1.5px solid #cbd5e1" }}
               >
                 <option value="">All Statuses</option>
-                {["Scheduled", "Confirmed", "Checked-in", "In consultation", "Completed", "Cancelled", "No-show"].map(s => (
+                {["Pending Approval", "Scheduled", "Checked-in", "In consultation", "Completed", "Cancelled", "Rejected", "No-show"].map(s => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
@@ -888,7 +898,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                             </td>
 
                             <td style={{ padding: "11px 10px", maxWidth: "260px" }}>
-                              <div style={{ color: "#1e293b", fontWeight: 500 }}>{a.reason}</div><VaccineEstimate appointment={a} compact />
+                              <div style={{ color: "#1e293b", fontWeight: 500 }}>{a.reason}</div>{a.cancelReason && <small>{a.status === "Rejected" ? "Rejection" : "Cancellation"}: {a.cancelReason}</small>}<VaccineEstimate appointment={a} compact />
                             </td>
 
                             <td style={{ padding: "11px 10px" }}>
@@ -916,11 +926,11 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                                   background: "#fef3c7",
                                   color: "#92400e"
                                 }}>
-                                  Ready for Billing{Number.isFinite(a.amount) ? ` (₱${a.amount})` : " · Amount not recorded"}
+                                  {a.billingStatus || "Unbilled"}
                                 </span>
                               ) : (
                                 <span style={{ color: "#94a3b8", fontSize: "12px" }}>
-                                  —
+                                  {a.billingStatus || "Unbilled"}
                                 </span>
                               )}
                             </td>
@@ -1079,7 +1089,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
       setDateErr(err);
       return;
     }
-    const dup = (db.appts || []).find(a => a.id !== (slot.editing ? slot.id : null) && a.petId === petId && a.date === date && a.time === time && a.status !== "Cancelled");
+    const dup = (db.appts || []).find(a => a.id !== (slot.editing ? slot.id : null) && a.petId === petId && a.date === date && a.time === time && !["Cancelled","Rejected","No-show"].includes(a.status));
     if (dup) {
       setDateErr(`${selectedPet.name || "Patient"} already has a scheduled visit at ${time} on this date.`);
       return;
@@ -1129,7 +1139,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
         <form onSubmit={handleSubmit}>
           {review.card}
           <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
-          {slot.editing && <p className="ow-note">Change the veterinarian or schedule here. A changed assignment returns to Scheduled for reception to confirm with the owner. Saved owner notes and linked follow-up instructions are retained.</p>}
+          {slot.editing && <p className="ow-note">Change the veterinarian or schedule here. A changed assignment returns to Pending Approval for reception to approve with the owner. Saved owner notes and linked follow-up instructions are retained.</p>}
           {slot.vaccineDueDate && <p className="ow-note">Approved booster due: {slot.vaccineDueDate}. Choose an available clinic visit; this does not change the approved due date.</p>}
           <div style={{ display: "grid", gap: "12px" }}>
             <div className="fld">

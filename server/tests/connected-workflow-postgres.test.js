@@ -15,6 +15,7 @@ await admin.query(`CREATE SCHEMA ${schema}`);
 url.searchParams.set('options',`-c search_path=${schema},public`); process.env.DATABASE_URL = url.href;
 const {query,pool} = await import('../db.js');
 await query(readFileSync(new URL('../database/schema.sql',import.meta.url),'utf8'));
+await query(readFileSync(new URL('../database/appointment-status.sql',import.meta.url),'utf8'));
 mock.timers.enable({apis:['Date'],now:new Date('2026-10-26T00:00:00Z').getTime()});
 const {sha256} = await import('../security.js');
 const {clinicRouter} = await import('../routes/clinic.js');
@@ -52,9 +53,9 @@ test('clinic choices require authorized roles, persist, reject concurrent overwr
 });
 test('booking → approval → check-in → consultation → billing → owner records stays connected', async () => {
   const booking = await call('owner','POST','/appointments',{petId:'connected-pet',vetId:'connected-vet',date:'2026-10-26',time:'09:00',service:'checkup',reason:'Synthetic clinical concern'});
-  assert.equal(booking.status,200,JSON.stringify(booking)); let visit = booking.data.appointment; assert.equal(visit.status,'Scheduled');
+  assert.equal(booking.status,200,JSON.stringify(booking)); let visit = booking.data.appointment; assert.equal(visit.status,'Pending Approval');
   const patch = async (role,body) => { const result = await call(role,'PATCH',`/appointments/${visit.id}/status`,{...body,expectedVisit:intakeVisitSnapshot(visit)}); assert.equal(result.status,200,JSON.stringify(result)); visit = (await call(role,'GET','/state')).data.data.appts.find(row => row.id === visit.id); };
-  await patch('assistant',{status:'Confirmed'}); assert.equal(visit.status,'Confirmed');
+  await patch('assistant',{status:'Scheduled'}); assert.equal(visit.status,'Scheduled');
   await patch('assistant',{status:'Checked-in',intakeVitals:{weight:10.5,temp:38.5,triageLevel:'Routine',notes:'Synthetic intake'}}); assert.equal(visit.intakeVitals.weight,10.5);
   await patch('vet',{status:'In consultation'});
   const admissionRequest = {requestId:crypto.randomUUID(),apptId:visit.id,expectedVisit:intakeVisitSnapshot(visit),clinicalNote:'Private observation reason',carePlan:'Vet-approved observation plan',ownerUpdate:'Your pet is staying for observation.',nextObservationAt:new Date(Date.now()+3600000).toISOString(),observationInstructions:'Private scheduled check',consentConfirmed:true,consentName:'Synthetic owner',consentMethod:'In person',emergencyName:'Synthetic contact',emergencyPhone:'+639170000001',emergencyRelationship:'Owner'};

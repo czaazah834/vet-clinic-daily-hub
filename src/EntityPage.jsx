@@ -136,7 +136,7 @@ export default function EntityPage({ ent, db, setDb, me, say }) {
         const saved = result.appointment || result.owner || result.pet;
         if (!saved?.id) throw new Error("The server did not confirm the record.");
         x.id = saved.id;
-        if (ent === "appts") x.status = "Scheduled";
+        if (ent === "appts") x.status = "Pending Approval";
       } else return deny("Use the clinical or account workflow for this action.");
     } catch (error) { say(error.message); return; }
     setDb(p => {

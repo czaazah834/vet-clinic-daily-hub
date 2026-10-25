@@ -17,11 +17,11 @@ test('intake acknowledgment retains server values and rejects incomplete or wron
  assert.equal(savedIntakeVisit(response,visit).intakeVitals.weight,5.5);
  assert.equal(savedIntakeVisit(response,visit).time,'09:03');
  assert.equal(savedIntakeVisit(response,visit).bookingKind,'walk-in');
- for(const result of [{success:true},{success:false,appointment:visit},{success:true,appointment:{...visit,id:'wrong'}},{success:true,appointment:{...visit,petId:'wrong'}},{success:true,appointment:{...visit,status:'Scheduled'}},{success:true,appointment:{...visit,intakeVitals:{weight:'5',temp:38}}}]) assert.throws(()=>savedIntakeVisit(result,visit),/did not confirm/);
+ for(const result of [{success:true},{success:false,appointment:visit},{success:true,appointment:{...visit,id:'wrong'}},{success:true,appointment:{...visit,petId:'wrong'}},{success:true,appointment:{...visit,status:'Pending Approval'}},{success:true,appointment:{...visit,intakeVitals:{weight:'5',temp:38}}}]) assert.throws(()=>savedIntakeVisit(result,visit),/did not confirm/);
 });
 
 test('initial intake requires the scheduled day while ongoing intake survives midnight',()=>{
- for(const status of ['Scheduled','Confirmed']) {
+ for(const status of ['Pending Approval','Scheduled']) {
    assert.equal(checkInDateError({...visit,status},visit.date),null);
    for(const date of ['2026-10-23','2026-10-25',undefined]) assert.match(checkInDateError({...visit,status,date},visit.date),/scheduled day/);
  }

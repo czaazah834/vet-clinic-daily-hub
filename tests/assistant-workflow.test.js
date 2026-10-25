@@ -39,14 +39,14 @@ test('pending amounts only sum valid saved drafts after discount, never booking 
   const missing={...paid,id:'missing',date,billingStatus:'Unbilled',amount:600,invoiceItems:[]};
   const draft={...missing,id:'draft',invoiceItems:[{name:'Saved item',qty:3,price:0.1}],discount:0.1};
   const invalid={...missing,id:'invalid',invoiceItems:[{name:'Bad draft',qty:1,price:100}],discount:101};
-  const result=pendingCheckout([missing,draft,invalid,paid,{...draft,id:'future',date:'2026-10-26'},{...draft,id:'scheduled',status:'Scheduled'}],date);
+  const result=pendingCheckout([missing,draft,invalid,paid,{...draft,id:'future',date:'2026-10-26'},{...draft,id:'scheduled',status:'Pending Approval'}],date);
   assert.equal(result.draftTotal,0.2);assert.equal(result.awaitingInvoice,2);
   assert.deepEqual(result.visits,[missing,draft,invalid]);
 });
 test('patient stages separate arrivals, waiting, consultation, completed and missed visits', () => {
-  const visits=['Scheduled','Confirmed','Checked-in','In consultation','Completed','No-show','Cancelled'].map((status,i)=>({id:`v${i}`,date,status,time:'10:00'}));
+  const visits=['Pending Approval','Scheduled','Checked-in','In consultation','Completed','No-show','Cancelled'].map((status,i)=>({id:`v${i}`,date,status,time:'10:00'}));
   const result=assistantQueue([...visits,{...visits[2],id:'other-day',date:'2026-10-26'}],date);
-  assert.deepEqual(result.arrivals,visits.slice(0,2));assert.deepEqual(result.waiting,[visits[2]]);
+  assert.deepEqual(result.arrivals,[visits[1]]);assert.deepEqual(result.waiting,[visits[2]]);
   assert.deepEqual(result.consultation,[visits[3]]);assert.deepEqual(result.completed,[visits[4]]);
   assert.deepEqual(result.missed,[visits[5]]);assert.equal(result.visits.length,6);
 });
@@ -63,7 +63,7 @@ test('unfinished arrivals survive midnight while daily statistics stay on their 
   const visit=(id,status,day,triageLevel='Routine')=>({id,status,date:day,time:'10:00',intakeVitals:{triageLevel}});
   const waiting=visit('older-waiting','Checked-in',yesterday), active=visit('older-active','In consultation',yesterday);
   const emergency=visit('today-emergency','Checked-in',date,'Emergency');
-  const completed=visit('older-completed','Completed',yesterday), scheduled=visit('older-scheduled','Scheduled',yesterday);
+  const completed=visit('older-completed','Completed',yesterday), scheduled=visit('older-scheduled','Pending Approval',yesterday);
   const todayDone=visit('today-completed','Completed',date);
   const result=assistantQueue([completed,scheduled,waiting,active,todayDone,emergency],date);
   assert.deepEqual(result.waiting,[emergency,waiting]);assert.deepEqual(result.consultation,[active]);
@@ -71,16 +71,16 @@ test('unfinished arrivals survive midnight while daily statistics stay on their 
   assert.deepEqual(result.visits,[todayDone,emergency]);
 });
 
-test('approval inbox includes today and future Scheduled visits independently of the daily queue', async () => {
+test('approval inbox includes today and future Pending Approval visits independently of the daily queue', async () => {
   const { pendingVisitApprovals } = await import('../src/assistantWorkflow.js');
-  const visit = {id:'today',date,time:'11:00',status:'Scheduled'};
+  const visit = {id:'today',date,time:'11:00',status:'Pending Approval'};
   const future = {...visit,id:'future',date:'2026-11-05',time:'08:00'};
   const early = {...visit,id:'early',time:'08:00'};
-  const all = [future, visit, {...visit,id:'past',date:'2026-10-24'}, {...future,id:'confirmed',status:'Confirmed'}, {...future,id:'cancelled',status:'Cancelled'}, early];
+  const all = [future, visit, {...visit,id:'past',date:'2026-10-24'}, {...future,id:'confirmed',status:'Scheduled'}, {...future,id:'cancelled',status:'Cancelled'}, early];
   assert.deepEqual(pendingVisitApprovals(all,date).map(a => a.id), ['early','today','future']);
-  assert.deepEqual(assistantQueue(all,date).arrivals.map(a => a.id), ['early','today']);
+  assert.deepEqual(assistantQueue(all,date).arrivals.map(a => a.id), []);
   assert.equal(all[0], future, 'does not reorder the clinic store');
-  assert.equal(pendingVisitApprovals(all.map(a => a.id === 'future' ? {...a,status:'Confirmed'} : a),date).some(a => a.id === 'future'),false);
+  assert.equal(pendingVisitApprovals(all.map(a => a.id === 'future' ? {...a,status:'Scheduled'} : a),date).some(a => a.id === 'future'),false);
 });
 
 test('checkout summary holds admitted pets until discharge approval and preserves outpatient checkout',()=>{

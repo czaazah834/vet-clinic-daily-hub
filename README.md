@@ -704,17 +704,17 @@ unrecorded rather than normal.
 
 ### Connected visit handoffs
 
-Owner bookings become saved Scheduled visits. Reception confirms the visit,
+Owner bookings become saved Pending Approval requests. Reception approves them as Scheduled,
 records intake and assigns a live veterinarian. Existing-patient walk-ins from
 the patient card use the same saved booking and intake flow. A patient joins the
 vet queue only after measured intake is saved. Waiting and active visits stay in
 reception's queue across midnight.
 
-Reception can use **Manage appointment** in the calendar's timeline, month or
-list view to change an upcoming Scheduled/Confirmed visit's doctor or schedule.
+Reception can use **Reschedule / edit** in the calendar's timeline, month or
+list view to change an upcoming Pending Approval/Scheduled visit's doctor or schedule.
 Use the list view to find visits assigned to a doctor who is no longer active.
 Changes keep the visit ID, owner notes and linked follow-up; changed slots return
-to Scheduled for confirmation with the owner. Started visits require the
+to Pending Approval for approval with the owner. Started visits require the
 existing clinical handoff process rather than appointment rescheduling.
 
 The assigned vet finalizes saved notes, which completes the visit and creates
@@ -751,7 +751,7 @@ the existing pending/error/server-acknowledgment behavior still applies.
 
 ### Scheduled-day arrival validation
 
-Reception can initially check in a Scheduled or Confirmed visit only on its saved appointment date, using the clinic date in Asia/Manila. Same-day early arrival is allowed. If a patient arrives on another day, use **Manage appointment** in the calendar to reschedule before check-in. Status changes cannot rewrite the date/time or convert a reservation into a walk-in; new walk-ins use the existing arrival workflow. The API validates the locked saved appointment, so sending today's date cannot bypass this rule.
+Reception can initially check in a Scheduled visit only on its saved appointment date, using the clinic date in Asia/Manila. Same-day early arrival is allowed. If a patient arrives on another day, use **Reschedule / edit** in the calendar to reschedule before check-in. Status changes cannot rewrite the date/time or convert a reservation into a walk-in; new walk-ins use the existing arrival workflow. The API validates the locked saved appointment, so sending today's date cannot bypass this rule.
 
 Already Checked-in patients can have vitals remeasured and continue care after midnight without changing their original visit date or time.
 
@@ -880,8 +880,8 @@ clears the selected time and reloads availability. Booking still requires review
 a server acknowledgment and reception confirmation.
 
 Front Desk includes a Needs clinic approval inbox with Visit requests and Pet
-registrations. Today’s and future Scheduled visits appear independently of the
-arrival queue. Approve visit uses the existing Confirmed transition and displayed
+registrations. Today’s and future Pending Approval requests appear independently of the
+arrival queue. Approve visit uses the Scheduled transition and displayed
 visit snapshot; failed requests remain available for retry. Pet registrations use
 the existing revision-checked review and card issuance flow. Clinical booster
 dates still require veterinarian certification.
@@ -939,7 +939,7 @@ visit purpose and displayed in approvals, appointment details, intake, clinical
 queues and checkout. Known prices come from `/api/services/prices`; estimates
 exclude additional care, and unpriced products require clinic confirmation.
 The server validates explicit choices and species independently. Changing a
-confirmed vaccination request returns it to Scheduled for reception confirmation.
+scheduled vaccination request returns it to Pending Approval for reception approval.
 Generic older bookings remain readable. A request never certifies an administered
 dose, sets a booster interval or creates a charge: the veterinarian confirms
 performed care and checkout retains the canonical invoice rules.
@@ -1149,3 +1149,16 @@ After veterinarian discharge approval, staff and the owning client can open **Vi
 After account email/SMS verification and login, owners without a saved pet or prior registration see required first-pet setup. Escape and backdrop clicks keep it open; logout remains available. Fields validate inline, and failed saves retain entries for retry. A successful save immediately shows **Pending verification**, unlocks the dashboard, and allows appointment requests. Setup completion persists across reloads and withdrawal of an unused request.
 
 `server/database/owner-pet-onboarding.sql` adds provisional patient status and persistent setup completion, and backfills existing pending requests. Registration saves and retries preserve one patient identity; clinic approval verifies that same patient so bookings stay linked. Pending patients have no official card or invented vitals history. Pet verification is still required before appointment confirmation and clinical intake; combined appointment/pet approval is a separate workflow change. Requests with appointment history cannot be withdrawn. Account verification before login is unchanged.
+
+
+### Appointment requests and separate payment status
+
+The visit lifecycle is **Pending Approval → Scheduled → Checked-in → In consultation → Completed**. Owners may request visits for their saved Pending verification pets. Reception still reviews pet registration before approving the visit; combined pet/appointment approval is a separate change. Staff-created walk-in arrivals start Scheduled and require measured intake before joining the clinical queue.
+
+New requests appear in the owner's local list after server acknowledgement and in the assistant inbox through the existing visible-tab state sync (every three seconds after the previous read completes). Calendars, lists, dashboards, linked vaccine reminders and reports use the same saved status. Rejected and cancelled requests remain in history with their reason and release their reserved slot. Reception can reject requests from the inbox or calendar; owners and reception can cancel upcoming visits. Changing an approved date, time, pet, veterinarian or service returns the same visit to Pending Approval. Started visits require clinical handoff instead.
+
+Create forms retain a stable booking ID for retry. The server serializes reservations, checks duration overlap and pet/day duplicates, returns the existing matching booking on an exact retry, and rejects reuse of an ID with different details. Rescheduling rechecks availability under the same lock and checks the reviewed visit snapshot when supplied. Owners cannot approve, reject, record intake or change payment through appointment actions.
+
+Payment is separate: **Unbilled** at booking, **Unpaid** after consultation finalization creates the charges, and **Paid** only through reception checkout. Payment does not change Completed back into another clinical status; admission/discharge rules remain enforced.
+
+The one-time server/database/appointment-status.sql migration changes legacy Scheduled → Pending Approval and Confirmed → Scheduled atomically, normalizes legacy Pending billing to Unbilled, and marks existing completed visits with charges Unpaid without changing paid records. It also updates the active-follow-up uniqueness rule to release rejected requests. It runs before authenticated clinic reads/writes and through db:init. Run the new server and frontend together; the legacy Confirmed API value is retired.

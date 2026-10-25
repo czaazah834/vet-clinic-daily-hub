@@ -13,8 +13,8 @@ export const VETS = [["v1", "Dr. Ana Cruz"], ["v2", "Dr. Ben Lim"]];
 export const DAY_START = "08:00", DAY_END = "17:00", STEP = 30;
 export const MAX_DAYS = 90;
 export const lastDay = () => plus(MAX_DAYS);
-const BUSY = ["Cancelled", "No-show"];
-export const OPEN = ["Scheduled", "Confirmed"];
+const BUSY = ["Cancelled", "Rejected", "No-show"];
+export const OPEN = ["Pending Approval", "Scheduled"];
 const LEGACY_DUR = 30;   // visits booked without a service (e.g. by staff) count as 30 min
 
 export const SERVICES = {
@@ -145,8 +145,8 @@ export function validateCancel(v) {
 }
 
 /* ---- the visit life cycle, enforced on the server ---- */
-export const FLOW = { Scheduled: ["Confirmed", "Cancelled", "No-show"], Confirmed: ["Checked-in", "Cancelled", "No-show"], "Checked-in": ["In consultation", "Cancelled"], "In consultation": ["Completed"], Completed: [], Cancelled: [], "No-show": [] };
-export const ACT = { Confirmed: ["assistant", "admin"], "Checked-in": ["assistant", "admin"], "In consultation": ["vet"], Completed: ["vet"], Cancelled: ["assistant", "admin", "owner"], "No-show": ["assistant", "admin"] };
+export const FLOW = { 'Pending Approval': ["Scheduled", "Cancelled"], Scheduled: ["Checked-in", "Cancelled", "No-show"], "Checked-in": ["In consultation"], "In consultation": ["Completed"], Completed: [], Cancelled: [], "No-show": [] };
+export const ACT = { Scheduled: ["assistant", "admin"], "Checked-in": ["assistant", "admin"], "In consultation": ["vet"], Completed: ["vet"], Cancelled: ["assistant", "admin", "owner"], "No-show": ["assistant", "admin"] };
 
 /* Staff and server use this to stop two visits overlapping for one vet (the exact start time isn't enough for longer services). */
 export function vetConflict(appts, a) {
