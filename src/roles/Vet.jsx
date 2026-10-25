@@ -85,7 +85,7 @@ function Dash({ db, setDb, me, go, say }) {
       {startingId && <p role="status">Starting consultation… Please wait for confirmation.</p>}
       {actionError && <p role="alert" className="sf-note">{actionError}</p>}
 
-      <section className="card" style={{ marginTop: 16 }}>
+      <section className="card vet-queue" style={{ marginTop: 16 }}>
         <div className="sf-section-hd">
           <div>
             <h3>Active clinical queue</h3>
@@ -94,12 +94,12 @@ function Dash({ db, setDb, me, go, say }) {
           <span className="meta">Assigned patients only</span>
         </div>
 
-        <div className="sf-actions" role="group" aria-label="Queue stage" style={{flexWrap: "wrap", marginBottom: 12}}>
+        <div className="sf-actions vet-queue-tabs" role="group" aria-label="Queue stage" style={{flexWrap: "wrap", marginBottom: 12}}>
           {[["waiting", "Waiting"], ["active", "Active"], ["completed", "Completed"]].map(([key, label]) => (
             <button key={key} className={`btn sm ${stage === key ? "gold" : "ghost"}`} aria-pressed={stage === key} onClick={() => setStage(key)}>{label} ({stages[key].length})</button>
           ))}
         </div>
-        {stage === "waiting" && <p>Emergency and priority patients appear first, followed by appointment date and time.</p>}
+        {stage === "waiting" && <p className="vet-queue-help">Emergency and priority patients appear first, followed by appointment date and time.</p>}
         {stages[stage].length ? (
           <PaginatedList label="Patient queue" resetKey={stage} className="sf-grid">
             {stages[stage].map(a => {
@@ -148,7 +148,7 @@ function Dash({ db, setDb, me, go, say }) {
             })}
           </PaginatedList>
         ) : (
-          <div className="empty sm">No patients in this stage.</div>
+          <div className="empty sm vet-queue-empty"><I e={stage==='completed'?'check':'stethoscope'} size={28} /><h4>{stage==='waiting'?'Your waiting queue is clear':stage==='active'?'No consultations in progress':'No completed visits yet'}</h4><p>{stage==='waiting'?'Patients appear here after the front desk completes check-in.':stage==='active'?'Start a checked-in patient from Waiting to begin their SOAP notes.':'Completed consultations and their saved notes appear here.'}</p></div>
         )}
       </section>
 

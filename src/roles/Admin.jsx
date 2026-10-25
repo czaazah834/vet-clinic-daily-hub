@@ -382,7 +382,7 @@ function Dash({ db, setDb, me, go, say }) {
       />
 
       {/* Operational Triage: Needs Attention Board */}
-      <section className="card" style={{ marginTop: 16, padding: "24px" }}>
+      <section className="card admin-exceptions" style={{ marginTop: 16, padding: "24px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px", marginBottom: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <div style={{
@@ -445,7 +445,7 @@ function Dash({ db, setDb, me, go, say }) {
         )}
 
         {/* Actionable Exception Items */}
-        <div style={{ display: "grid", gap: "10px" }}>
+        <div className="admin-exception-grid" style={{ display: "grid", gap: "10px" }}>
           {/* 1. Locked Staff */}
           <div style={{
             display: "flex",
@@ -623,7 +623,7 @@ function Dash({ db, setDb, me, go, say }) {
         </div>
       </section>
       <ReminderStatus />
-      <div className="two" style={{ marginTop: "16px" }}>
+      <div className="two admin-breakdowns" style={{ marginTop: "16px" }}>
         <Bars title="Appointments by Status" data={db.totals?.appointment_status || by(db.appts, "status")} />
         {staff.data ? (
           <Bars title="Staff accounts by role" data={by(staff.data.staff, "role")} />
@@ -636,7 +636,7 @@ function Dash({ db, setDb, me, go, say }) {
       </div>
 
       {/* Security & Activity Audit Log */}
-      <section className="card" style={{ marginTop: "16px" }}>
+      <section className="card admin-recent-activity" style={{ marginTop: "16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
           <div>
             <h3 style={{ margin: "0 0 4px" }}>Recent clinic activity</h3><button type="button" className="btn sm ghost" onClick={()=>go("audit")}>Open full audit trail</button>
@@ -646,6 +646,7 @@ function Dash({ db, setDb, me, go, say }) {
           </div>
           <input
             type="search"
+            aria-label="Search recent clinic activity"
             placeholder="Search audit trail..."
             value={logSearch}
             onChange={e => setLogSearch(e.target.value)}
