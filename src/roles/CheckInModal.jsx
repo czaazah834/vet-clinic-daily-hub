@@ -1,3 +1,4 @@
+import {visitFormType} from '../visitForm.js';
 import { useFormValidation } from '../components/useFormValidation.jsx';
 import { intakeErrors } from '../formValidation.js';
 import { vaccineIdFromReason, vaccineReason } from '../vaccineBooking.js';
@@ -24,7 +25,7 @@ import {
 } from "lucide-react";
 import { addLog, ICON, petName, ownerName, I } from "../lib.jsx";
 import { assessWeight, assessTemp, SPECIES_DEFAULTS } from "./vitals.js";
-import { computeWeightBracket, normalizeSpecies } from "../preventiveSchedule.js";
+import { normalizeSpecies } from "../preventiveSchedule.js";
 import { today, nowHM } from "../booking.js";
 import { intakeFieldsError, checkInDateError, intakeVisitSnapshot, sameIntakeVisit, savedIntakeVisit } from "../intakeVisit.js";
 import { api } from "../api.js";
@@ -66,11 +67,6 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const weightAnalysis = assessWeight(weight, species, pet.breed || "", lastWeight);
   const tempAnalysis = assessTemp(temp, species);
 
-  const weightNum = parseFloat(weight);
-  const weightErr = weight !== "" && (isNaN(weightNum) || weightNum < 0.05 || weightNum > 120) ? "Weight must be between 0.05 kg and 120 kg." : "";
-  const tempNum = parseFloat(temp);
-  const tempErr = temp !== "" && (isNaN(tempNum) || tempNum < 33 || tempNum > 45) ? "Temperature must be between 33°C and 45°C." : "";
-
   const handleStepWeight = (delta) => {
     const cur = parseFloat(weight);
     if (!Number.isFinite(cur)) return;
@@ -85,8 +81,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
     validation.changed('temp');setTemp(String(next));
   };
 
-  const normSpecies = normalizeSpecies(pet.species);
-  const clinicalBracket = computeWeightBracket(weight, pet.species, pet.birth);
+  const formType=visitFormType(appt);
+  const reasonPresets=formType==='consultation'?['Routine Consultation & Exam','Vomiting / Diarrhea','Skin / Allergy Concern','Emergency / Critical']:formType==='deworming'?['Routine Deworming','Deworming Follow-up']:['Grooming & Sanitary','Nail Trim / Ear Cleaning'];
 
   const review = useSubmissionReview([weight,temp,triage,serviceReason,notes,fasted,currentVisit,pet,owner,stale,TODAY]);
 
@@ -138,7 +134,6 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
       temp: !isNaN(t) ? t : null,
       weightAnalysis,
       tempAnalysis,
-      clinicalBracket,
       triageLevel: triage,
       notes: (notes || "").trim(),
       fasted,
@@ -258,7 +253,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
             {/* 1. Automated Kilogram / Weight Section */}
             <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <b style={{ color: "var(--navy)", fontSize: "14px" }}>1. Patient Weight (Automated Breed Assessment)</b>
+                <b style={{ color: "var(--navy)", fontSize: "14px" }}>1. Measured weight</b>
                 {lastWeight && (
                   <span style={{ fontSize: "12px", color: "#64748b" }}>
                     Last clinic measurement: <b>{lastWeight} kg</b>
@@ -276,7 +271,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       max="120"
                       aria-label="Measured weight (kg)"
                       {...validation.field('weight')} value={weight}
-                      className={weightErr ? "bad" : weight !== "" ? "ok" : ""}
+                      className={validation.errors.weight ? 'bad' : ''}
                       onChange={e => { setWeight(e.target.value); setValErr(""); }}
                       style={{ fontSize: "18px", fontWeight: "700", padding: "8px 12px", width: "120px" }}
                     />
@@ -324,63 +319,12 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                 </div>
               )}
 
-              {/* VCMS Clinical Weight Bracket & Pharmacy Verification for Vet Assistant */}
-              {clinicalBracket && normSpecies === "Canine" && (
-                <div style={{ marginTop: "12px", background: "#fff", border: "1.5px solid #fed7aa", borderRadius: "10px", padding: "10px 12px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-                    <Scale size={15} color="#9a3412" />
-                    <b style={{ color: "#9a3412", fontSize: "12.5px", textTransform: "uppercase" }}>
-                      Clinical Dispensing Brackets ({clinicalBracket.kg} kg Weighed)
-                    </b>
-                  </div>
-
-                  {clinicalBracket.heartwormAlert && (
-                    <div style={{ background: "#fef2f2", border: "1px solid #f87171", color: "#991b1b", padding: "6px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 600, marginBottom: "8px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
-                      <ShieldAlert size={14} />
-                      <span>{clinicalBracket.heartwormAlert}</span>
-                    </div>
-                  )}
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "12px" }}>
-                    <div style={{ background: "#f8fafc", padding: "6px 8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                      <span style={{ color: "#334155", fontWeight: 700 }}>NexGard Spectra: </span>
-                      {clinicalBracket.nexgard && (
-                        <span style={{ background: clinicalBracket.nexgard.color, color: "#fff", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>
-                          {clinicalBracket.nexgard.box}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ background: "#f8fafc", padding: "6px 8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                      <span style={{ color: "#334155", fontWeight: 700 }}>Simparica Trio: </span>
-                      {clinicalBracket.simparica && (
-                        <span style={{ background: "#2563eb", color: "#fff", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>
-                          {clinicalBracket.simparica.box}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Species Toxicity Interceptors for Front Desk */}
-              {normSpecies === "Lagomorph" && (
-                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
-                  <ShieldAlert size={15} />
-                  <span><b>Clinical Toxicology Interceptor:</b> Strict ban on Fipronil (Frontline) due to fatal rabbit neurotoxicity.</span>
-                </div>
-              )}
-              {normSpecies === "Feline" && (
-                <div style={{ marginTop: "10px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", padding: "8px 10px", color: "#991b1b", fontSize: "12px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
-                  <ShieldAlert size={15} />
-                  <span><b>Clinical Toxicology Interceptor:</b> Completely restrict formulas containing Permethrin on felines.</span>
-                </div>
-              )}
             </div>
 
             {/* 2. Automated Body Temperature Section */}
             <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <b style={{ color: "var(--navy)", fontSize: "14px" }}>2. Body Temperature (Automated Clinical Pyrexia Check)</b>
+                <b style={{ color: "var(--navy)", fontSize: "14px" }}>2. Measured temperature</b>
                 <span style={{ fontSize: "12px", color: "#64748b" }}>
                   Normal {pet.species}: <b>{speciesConfig.tempMin} – {speciesConfig.tempMax}°C</b>
                 </span>
@@ -396,7 +340,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       max="45"
                       aria-label="Measured temperature (°C)"
                       {...validation.field('temp')} value={temp}
-                      className={tempErr ? "bad" : temp !== "" ? "ok" : ""}
+                      className={validation.errors.temp ? 'bad' : ''}
                       onChange={e => { setTemp(e.target.value); setValErr(""); }}
                       style={{ fontSize: "18px", fontWeight: "700", padding: "8px 12px", width: "120px" }}
                     />
@@ -477,22 +421,14 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                 )}
               </div>
 
-              {appt.service === "vaccination" && <VaccinePicker id="intake-vaccine" species={pet.species} value={vaccineIdFromReason(serviceReason)} onChange={id=>setServiceReason(vaccineReason(id))} />}
-              {appt.service !== "vaccination" && <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
-                {[
-                  "Routine Consultation & Exam",
-                  normSpecies === "Feline" ? "Vaccination: FVRCP (4-in-1)" : "Vaccination: DHPP (5-in-1)",
-                  "Vaccination: Anti-Rabies Core",
-                  "Routine Deworming",
-                  "Flea & Tick Prevention",
-                  "Grooming & Sanitary",
-                  "Emergency / Critical"
-                ].map(preset => (
+              {formType === 'vaccination' && <VaccinePicker id="intake-vaccine" species={pet.species} value={vaccineIdFromReason(serviceReason)} onChange={id=>{validation.changed('reason');setServiceReason(vaccineReason(id));}} />}
+              {formType !== 'vaccination' && <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
+                {reasonPresets.map(preset => (
                   <button
                     key={preset}
                     type="button"
                     onClick={() => {
-                      setServiceReason(preset);
+                      validation.changed('reason');setServiceReason(preset);
                       if (preset.includes("Emergency")) setTriage("Emergency");
                     }}
                     style={{
@@ -513,11 +449,11 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
               <input
                 type="text"
-                readOnly={appt.service === "vaccination"}
+                readOnly={formType === 'vaccination'}
                 {...validation.field('reason')} aria-label="Visit reason" value={serviceReason}
                 onChange={e => setServiceReason(e.target.value)}
                 placeholder="Confirm or clarify what patient needs today..."
-                style={{ width: "100%", padding: "7px 10px", fontSize: "13px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                style={{ width: "100%", padding: "7px 10px", fontSize: "13px", borderRadius: "6px", border: validation.errors.reason ? '1px solid #dc2626' : '1px solid #cbd5e1' }}
               />{validation.feedback('reason')}
             </div>
 

@@ -16,6 +16,7 @@ import { auth, OFFLINE_MSG } from "../authApi.js";
 
 
 export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBook, onCheckIn, onBill }) {
+  const [section,setSection]=useState('card');
   const [walkIn, setWalkIn] = useState(false);
   const [actionError, setActionError] = useState("");
   const p = (db.pets || []).find(x => x.id === petId) || {};
@@ -50,7 +51,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
   };
 
   return (
-    <ClinicDialog label="Patient health passport" onClose={onClose} style={{padding:16}}>
+    <ClinicDialog label="Patient vaccination card" onClose={onClose} style={{padding:16}}>
       <div className="modal staff-pet-card" style={{ width: "min(880px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "20px 24px" }}>
         
         {actionError && <p className="err" role="alert">{actionError}</p>}
@@ -59,7 +60,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
           <div className="staff-pet-controls" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <PawPrint size={22} color="var(--navy)" />
             <h3 style={{ margin: 0, color: "var(--navy)", fontSize: "1.25rem" }}>
-              {p.name}&rsquo;s Health Passport &amp; Digital Vaccination Card
+              {p.name}&rsquo;s Vaccination Card
             </h3>
             <span style={{ background: "#dcfce7", color: "#166534", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "99px" }}>
               Patient record
@@ -79,7 +80,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
         </div>
 
         {/* Appointment & Clinical Visit Actions Bar (shows when opened for an appointment) */}
-        {activeAppt && (
+        {section==='clinical' && activeAppt && (
           <div style={{
             background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
             border: "1.5px solid #cbd5e1",
@@ -209,7 +210,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
         )}
 
         {/* If no appointment exists for this pet */}
-        {!activeAppt && me?.role === "assistant" && (
+        {section==='clinical' && !activeAppt && me?.role === "assistant" && (
           <div style={{
             background: "#f8fafc",
             border: "1px dashed #cbd5e1",
@@ -249,10 +250,13 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
           </div>
         )}
 
-        <ExternalHistorySummary patient={p} />
-        <DigitalVetCard key={p.id} petId={p.id} portrait={<PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />} refreshKey={`${activeAppt?.billingStatus || ''}-${activeAppt?.status || ''}`} />
-
-        <VitalsHistory petId={p.id} me={me} refreshKey={activeAppt?.intakeVitals} />
+        <div className="row" role="group" aria-label="Patient record sections">
+          <button className={`btn sm ${section==='card'?'gold':'ghost'}`} aria-pressed={section==='card'} onClick={()=>setSection('card')}>Vaccination card</button>
+          <button className={`btn sm ${section==='clinical'?'gold':'ghost'}`} aria-pressed={section==='clinical'} onClick={()=>setSection('clinical')}>Clinical history</button>
+        </div>
+        {section==='card'?<DigitalVetCard key={p.id} petId={p.id} portrait={<PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />} refreshKey={`${activeAppt?.billingStatus || ''}-${activeAppt?.status || ''}`} />:<>
+          <ExternalHistorySummary patient={p}/><VitalsHistory petId={p.id} me={me} refreshKey={activeAppt?.intakeVitals}/>
+        </>}
 
         {/* Action row */}
         <div className="staff-pet-controls" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>

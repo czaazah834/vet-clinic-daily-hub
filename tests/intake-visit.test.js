@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {checkInDateError,intakeVisitSnapshot,sameIntakeVisit,savedIntakeVisit} from '../src/intakeVisit.js';
+import {intakeFieldsError,checkInDateError,intakeVisitSnapshot,sameIntakeVisit,savedIntakeVisit} from '../src/intakeVisit.js';
 const visit={id:'visit',petId:'pet',vetId:'vet',date:'2026-10-24',time:'09:00',reason:'Examination',status:'Checked-in',intakeVitals:{weight:5.25,temp:38.6,notes:'Saved observations',fasted:false}};
 test('database and browser intake snapshots agree regardless of JSON property order',()=>{
  const raw={id:'visit',pet_id:'pet',vet_id:'vet',date:visit.date,time:visit.time,reason:visit.reason,status:visit.status,intake_vitals:{notes:'Saved observations',temp:38.6,fasted:false,weight:5.25}};
@@ -34,4 +34,10 @@ test('active consultation remeasurement acknowledgment preserves its visit stage
  assert.equal(checkInDateError(active,'2026-10-26'),null);
  assert.equal(savedIntakeVisit({success:true,appointment:active},active).status,'In consultation');
  assert.throws(()=>savedIntakeVisit({success:true,appointment:visit},active),/did not confirm/);
+});
+
+test('server intake boundary rejects numeric-only visit reasons',()=>{
+ const vitals={weight:12,temp:38.5,triageLevel:'Routine',fasted:false};
+ assert.match(intakeFieldsError(vitals,'455555555'),/words/);
+ assert.equal(intakeFieldsError(vitals,'5-in-1 vaccine'),null);
 });

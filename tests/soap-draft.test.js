@@ -32,3 +32,12 @@ test('unfinished notes remain recoverable after a long absence', () => {
   const db = storage(); writeSoapDraft(db,'draft',fixture(),0);
   assert.equal(readSoapDraft(db,'draft',form).form.diagnosis,'Draft findings');
 });
+
+test('older unfinished drafts gain optional vaccination-card fields without losing clinical inputs or identifiers',()=>{
+ const db=storage();writeSoapDraft(db,'draft',fixture(),1000);
+ const optional={manufacturer:'',serialNumber:'',microchipNumber:'',microchipDate:''};
+ const recovered=readSoapDraft(db,'draft',{...form,...optional});
+ assert.deepEqual(recovered.form,{...fixture().form,...optional});
+ assert.equal(recovered.consultationId,fixture().consultationId);
+ assert.deepEqual(recovered.expectedVisit,fixture().expectedVisit);
+});

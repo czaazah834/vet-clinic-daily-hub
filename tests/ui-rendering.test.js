@@ -34,6 +34,7 @@ buildSync({
       export { VitalEntries, Correction } from './src/roles/VitalsHistory.jsx';
       export { QuickBookModal } from './src/roles/ClinicCalendar.jsx';
       export { default as BookingReason } from './src/components/BookingReason.jsx';
+      export { VetCardTimeline } from './src/roles/DigitalVetCard.jsx';
       export { default as CheckInModal } from './src/roles/CheckInModal.jsx';
       export { default as PrescriptionBuilder } from './src/roles/PrescriptionBuilder.jsx';
       export { default as SoapConsultationModal } from './src/roles/SoapConsultationModal.jsx';
@@ -67,12 +68,17 @@ for (const role of ['owner', 'vet', 'assistant', 'admin']) {
   }
 }
 
-test('vaccination cards render administered history without an active booster recall', () => {
-  const db = populated();
-  db.vacc = [{ id: 'dose', petId: 'p1', vaccine: 'Anti-rabies', done: true, vetId: 'v1', date: '2026-01-01', nextDue: null }];
-  const html = render(ui.owner.menu.find(page => page.k === 'vacc').Page, props('owner', db));
-  assert.match(html, /Anti-rabies/);
+test('vaccination card contains only standard administration and weight details',()=>{
+ const html=render(ui.VetCardTimeline,{history:{events:[{id:'dose',kind:'vaccination',vaccine:'Anti-rabies',date:'2026-01-01',brand:'Brand',manufacturer:'Manufacturer',batch:'Lot',serialNumber:'Serial',nextDue:'2027-01-01',vetName:'Attending vet'},{id:'worm',kind:'deworming',vaccine:'Deworming',brand:'Medication',date:'2026-01-01'},{id:'weight',kind:'weight',value:12,date:'2026-01-01'}]},filters:{query:''}});
+ for(const text of ['Anti-rabies','Manufacturer','Serial','Attending vet','Veterinarian signature','Deworming','Medication','12 kg'])assert.ok(html.includes(text),text);
+ for(const text of ['Consultation history','Publication','Paid','Subjective','Temperature'])assert.ok(!html.includes(text),text);
 });
+test('assistant has a services catalog and admin has no document setup menu',()=>{
+ const page=ui.assistant.menu.find(p=>p.k==='prices');assert.ok(page);
+ const html=render(page.Page,props('assistant',populated()));assert.match(html,/Services &amp; Prices/);assert.doesNotMatch(html,/Book a visit/);
+ assert.ok(!ui.admin.menu.some(p=>p.k==='document-settings'));
+});
+
 
 for (const role of ['owner', 'vet', 'assistant', 'admin']) {
   test(`${role} profile renders a loaded email address`, () => {
@@ -290,4 +296,11 @@ test('admission consent defaults to the saved owner contact without requiring an
  const html=render(ui.AdmissionForm,{mode:'consent',me:me('assistant'),admission:{id:'stay',petName:'Patient',ownerName:'Synthetic Owner',ownerPhone:'+639170000001',revision:0},onClose(){},onSaved(){}});
  assert.match(html,/Primary contact: Synthetic Owner/);assert.match(html,/Add an alternate contact/);
  assert.doesNotMatch(html,/Emergency phone|Emergency contact name|name="emergencyPhone"/);
+});
+
+test('check-in reason presets match the booked service',()=>{
+ const db=populated(),pet=db.pets[0];
+ const appt={id:'intake',petId:pet.id,vetId:'v1',date:'2026-10-25',time:'09:00',reason:'Routine exam',status:'Scheduled',service:'checkup'};
+ db.appts=[appt];const html=render(ui.CheckInModal,{...props('assistant',db),appt});
+ assert.match(html,/Vomiting \/ Diarrhea/);assert.doesNotMatch(html,/Vaccination: DHPP|Clinical Dispensing Brackets|Grooming &amp; Sanitary/);
 });

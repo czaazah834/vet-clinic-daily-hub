@@ -33,7 +33,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
             Pets without a visit and registration history
           </h2>
           <p style={{ margin: 0, color: "#64748b", fontSize: "13.5px" }}>
-            Booked pets use one combined appointment and registration review at Front Desk. This page retains registration details and previous decisions. Approval creates an internal treatment reference; official publication follows completed consultation and saved payment.
+            Booked pets use one combined appointment and registration review at Front Desk. This page retains registration details and previous decisions. Approval keeps the patient’s treatment reference. Administered vaccinations are recorded by the attending veterinarian.
           </p>
         </div>
       </div>

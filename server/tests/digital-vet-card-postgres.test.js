@@ -52,42 +52,40 @@ async function payment(f){
 }
 const publication=async pet=>(await query('SELECT * FROM digital_vet_cards WHERE pet_id=$1',[pet])).rows;
 
-test('migration preserves all IDs and history; internal references are stable without publishing',async()=>{
+const pdfText=async pet=>{
+ const out=await card(pet,'owner','/pdf');assert.equal(out.status,200,JSON.stringify(out));
+ assert.match(out.headers.get('content-disposition'),/^attachment;/);assert.equal(out.headers.get('cache-control'),'private, no-store');
+ const doc=await getDocument({data:out.data,isEvalSupported:false}).promise;
+ let text='';for(let i=1;i<=doc.numPages;i++)text+=(await (await doc.getPage(i)).getTextContent()).items.map(t=>t.str).join(' ')+'\n';
+ const pages=doc.numPages;await doc.destroy();return {text,pages};
+};
+test('migration preserves identities and history; a card and PDF are available without clinic setup or payment',async()=>{
  const old=(await query("SELECT * FROM vaccinations WHERE id='historic-dose'")).rows[0];
- await query(sql('digital-vet-card'));await query(sql('digital-vet-card'));
+ for(const name of ['digital-vet-card','vaccination-card-fields']){await query(sql(name));await query(sql(name));}
  assert.deepEqual((await query("SELECT * FROM vaccinations WHERE id='historic-dose'")).rows[0],old);
  assert.equal((await query("SELECT vaccination_card_id FROM pets WHERE id='legacy-card'")).rows[0].vaccination_card_id,'EXISTING-CARD-ID');
  assert.equal((await query("SELECT vaccination_card_id FROM pets WHERE id='legacy-empty'")).rows[0].vaccination_card_id,'PAT-'+(await query("SELECT md5('legacy-empty') hash")).rows[0].hash);
- assert.equal((await query("SELECT id FROM appointments WHERE id='legacy-visit'")).rows[0].id,'legacy-visit');
- const r=await card('legacy-card');assert.equal(r.status,200,JSON.stringify(r));assert.equal(r.data.document,null);assert.equal(r.data.history.events[0].id,'historic-dose');
- assert.equal((await card('legacy-card','owner','/pdf')).status,409);
+ const r=await card('legacy-card');assert.equal(r.status,200,JSON.stringify(r));assert.ok(r.data.document);assert.equal(r.data.history.events[0].id,'historic-dose');
+ assert.equal((await card('legacy-card','owner','/pdf')).status,200);
 });
-test('unverified clinic details prevent official publication even after saved payment',async()=>{
- const f=await fixture();const p=await payment(f);assert.equal((await p.save()).status,200);
- assert.equal((await publication(f.pet)).length,0);
- const r=await card(f.pet);assert.equal(r.data.document,null);assert.match(r.data.publicationStatus,/verification/);
- const v=(await query('SELECT * FROM vaccinations WHERE id=$1',[f.request.vaccination.id])).rows[0];
- assert.equal(v.appt_id,f.id);assert.equal(v.consultation_id,f.request.id);assert.ok(v.card_id);assert.equal(v.done,true);
-});
-test('only an admin can verify clinic details; validations, audit and revisions are trusted',async()=>{
- for(const role of ['owner','assistant','vet'])assert.equal((await call(role,'PUT','/clinic-document-profile',{...config,revision:0})).status,403);
- const bad=await call('admin','PUT','/clinic-document-profile',{...config,name:' ',phone:'abc',email:'bad',confirmed:false,revision:0});assert.equal(bad.status,400);for(const field of ['name','phone','email','confirmed'])assert.ok(bad.data.errors[field]);
- const saved=await verify();assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.profile.verified_by,'admin');assert.equal(saved.data.profile.verified_by_name,'Synthetic admin');
- assert.equal((await call('admin','PUT','/clinic-document-profile',{...config,revision:0})).status,409);
- assert.equal((await query("SELECT count(*)::int n FROM audit_logs WHERE action LIKE 'Verified clinic document details%'")).rows[0].n,1);
-});
-test('unpaid consultation stays unpublished; payment atomically publishes with stable IDs and duplicate clicks do not duplicate documents',async()=>{
- const f=await fixture();const before=await card(f.pet);assert.equal(before.data.document,null);assert.match(before.data.publicationStatus,/payment/);assert.equal(before.data.history.events.filter(e=>e.kind==='weight').length,1);
- assert.equal((await card(f.pet,'owner','/pdf')).status,409);
+test('unpaid administered doses are included without verified clinic details; payment does not alter the card',async()=>{
+ const f=await fixture();
+ const before=(await card(f.pet)).data.document;assert.ok(before);assert.equal(before.snapshot.events.filter(e=>e.kind==='vaccination').length,1);
  const p=await payment(f);const responses=await Promise.all([p.save(),p.save()]);assert.deepEqual(responses.map(r=>r.status).sort(),[200,409]);
- const docs=await publication(f.pet);assert.equal(docs.length,1);assert.equal(docs[0].revision,1);
- const r=await card(f.pet);assert.equal(r.status,200,JSON.stringify(r));assert.equal(r.data.document.revision,1);assert.equal(r.data.document.snapshot.pet.internalReference,docs[0].snapshot.pet.internalReference);assert.equal(r.data.document.snapshot.visits[0].vetName,'Synthetic vet');
- const same=await Promise.all(Array.from({length:4},()=>card(f.pet)));for(const c of same){assert.equal(c.status,200,JSON.stringify(c));assert.equal(c.data.document.revision,1);}
+ const docs=await publication(f.pet);assert.equal(docs.length,1);assert.equal(docs[0].revision,before.revision);
+ const same=await Promise.all(Array.from({length:4},()=>card(f.pet)));for(const c of same){assert.equal(c.status,200,JSON.stringify(c));assert.equal(c.data.document.reference,before.reference);assert.equal(c.data.document.revision,before.revision);}
  assert.equal((await query("SELECT count(*)::int n FROM audit_logs WHERE action LIKE $1",[`Published Digital Vet Card ${docs[0].document_reference}%`])).rows[0].n,1);
+ const v=(await query('SELECT * FROM vaccinations WHERE id=$1',[f.request.vaccination.id])).rows[0];assert.equal(v.appt_id,f.id);assert.equal(v.consultation_id,f.request.id);assert.ok(v.card_id);assert.equal(v.done,true);
  assert.equal((await call('vet','POST','/consultations',f.request)).status,403);
  assert.equal((await query('SELECT count(*)::int n FROM consultations WHERE appt_id=$1',[f.id])).rows[0].n,1);
 });
-test('publication failure rolls back payment, checkout task, document and audit together',async()=>{
+test('legacy clinic-profile API retains admin-only validation and revision protection',async()=>{
+ for(const role of ['owner','assistant','vet'])assert.equal((await call(role,'PUT','/clinic-document-profile',{...config,revision:0})).status,403);
+ const bad=await call('admin','PUT','/clinic-document-profile',{...config,name:' ',phone:'abc',email:'bad',confirmed:false,revision:0});assert.equal(bad.status,400);
+ const saved=await verify();assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.profile.verified_by,'admin');
+ assert.equal((await call('admin','PUT','/clinic-document-profile',{...config,revision:0})).status,409);
+});
+test('card persistence failure still rolls back payment, checkout task and audit together',async()=>{
  const f=await fixture(),p=await payment(f);
  const before=(await query('SELECT * FROM appointments WHERE id=$1',[f.id])).rows[0];
  const task=(await query('SELECT * FROM checkout_tasks WHERE appointment_id=$1',[f.id])).rows[0];
@@ -97,67 +95,54 @@ test('publication failure rolls back payment, checkout task, document and audit 
  assert.deepEqual((await query('SELECT * FROM appointments WHERE id=$1',[f.id])).rows[0],before);assert.deepEqual((await query('SELECT * FROM checkout_tasks WHERE appointment_id=$1',[f.id])).rows[0],task);assert.equal((await publication(f.pet)).length,0);assert.equal((await query('SELECT count(*)::int n FROM audit_logs')).rows[0].n,audits);
  assert.equal((await p.save()).status,200);
 });
-test('owner and vet access is scoped on JSON and PDF; exports contain all history with corrections and no private admission notes',async()=>{
+test('card JSON and multipage PDF are scoped, include owner contacts and current weights, and exclude unrelated clinical data',async()=>{
  const f=await fixture({name:'Niña Ω'});
- // More entries than both state/vitals page boundaries. Preserve every repeated measurement.
- for(let i=0;i<225;i++)await query("INSERT INTO vital_measurements(id,pet_id,appt_id,kind,value,unit,measured_at,measurement_date,staff_id,staff_name,staff_role,source,origin) VALUES($1,$2,$3,'temp',38.5,'°C',clock_timestamp(),$4,'assistant','Synthetic assistant','assistant','intake','clinic')",[`temperature-${i}`,f.pet,f.id,clinicClock().date]);
- await query("INSERT INTO vaccinations(id,pet_id,card_id,vaccine,date,next_due,done,automated,notes) VALUES('synthetic-plan',$1,'HISTORIC','Synthetic planned vaccine',$2,$2,false,true,'PLANNED-NOT-GIVEN'),('unlinked-history',$1,'HISTORIC','Unlinked historical dose','2020-05-01',NULL,true,false,'HISTORICAL-DOSE')",[f.pet,clinicClock().date]);
- await query("INSERT INTO vital_measurements(id,pet_id,appt_id,kind,value,unit,measured_at,measurement_date,staff_name,source,origin,notes) VALUES('private-measurement',$1,$2,'temp',39,'°C',clock_timestamp(),$3,'Assistant','admission','clinic','PRIVATE-OBSERVATION-SECRET')",[f.pet,f.id,clinicClock().date]);
- const p=await payment(f);assert.equal((await p.save()).status,200);
- const first=await card(f.pet);assert.equal(first.status,200,JSON.stringify(first));assert.equal(first.data.history.complete,true);assert.equal(first.data.history.events.filter(e=>e.kind==='temp').length,225);assert.equal(first.data.history.events.some(e=>e.private),false);
- assert.equal((await card(f.pet,'vet')).data.history.events.filter(e=>e.private).length,1);
+ for(let i=0;i<225;i++)await query("INSERT INTO vital_measurements(id,pet_id,appt_id,kind,value,unit,measured_at,measurement_date,staff_id,staff_name,staff_role,source,origin) VALUES($1,$2,$3,'weight',$4,'kg',clock_timestamp(),$5,'assistant','Synthetic assistant','assistant','intake','clinic')",[`weight-${i}`,f.pet,f.id,10+i/100,clinicClock().date]);
+ await query("INSERT INTO vaccinations(id,pet_id,card_id,vaccine,date,next_due,done,automated,notes) VALUES('synthetic-plan',$1,'HISTORIC','PLANNED-NOT-GIVEN',$2,$2,false,true,'Plan'),('unlinked-history',$1,'HISTORIC','Unlinked historical dose','2020-05-01',NULL,true,false,'HISTORICAL-PRIVATE-NOTE'),('deworming-dose',$1,'HISTORIC','Deworming','2025-05-01','2025-08-01',true,false,'')",[f.pet,clinicClock().date]);
+ await query("UPDATE vaccinations SET brand='Synthetic dewormer' WHERE id='deworming-dose'");
+ await query("INSERT INTO vital_measurements(id,pet_id,appt_id,kind,value,unit,measurement_date,staff_name,source,origin,notes) VALUES('private-measurement',$1,$2,'weight',39,'kg',$3,'Assistant','admission','clinic','PRIVATE-OBSERVATION-SECRET'),('registration-measurement',$1,NULL,'weight',44,'kg',$3,'Owner','registration','registration',''),('temperature-measurement',$1,$2,'temp',38.5,'°C',$3,'Assistant','intake','clinic','')",[f.pet,f.id,clinicClock().date]);
+ const first=await card(f.pet);assert.equal(first.status,200,JSON.stringify(first));assert.equal(first.data.history.complete,true);assert.equal(first.data.history.events.filter(e=>e.kind==='weight').length,226);
+ assert.deepEqual((await card(f.pet,'vet')).data.history,first.data.history,'staff receives the same limited card');
  for(const role of ['other-owner','other-vet'])for(const format of ['','/pdf'])assert.equal((await card(f.pet,role,format)).status,404);
  assert.equal((await card(f.pet,null)).status,401);
- const corrected=await call('assistant','POST',`/pets/${f.pet}/vitals/temperature-0/correct`,{requestId:crypto.randomUUID(),value:38.6,reason:'Synthetic thermometer transcription correction'});assert.equal(corrected.status,200,JSON.stringify(corrected));
- const next=await card(f.pet);assert.equal(next.data.document.revision,first.data.document.revision+1);assert.equal(next.data.document.snapshot.events.length,first.data.document.snapshot.events.length+1);
- const out=await card(f.pet,'owner','/pdf');assert.equal(out.status,200,JSON.stringify(out));assert.match(out.headers.get('content-disposition'),/^attachment;/);assert.equal(out.headers.get('cache-control'),'private, no-store');
- const doc=await getDocument({data:out.data,isEvalSupported:false}).promise;assert.ok(doc.numPages>2);let text='';for(let i=1;i<=doc.numPages;i++){const page=await doc.getPage(i);text+=(await page.getTextContent()).items.map(t=>t.str).join(' ')+'\n';}await doc.destroy();
- for(let i=0;i<225;i++)assert.ok(text.includes(`temperature-${i}`),`Missing exported measurement ${i}`);
- for(const phrase of ['Niña Ω','Synthetic Verified Clinic','SYNTHETIC-REGISTRATION','Synthetic vet','Original issue date','Document reference','PLANNED vaccine','NOT ADMINISTERED','HISTORICAL-DOSE','Synthetic thermometer transcription correction','original retained'])assert.ok(text.includes(phrase),phrase);
- assert.ok(!text.includes('PRIVATE-OBSERVATION-SECRET'));
- assert.equal((await publication(f.pet))[0].revision,next.data.document.revision,'unchanged download does not mint a duplicate approval/document');
+ const corrected=await call('assistant','POST',`/pets/${f.pet}/vitals/weight-0/correct`,{requestId:crypto.randomUUID(),value:11.49,reason:'Synthetic transcription correction'});assert.equal(corrected.status,200,JSON.stringify(corrected));
+ const next=(await card(f.pet)).data.document;assert.equal(next.revision,first.data.document.revision+1);assert.equal(next.snapshot.events.length,first.data.document.snapshot.events.length);assert.ok(!next.snapshot.events.some(e=>e.id==='weight-0'));
+ assert.equal(Number((await query("SELECT value FROM vital_measurements WHERE id='weight-0'")).rows[0].value),10,'original measurement retained in clinical history');
+ const {text,pages}=await pdfText(f.pet);assert.ok(pages>2);
+ for(let i=1;i<225;i++)assert.ok(text.includes(`${10+i/100} kg`),`Missing weight ${i}`);
+ for(const phrase of ['Niña Ω','Synthetic vet','Synthetic owner','owner@example.invalid','+639170000001','Home address','Unlinked historical dose','Synthetic dewormer','11.49 kg','Veterinarian signature'])assert.ok(text.includes(phrase),phrase);
+ for(const phrase of ['PRIVATE-OBSERVATION-SECRET','PLANNED-NOT-GIVEN','HISTORICAL-PRIVATE-NOTE','Synthetic concern','Synthetic assessment','Synthetic instructions','Official clinic','Publication','Payment','Temperature'])assert.ok(!text.includes(phrase),phrase);
+ assert.doesNotMatch(text,/(?:^|\s)44 kg/,'registration weight excluded');
+ assert.equal((await publication(f.pet))[0].revision,next.revision,'unchanged download keeps revision');
 });
-
-
-test('legacy paid visits and unlinked consultations migrate with unknown times left unknown',async()=>{
- await query("UPDATE appointments SET billing_status='Paid' WHERE id='legacy-visit'");
- await query("INSERT INTO consultations(id,pet_id,vet_id,appt_id,date,symptoms,objective,diagnosis,treatment) VALUES('legacy-note','legacy-card','vet','legacy-visit','2025-01-01','Historical subjective','Historical objective','Historical assessment','Historical plan'),('unlinked-note','legacy-card','vet',NULL,'2024-01-01','Unlinked subjective','Unlinked objective','Unlinked assessment','Unlinked plan')");
- const r=await card('legacy-card');assert.equal(r.status,200,JSON.stringify(r));assert.ok(r.data.document);assert.equal(r.data.document.snapshot.pet.internalReference,'EXISTING-CARD-ID');
- const legacy=r.data.document.snapshot.visits.find(v=>v.id==='legacy-visit');assert.equal(legacy.paidAt,null);assert.equal(legacy.qualified,true);
- assert.ok(r.data.document.snapshot.visits.some(v=>v.historical&&v.consultation.id==='unlinked-note'));
- assert.equal(r.data.document.snapshot.events.find(e=>e.id==='historic-dose').visitId,null,'migration does not invent historical links');
+test('optional vaccine identifiers and microchip details persist atomically and appear on the card and PDF',async()=>{
+ const f=await fixture({vaccinate:false});
+ const id='a_'+crypto.randomUUID();await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES($1,$2,'vet',$3,'10:00','Vaccination','In consultation')",[id,f.pet,clinicClock().date]);
+ const request={...f.request,id:'c_'+crypto.randomUUID(),apptId:id,microchip:{number:'SYNTHETIC-CHIP-123',date:'2025-01-01'},vaccination:{id:'v_'+crypto.randomUUID(),vaccine:'Anti-rabies',brand:'Synthetic brand',batch:'LOT-123',manufacturer:'Synthetic manufacturer',serialNumber:'SERIAL-123',doseNo:1,doseOf:1,intervalDays:365,nextDue:(await import('../../src/clinicalWorkflow.js')).boosterDate(clinicClock().date,365),scheduleApproved:true}};
+ for(const patch of [{vaccination:{...request.vaccination,manufacturer:'x'.repeat(101)}},{microchip:{number:'',date:'2025-01-01'}},{microchip:{number:'Chip',date:'2025-02-30'}}])assert.equal((await call('vet','POST','/consultations',{...request,...patch})).status,400);
+ assert.equal((await call('assistant','POST','/consultations',request)).status,403);
+ assert.equal((await call('vet','POST','/consultations',request)).status,200);
+ const result=(await card(f.pet)).data;assert.equal(result.history.pet.microchipNumber,'SYNTHETIC-CHIP-123');assert.equal(result.history.pet.microchipDate,'2025-01-01');
+ const dose=result.history.events.find(e=>e.kind==='vaccination');assert.equal(dose.manufacturer,'Synthetic manufacturer');assert.equal(dose.serialNumber,'SERIAL-123');
+ const {text}=await pdfText(f.pet);for(const phrase of ['SYNTHETIC-CHIP-123','2025-01-01','Synthetic manufacturer','SERIAL-123','LOT-123'])assert.ok(text.includes(phrase),phrase);
 });
-
-
-test('approval preserves an existing internal reference and does not publish an official document',async()=>{
+test('registration approval preserves stable references; an empty card does not fabricate administrations or clinic measurements',async()=>{
  await query("INSERT INTO pets(id,owner_id,name,species,breed,sex,birth,weight,registration_status,vaccination_card_id) VALUES('pending-patient','owner','Pending patient','Canine','Aspin','Male','2020-01-01',10,'Pending','STABLE-INTERNAL-REFERENCE')");
- await query("INSERT INTO pet_requests(id,owner_id,name,species,breed,sex,birth,weight,status,pet_id) VALUES('pending-request','owner','Pending patient','Canine','Aspin','Male','2020-01-01',10,'Pending','pending-patient')");
- await query("UPDATE pet_requests SET neutered='No' WHERE id='pending-request'");
+ await query("INSERT INTO pet_requests(id,owner_id,name,species,breed,sex,birth,weight,status,pet_id,neutered) VALUES('pending-request','owner','Pending patient','Canine','Aspin','Male','2020-01-01',10,'Pending','pending-patient','No')");
  const r=await call('assistant','POST','/pet-requests/pending-request/approve',{revision:0});assert.equal(r.status,200,JSON.stringify(r));
  assert.equal((await query("SELECT vaccination_card_id FROM pets WHERE id='pending-patient'")).rows[0].vaccination_card_id,'STABLE-INTERNAL-REFERENCE');
- assert.equal((await query("SELECT card_id FROM pet_requests WHERE id='pending-request'")).rows[0].card_id,'STABLE-INTERNAL-REFERENCE');
- assert.equal((await card('pending-patient')).data.document,null);
- assert.equal((await publication('pending-patient')).length,0);
+ const doc=(await card('pending-patient')).data.document;assert.ok(doc);assert.deepEqual(doc.snapshot.events,[]);
 });
-test('new unpaid visits never erase the existing card or enter its published PDF snapshot',async()=>{
- const f=await fixture({vaccinate:false}),p=await payment(f);assert.equal((await p.save()).status,200);
- const original=(await card(f.pet)).data.document;
- const newVisit='a_'+crypto.randomUUID();await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status,billing_status) VALUES($1,$2,'vet',$3,'10:00','UNPAID-VISIT-SECRET','In consultation','Unpaid')",[newVisit,f.pet,clinicClock().date]);
- await query("INSERT INTO vital_measurements(id,pet_id,appt_id,kind,value,unit,measurement_date,staff_name,source,origin) VALUES('unpaid-measurement',$1,$2,'temp',39,'°C',$3,'Synthetic assistant','intake','clinic')",[f.pet,newVisit,clinicClock().date]);
- const next=(await card(f.pet)).data;assert.equal(next.document.revision,original.revision);assert.equal(next.document.reference,original.reference);assert.ok(next.history.events.some(e=>e.id==='unpaid-measurement'));assert.ok(!JSON.stringify(next.document.snapshot).includes('UNPAID-VISIT-SECRET'));assert.ok(!next.document.snapshot.events.some(e=>e.id==='unpaid-measurement'));
- await query("UPDATE appointments SET status='Cancelled' WHERE id=$1",[newVisit]);
- const cancelled=(await card(f.pet)).data.document;assert.equal(cancelled.reference,original.reference);assert.equal(cancelled.revision,original.revision);
+test('actual weights from an ongoing unpaid visit are available without exposing visit notes or billing',async()=>{
+ const f=await fixture({vaccinate:false});const original=(await card(f.pet)).data.document;
+ const id='a_'+crypto.randomUUID();await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status,billing_status) VALUES($1,$2,'vet',$3,'10:00','UNPAID-VISIT-SECRET','In consultation','Unpaid')",[id,f.pet,clinicClock().date]);
+ await query("INSERT INTO vital_measurements(id,pet_id,appt_id,kind,value,unit,measurement_date,staff_name,source,origin) VALUES('unpaid-measurement',$1,$2,'weight',11,'kg',$3,'Synthetic assistant','intake','clinic')",[f.pet,id,clinicClock().date]);
+ const next=(await card(f.pet)).data.document;assert.equal(next.reference,original.reference);assert.equal(next.revision,original.revision+1);assert.ok(next.snapshot.events.some(e=>e.id==='unpaid-measurement'));assert.ok(!JSON.stringify(next).includes('UNPAID-VISIT-SECRET'));
 });
-
-test('previous-clinic guide rows retain their identity while history and complete PDF identify unverified provenance',async()=>{
- const f=await fixture({vaccinate:false});
- const id='external-'+crypto.randomUUID();
+test('unverified previous-clinic guide rows are preserved outside the vaccination card',async()=>{
+ const f=await fixture({vaccinate:false}),id='external-'+crypto.randomUUID();
  await query("INSERT INTO vaccinations(id,pet_id,card_id,vaccine,brand,batch,date,done,protocol_type,recorded_by) VALUES($1,$2,'EXTERNAL-REF','Previous Rabies Report','External Clinic Record','EXTERNAL-HIST','2024-01-01',true,'External History (Guide)','Previous Vet (External Guide)')",[id,f.pet]);
- const p=await payment(f);assert.equal((await p.save()).status,200);
- const history=await card(f.pet),event=history.data.history.events.find(e=>e.id===id);
- assert.equal(event.kind,'reference');assert.equal(event.administered,false);assert.match(event.provenance,/administration date unknown/);
- assert.equal((await query('SELECT done FROM vaccinations WHERE id=$1',[id])).rows[0].done,true,'legacy stored record remains intact');
- const out=await card(f.pet,'owner','/pdf');assert.equal(out.status,200);
- const doc=await getDocument({data:out.data,isEvalSupported:false}).promise;let text='';for(let n=1;n<=doc.numPages;n++)text+=(await (await doc.getPage(n)).getTextContent()).items.map(v=>v.str).join(' ');await doc.destroy();
- assert.ok(text.includes('UNVERIFIED previous-clinic reference: Previous Rabies Report'));assert.ok(!text.includes('Administered vaccine: Previous Rabies Report'));assert.match(text.replace(/\s+/g,' '),/administration date unknown/);
+ assert.ok(!(await card(f.pet)).data.history.events.some(e=>e.id===id));
+ assert.equal((await query('SELECT done FROM vaccinations WHERE id=$1',[id])).rows[0].done,true);
+ assert.ok(!(await pdfText(f.pet)).text.includes('Previous Rabies Report'));
 });

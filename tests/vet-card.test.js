@@ -25,3 +25,14 @@ test('PDF download uses authenticated clinic transport, validates content type a
  t.mock.method(globalThis,'fetch',async()=>new Response('{"error":"Awaiting saved payment"}',{status:409,headers:{'Content-Type':'application/json'}}));await assert.rejects(clinicRequest('GET','/api/pets/pet/vet-card/pdf',undefined,{blob:true}),/Awaiting saved payment/);
  t.mock.method(globalThis,'fetch',async()=>new Response('{}',{headers:{'Content-Type':'application/json'}}));await assert.rejects(clinicRequest('GET','/api/pets/pet/vet-card/pdf',undefined,{blob:true}),/did not return a PDF/);
 });
+
+test('optional vaccination-card identifiers validate real dates and bounded text',async()=>{
+ const {vaccinationCardFieldErrors:errors}=await import('../src/vaccinationCardFields.js');
+ assert.deepEqual(errors({},'2026-10-25'),{});
+ assert.deepEqual(errors({manufacturer:'Maker',serialNumber:'S-123',microchipNumber:'CHIP-123',microchipDate:'2025-01-01'},'2026-10-25'),{});
+ assert.ok(errors({manufacturer:'x'.repeat(101)}).manufacturer);
+ assert.ok(errors({serialNumber:123}).serialNumber);
+ assert.ok(errors({microchipDate:'2025-02-30',microchipNumber:'Chip'}).microchipDate);
+ assert.ok(errors({microchipDate:'2027-01-01',microchipNumber:'Chip'},'2026-10-25').microchipDate);
+ assert.ok(errors({microchipDate:'2025-01-01'}).microchipNumber);
+});

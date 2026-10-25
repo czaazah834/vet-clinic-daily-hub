@@ -21,7 +21,7 @@ export default function VaccinationCards(props) {
       <div>
         <span className="workspace-eyebrow">Preventive care</span>
         <h2 id="vaccine-directory-title">Patient vaccination cards</h2>
-        <p>Review immunization history and booster dates. Certify administered doses when finalizing the patient’s SOAP consultation.</p>
+        <p>Review immunization history and booster dates. Record administered doses when finalizing the patient’s vaccination visit.</p>
       </div>
       <span className="workspace-count"><Syringe size={15} aria-hidden="true" />{pets.length} patients</span>
     </header>

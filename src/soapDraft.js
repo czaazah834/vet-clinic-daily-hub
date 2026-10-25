@@ -5,6 +5,7 @@ export function readSoapDraft(storage, key, initialForm) {
   const raw = storage.getItem(key);
   if (!raw) return null;
   const draft = JSON.parse(raw);
+  if(draft.form)for(const key of ['manufacturer','serialNumber','microchipNumber','microchipDate'])if(draft.form[key]===undefined && initialForm[key]!==undefined)draft.form[key]=initialForm[key];
   if (draft.version !== 1 || !Number.isFinite(draft.savedAt)
       || !draft.expectedVisit || !draft.consultationId || !draft.vaccinationId
       || !draft.form || !Object.entries(initialForm).every(([field, value]) => typeof draft.form[field] === typeof value)

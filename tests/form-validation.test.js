@@ -68,3 +68,8 @@ test('assistant consent and vet observation tasks validate live independently',(
   const kept=admissionErrors({...form,nextObservationAt:'',observationInstructions:'',consentConfirmed:false},{mode:'update',vet:true});
   assert.equal(kept.nextObservationAt,'');assert.equal(kept.consentName,undefined);
 });
+
+test('intake reasons reject numbers and punctuation while accepting clinical words and vaccine names',()=>{
+ for(const reason of ['455555555555','...','123-456'])assert.match(intakeErrors({weight:'12',temp:'38.5',reason,notes:''}).reason,/words/);
+ for(const reason of ['Vomiting for 2 days','5-in-1 vaccine','Pagsusuka'])assert.equal(intakeErrors({weight:'12',temp:'38.5',reason,notes:''}).reason,'');
+});

@@ -1252,65 +1252,47 @@ against a disposable local database. The suite uses isolated schemas and synthet
 identities to check migration, access, repeat measurements, correction races,
 rollback, private observations and complete pagination.
 
-### Digital Vet Card publication and PDF
+### Standard vaccination card and PDF
 
-Registration approval keeps a stable internal `vaccination_card_id` for treatment.
-It does not publish an official document. Missing legacy references receive a
-stable `PAT-` reference; existing patient, card, appointment, vaccination and
-consultation IDs remain unchanged. Vaccines recorded through SOAP now retain
-explicit appointment and consultation links. Ambiguous historical links and
-missing timestamps remain unknown.
+The Digital Vet Card contains pet identity, optional microchip number and
+implantation/scan date, the owner's name/address/phone/email, administered
+vaccines with brand/manufacturer/lot/serial and booster due date, deworming
+medication and dates, current clinic-measured visit weights, and the attending
+veterinarian's name with space for a handwritten signature. No signature is
+created automatically. Optional identifiers can be entered by the veterinarian
+in vaccination/deworming visits. Existing missing details remain “Not recorded”.
 
-Administrators use **Official Document Details** to save the clinic's name,
-address, contact information and registration reference after checking a recorded
-source. Verification stores the administrator and time, is revision guarded and
-audited. Every new field validates while typing; editing details invalidates the
-form's confirmation. No sample clinic credentials or government certification
-claims are used to label a card official.
+Cards and PDFs do not require clinic-document setup or payment. Pet, appointment,
+vaccination and consultation IDs are preserved. Snapshots retain stable internal
+references and revisions; unchanged downloads do not create new revisions.
+The legacy clinic-profile API retains its access controls for compatibility but
+is no longer part of card setup or the administrator menu.
 
-Saving payment for a completed consultation publishes or refreshes the Digital
-Vet Card in the same transaction as payment, checkout completion and audit. A
-publication failure rolls back payment. Documents require verified patient
-registration and clinic details. Repeated reads/downloads of identical content
-keep the same reference, revision and issue date. Each changed published snapshot
-increments its revision. Existing eligible history, corrections and changed clinic
-details refresh when the card is opened or exported. Legacy saved Paid status is
-retained even when its original payment timestamp is missing; dates are not
-invented.
+Plans and unverified external guides are not presented as administered doses.
+SOAP notes, prescriptions, billing, registration weight reports, temperatures
+and private admission observations remain in their clinical workflows. Staff can
+open **Clinical history** separately from the card to review/correct measurements.
+Corrections retain the original clinical history while the card shows the current
+weight. Owners and veterinarians retain their existing patient access scopes.
 
-The shared owner/staff timeline includes vaccinations, plans, repeated weights,
-temperatures, linked corrections and expandable consultation details. Type, date
-and search filters affect the screen. Owners can access only their own patients;
-veterinarians retain assigned-patient scope. Staff-only admission observations and
-measurements stay outside owner documents. Registration weight reports and
-unknown historical measurement sources remain explicitly labelled.
+**Download PDF** and **Print Card** use the complete saved card, independent of
+screen filters and pagination. PDFKit supports multiple pages and the bundled
+Unicode font. Admission/discharge/payment/release rules remain independent of
+the card. Card persistence and audit changes still share their caller transaction.
 
-**Download PDF** and **Print Card** request complete server-side history, independent
-of screen filters, pagination or loaded clinic state. Print Card opens the complete
-PDF in the browser's PDF viewer for printing. PDFs include verified clinic and
-patient identification, recording veterinarians/staff, issue/refresh dates, a
-stable document reference/revision, full published timeline and visit details.
-Unpaid/current visits remain visible in live history and await publication; an
-existing paid card stays available. Unlinked historical records retain their
-provenance, and planned vaccines are never presented as administered doses.
-PDFKit generates all pages with a bundled licensed Unicode font; no browser print
-capture or external PDF service is required.
+Apply additive `server/database/vaccination-card-fields.sql` after the existing
+`digital-vet-card.sql` and its prerequisites, using `npm run db:migrate` for an
+existing database. Runtime card/consultation/payment initialization also applies
+it when DDL permission is available. Never use demo seeding for a live database.
 
-Admission remains consultation → admission/care → veterinarian discharge approval
-→ payment → confirmed release. Card publication never changes an admission status
-or removes care notes, medication events or discharge records.
-
-Migration: apply `server/database/digital-vet-card.sql` after the registration,
-admission, care and vitals migrations. It is idempotent and is also initialized
-on card/consultation/payment use when the runtime role has DDL permission. Do not
-run demo seeding against a live database. `db:init` includes the migration for new
-disposable environments. Existing documents are published on their first eligible
-read, without fabricating historical verification.
+Assistants can browse **Services & Prices** using the same saved catalog as billing.
+Check-in validates meaningful visit reasons while typing and on the server, and
+keeps product dispensing recommendations outside the intake form.
 
 Checks:
 
 ```bash
-TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/pawcare_test node --experimental-test-module-mocks --test --test-concurrency=1 server/tests/digital-vet-card-postgres.test.js server/tests/connected-workflow-postgres.test.js tests/vet-card.test.js
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/pawcare_test node --experimental-test-module-mocks --test --test-concurrency=1 server/tests/digital-vet-card-postgres.test.js server/tests/connected-workflow-postgres.test.js server/tests/migration-rollout-postgres.test.js tests/vet-card.test.js
 ```
 
 ### Safe workflow rollout

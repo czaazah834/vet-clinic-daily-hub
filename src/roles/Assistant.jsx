@@ -1,3 +1,4 @@
+import Prices from './owner/Prices.jsx';
 import { approvalVisit } from "../appointmentStatus.js";
 import CancellationDialog from '../components/CancellationDialog.jsx';
 import { VaccineEstimate } from "../components/VaccineBooking.jsx";
@@ -324,6 +325,7 @@ export const assistant = {
   menu: [
     { k: "home", l: "Front Desk", i: "bell", dash: 1, sub: "Visit approvals, pet registrations, arrivals and clinic operations." },
     { k: 'admissions', l: 'Admitted Pets', i: 'hospital', Page: AdmissionsPage, sub: 'Follow veterinarian care plans, record measured observations and share owner updates.' },
+    { k: "prices", l: "Services & Prices", i: "file", Page: props => <Prices {...props} staff />, sub: "Browse clinic services, products, offers and current prices." },
     { k: "sales", l: "Daily Sales & Billing", i: "receipt", Page: DailySalesPage, sub: "Daily collections register, cashier receipts, and sales breakdown." },
     { k: "pet-requests", l: "Online Pet Requests", i: "paw", Page: PetRequestsPage, sub: "Review and approve online pet registrations with automated vaccination cards." },
     { k: "cal", l: "Appointments & Calendar", i: "calendar", Page: ClinicCalendar, sub: "Unified calendar schedules, slot booking, and appointments management." },

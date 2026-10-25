@@ -82,6 +82,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     scheduleApproved: false,
     brand: "",
     batch: "",
+    manufacturer:"",serialNumber:"",microchipNumber:"",microchipDate:"",
     vaccineNotes: "",
     // Clinical Follow-up Scheduling
     scheduleFollowUp: false,
@@ -205,6 +206,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         vaccine: f.vaccine,
         brand: f.brand.trim(),
         batch: f.batch.trim(),
+        manufacturer:(f.manufacturer || "").trim(),serialNumber:(f.serialNumber || "").trim(),
         date: f.date,
         nextDue: boosterDue,
         doseNo: Number(f.doseNo),
@@ -220,7 +222,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     const followUpNote = f.scheduleFollowUp
       ? `\nFollow-up requested for ${f.followUpDate}: ${f.followUpReason.trim()}. Reception to confirm scheduling.` : "";
     newRecord.treatment += followUpNote;
-    const request={...newRecord,...(f.weight?{weight:Number(f.weight)}:{}),vaccination:newVacc,expectedVisit};
+    const request={...newRecord,...(f.weight?{weight:Number(f.weight)}:{}),vaccination:newVacc,...(preventive && (f.microchipNumber || f.microchipDate)?{microchip:{number:f.microchipNumber.trim(),date:f.microchipDate || null}}:{}),expectedVisit};
     if (!await review.ask({title:`Review and finalize ${formTitle.toLowerCase()}`,confirmLabel:"Finalize visit",
       description:admissionStatus === 'Admitted' ? "This saves the SOAP consultation. The pet remains admitted for ongoing care. Approve discharge in Admitted Pets before reception can finalize payment and release." : "This saves the clinical record for the owner and completes this visit. Reception handles checkout; any admitted stay still requires veterinarian discharge approval.",
       fields:[
@@ -237,7 +239,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         ...(consultation ? [["Prescription notes",newRecord.prescription],
         ["Prescribed products",selectedItems.map(p=>`${p.name} × ${p.quantity} — ${p.instructions}`).join("\n") || "None selected"]] : []),
         ["Performed services",serviceCatalog.filter(p=>selectedServices.includes(p.id) || (f.giveVaccine && p.id === VACCINE_SERVICE[f.vaccine])).map(p=>`${p.name} — ₱${p.price.toLocaleString()}`).join("\n") || "None selected"],
-        ...(preventive ? [[formType==='deworming' ? "Deworming administration" : "Vaccine administration",newVacc ? `${newVacc.vaccine} — ${newVacc.brand}\nBatch: ${newVacc.batch} · Dose ${newVacc.doseNo} of ${newVacc.doseOf}\nApproved booster due: ${newVacc.nextDue}\n${newVacc.notes}` : "No administration recorded"]] : []),
+        ...(preventive && f.microchipNumber ? [["Microchip",`${f.microchipNumber} · ${f.microchipDate || 'Date not recorded'}`]] : []),
+        ...(preventive ? [[formType==='deworming' ? "Deworming administration" : "Vaccine administration",newVacc ? `${newVacc.vaccine} — ${newVacc.brand}\nManufacturer: ${newVacc.manufacturer || 'Not recorded'} · Serial: ${newVacc.serialNumber || 'Not recorded'}\nBatch: ${newVacc.batch} · Dose ${newVacc.doseNo} of ${newVacc.doseOf}\nApproved booster due: ${newVacc.nextDue}\n${newVacc.notes}` : "No administration recorded"]] : []),
         ...(consultation ? [["Care status",newRecord.careStatus],
         ["Follow-up",newRecord.followUpDate ? `${newRecord.followUpDate}: ${newRecord.followUpReason}` : "No follow-up requested"]] : [])]
     })) return;
@@ -611,8 +614,12 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                       />
                       {errs.batch && <span id="soap-batch-error" className="err" aria-live="polite">{errs.batch}</span>}
                     </div>
+                    {formType==='vaccination' && [['manufacturer','Manufacturer (optional)'],['serialNumber','Serial number (optional)']].map(([key,label])=><div className="fld" key={key}><label htmlFor={`soap-${key}`}>{label}</label><input id={`soap-${key}`} name={key} value={f[key] || ''} onChange={e=>set(key,e.target.value)} maxLength={100} aria-invalid={!!errs[key]} aria-describedby={`soap-${key}-error`}/>{errs[key] && <span id={`soap-${key}-error`} className="err" aria-live="polite">{errs[key]}</span>}</div>)}
                   </div>
                 )}
+                <details style={{marginTop:12}}><summary>Microchip identification (if applicable)</summary><div className="two">
+                  {[['microchipNumber','Microchip number','text'],['microchipDate','Implantation / scan date','date']].map(([key,label,type])=><div className="fld" key={key}><label htmlFor={`soap-${key}`}>{label}</label><input id={`soap-${key}`} name={key} type={type} max={type==='date'?TODAY:undefined} maxLength={type==='text'?50:undefined} value={f[key] || ''} onChange={e=>set(key,e.target.value)} aria-invalid={!!errs[key]} aria-describedby={`soap-${key}-error`}/>{errs[key] && <span id={`soap-${key}-error`} className="err" aria-live="polite">{errs[key]}</span>}</div>)}
+                </div></details>
                 <p>{f.giveVaccine ? relevantServices.find(p=>p.id===VACCINE_SERVICE[f.vaccine]) ? `Service total: ₱${relevantServices.find(p=>p.id===VACCINE_SERVICE[f.vaccine]).price.toLocaleString()} · Added to billing once on finalization.` : 'No fixed catalog price is configured for this administration.' : 'No administration charge is recorded unless you confirm it was given.'}</p>
                 {catalogError && <p role="alert">{catalogError} <button type="button" onClick={()=>retryCatalog(n=>n+1)}>Retry prices</button></p>}
               </div>}

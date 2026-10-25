@@ -1,3 +1,4 @@
+import {intakeReasonError} from './intakeVisit.js';
 import {admissionChoiceErrors} from './admissionTemplates.js';
 import {vitalValueError} from './vitalValidation.js';
 import { consentErrors } from './admissionCare.js';
@@ -61,7 +62,7 @@ export function paymentErrors({items,discount,cashTendered,refNo,method,prescrib
   return errors;
 }
 export function intakeErrors({weight,temp,reason,notes}) {
-  return {weight:vitalValueError(weight,'weight'),temp:vitalValueError(temp,'temp'),reason:text(reason,'Visit reason',500,true),notes:text(notes,'Intake notes',2000)};
+  return {weight:vitalValueError(weight,'weight'),temp:vitalValueError(temp,'temp'),reason:intakeReasonError(reason),notes:text(notes,'Intake notes',2000)};
 }
 export function noteChoiceError(value) {
   const list=value.split(/\r?\n/).map(v=>v.trim()).filter(Boolean);

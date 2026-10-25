@@ -1,3 +1,4 @@
+import {vaccinationCardFieldErrors} from '../../src/vaccinationCardFields.js';
 import {externalHistoryErrors} from '../../src/externalHistory.js';
 import {bookingReasonErrors,bookingReason} from '../../src/bookingReason.js';
 import {digitalVetCardRouter} from './digitalVetCard.js';
@@ -1841,6 +1842,9 @@ clinicRouter.delete("/vaccinations/:id", async (req, res) => {
 /* 7. CONSULTATIONS (SOAP MEDICAL NOTES) */
 clinicRouter.post("/consultations", async (req, res) => {
   const { id, petId, apptId, date, symptoms, objective, diagnosis, treatment, prescription, vaccination, weight } = req.body;
+  const cardFieldErrors=vaccinationCardFieldErrors({...vaccination,...(req.body.microchip?{microchipNumber:req.body.microchip.number,microchipDate:req.body.microchip.date}:{})},clinicClock().date);
+  if(Object.keys(cardFieldErrors).length)return res.status(400).json({error:Object.values(cardFieldErrors)[0],errors:cardFieldErrors});
+  if(req.body.microchip && (typeof req.body.microchip.number!=='string' || !req.body.microchip.number.trim()))return res.status(400).json({error:'Enter the microchip number.'});
   const careError = validateCarePlan(req.body, date);
   if (careError) return res.status(400).json({ error: careError });
   const vetId = req.user.vetId || req.user.id;
@@ -1876,6 +1880,10 @@ clinicRouter.post("/consultations", async (req, res) => {
       const patient = (await client.query("SELECT birth, vaccination_card_id FROM pets WHERE id = $1 FOR UPDATE", [petId])).rows[0];
       if (!patient) throw bookingError("Patient record not found.",404);
       patient.vaccination_card_id=await internalCardReference(client,petId,patient.vaccination_card_id);
+      if(req.body.microchip){
+        if(req.body.microchip.date && req.body.microchip.date<toDateStr(patient.birth))throw bookingError('The microchip date cannot be before the patient’s birth.');
+        await client.query('UPDATE pets SET microchip_number=$2,microchip_date=$3 WHERE id=$1',[petId,req.body.microchip.number.trim(),req.body.microchip.date || null]);
+      }
       if (patient.birth && date < toDateStr(patient.birth)) throw bookingError("The consultation date cannot be before the patient's birth.");
       const inserted = await client.query(
         `INSERT INTO consultations (id, pet_id, vet_id, appt_id, date, symptoms, objective, diagnosis, treatment, prescription)
@@ -1891,9 +1899,9 @@ clinicRouter.post("/consultations", async (req, res) => {
       if (vaccination) {
         const pet = patient;
         const saved = await client.query(
-          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, done, notes, vet_id, recorded_by, protocol_type, dose_no, dose_of)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12,$13,$14) RETURNING *`,
-          [vaccination.id || "v_" + crypto.randomUUID(), petId, pet.vaccination_card_id, vaccination.vaccine.trim(), vaccination.brand.trim(), vaccination.batch.trim(), date, vaccination.nextDue || null, vaccination.notes || "", vetId, req.user.name, `Vet-approved interval: ${vaccination.intervalDays} days`, vaccination.doseNo, vaccination.doseOf]
+          `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, done, notes, vet_id, recorded_by, protocol_type, dose_no, dose_of, manufacturer, serial_number)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+          [vaccination.id || "v_" + crypto.randomUUID(), petId, pet.vaccination_card_id, vaccination.vaccine.trim(), vaccination.brand.trim(), vaccination.batch.trim(), date, vaccination.nextDue || null, vaccination.notes || "", vetId, req.user.name, `Vet-approved interval: ${vaccination.intervalDays} days`, vaccination.doseNo, vaccination.doseOf, (vaccination.manufacturer || "").trim(), (vaccination.serialNumber || "").trim()]
         );
         savedVaccination = saved.rows[0];
         await client.query("UPDATE vaccinations SET appt_id=$2,consultation_id=$3 WHERE id=$1",[savedVaccination.id,apptId,consultId]);

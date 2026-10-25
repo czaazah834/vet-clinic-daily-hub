@@ -1,3 +1,4 @@
+import '../services-prices.css';
 import { PaginatedList } from "../../components/Pagination.jsx";
 import { useEffect, useState } from "react";
 import { api } from "../../api.js";
@@ -5,7 +6,7 @@ import { api } from "../../api.js";
 const money = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" });
 const isProduct = item => item.id.startsWith("product_") || item.requiresPrescription;
 
-export default function Prices({ go }) {
+export default function Prices({ go, staff=false }) {
   const [catalog, setCatalog] = useState(null);
   const [error, setError] = useState("");
   const [attempt, retry] = useState(0);
@@ -32,7 +33,7 @@ export default function Prices({ go }) {
   return <section className="card ow-prices" aria-labelledby="clinic-prices-title">
     <div className="ow-prices-heading">
       <div><h3 id="clinic-prices-title">Services & Prices</h3><p>Explore the care and products offered by your veterinary clinic.</p></div>
-      {go && <button className="btn" onClick={() => go("appts")}>Book a visit</button>}
+      {go && !staff && <button className="btn" onClick={() => go("appts")}>Book a visit</button>}
     </div>
     <p className="ow-note">Prices are fixed in Philippine pesos (PHP) and match the clinic’s billing catalog. Your final bill depends on the services performed and quantities supplied. Your veterinarian will confirm which care is suitable for your pet.</p>
     <div className="ow-price-types" role="group" aria-label="Browse prices">

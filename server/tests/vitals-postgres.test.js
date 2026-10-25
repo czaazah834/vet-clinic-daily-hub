@@ -88,6 +88,7 @@ test('invalid measurements and stale/concurrent saves leave no partial snapshots
  const v=await fixture();const before=await snapshot(v);
  for(const invalid of [{weight:0},{temp:46},{weight:1.001},{temp:38.123},{temp:'38.5'},{notes:'x'.repeat(2001)}])assert.equal((await intake(v,'vet',invalid)).status,409,JSON.stringify(invalid));
  assert.deepEqual(await snapshot(v),before);
+ const invalidReason=await call('assistant','PATCH',`/appointments/${v.id}/status`,{status:'Checked-in',expectedVisit:intakeVisitSnapshot(v),reason:'45555555555',intakeVitals:{weight:12,temp:38.5}});assert.equal(invalidReason.status,409);assert.match(invalidReason.data.error,/words/);assert.deepEqual(await snapshot(v),before);
  const results=await Promise.all([intake(v),intake(v,'vet')]);assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);assert.equal((await rows(v.pet_id)).length,2);
  assert.equal((await intake(v)).status,409);assert.equal((await rows(v.pet_id)).length,2);
 });

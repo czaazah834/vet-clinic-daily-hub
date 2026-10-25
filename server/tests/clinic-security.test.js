@@ -16,6 +16,7 @@ const fakeQuery = async (sql, params = []) => {
   if (sql.includes('FROM sessions s')) return rows(users[params[0]] ? [users[params[0]]] : []);
   if(sql==="SELECT version FROM pawcare_schema_migrations WHERE version='patient-reference-history-v1'")return rows([{version:'patient-reference-history-v1'}]);
   if(sql==="SELECT version FROM pawcare_schema_migrations WHERE version='digital-vet-card-v1'")return rows([{version:'digital-vet-card-v1'}]);
+  if(sql==="SELECT version FROM pawcare_schema_migrations WHERE version='vaccination-card-fields-v1'")return rows([{version:'vaccination-card-fields-v1'}]);
   if (sql==="SELECT version FROM pawcare_schema_migrations WHERE version='owner-pet-onboarding-v1'") return rows([{version:'owner-pet-onboarding-v1'}]);
   if (sql.startsWith('SELECT *,submission_payload=')) return rows([]);
   if (sql==='SELECT owner_id FROM pets WHERE id=$1') return rows(db.pets.filter(p=>p.id===params[0]));
@@ -28,6 +29,19 @@ const fakeQuery = async (sql, params = []) => {
   if (sql.includes('FROM admissions WHERE appt_id') || sql.includes('FROM admission_updates e JOIN admissions')) return rows([]);
   if (sql.startsWith('ALTER TABLE')) return rows([]);
   if(sql==='SELECT * FROM clinic_document_profile WHERE id=true')return rows([]);
+  if(sql==='SELECT * FROM pets WHERE id=$1 FOR UPDATE')return rows(db.pets.filter(p=>p.id===params[0]));
+  if(sql.startsWith('SELECT name,address,phone,email FROM owners'))return rows(db.owners.filter(o=>o.id===params[0]));
+  if(sql.startsWith("SELECT id,vet_id,first_name,last_name FROM users WHERE role='vet'"))return rows([{id:'u_vet',vet_id:'v1',first_name:'Synthetic',last_name:'Vet'}]);
+  if(sql.startsWith('SELECT * FROM vaccinations WHERE pet_id=$1 AND done=true'))return rows(db.vaccs.filter(v=>v.pet_id===params[0] && v.done));
+  if(sql.startsWith('SELECT m.* FROM vital_measurements'))return rows([]);
+  if(sql.startsWith('INSERT INTO digital_vet_cards')){
+    const old=db.cards.find(c=>c.pet_id===params[0]);
+    if(old?.content_hash===params[1])return rows([]);
+    const row={pet_id:params[0],document_reference:'DVC-'+params[0],revision:(old?.revision || 0)+1,issued_at:'2026-10-24T00:00:00Z',refreshed_at:'2026-10-24T00:00:00Z',content_hash:params[1],snapshot:JSON.parse(params[2])};
+    db.cards=db.cards.filter(c=>c.pet_id!==params[0]);db.cards.push(row);return rows([row]);
+  }
+  if(sql.startsWith('SELECT * FROM digital_vet_cards WHERE pet_id='))return rows(db.cards.filter(c=>c.pet_id===params[0]));
+
   if(sql.startsWith('UPDATE vaccinations SET appt_id='))return rows([]);
   if (sql.startsWith('SELECT')) {
     if (sql.startsWith('SELECT id FROM owners WHERE id = $1')) return rows(db.owners.filter(o=>o.id===params[0]));
@@ -112,7 +126,7 @@ const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.o
 after(() => new Promise(resolve => server.close(resolve)));
 beforeEach(() => {
   calls = []; failSql = null; rollbacks = 0;
-  db = { owners: [{ id: 'o1', name: 'Own owner' }, { id: 'o2', name: 'Other owner' }], pets: [{ id: 'p1', owner_id: 'o1', name: 'Own pet', weight: 5, vaccination_card_id: 'VACC-SYNTHETIC' }, { id: 'p2', owner_id: 'o2', name: 'Other pet', weight: 7 }], appts: [{ id: 'a1', pet_id: 'p1', vet_id: 'v1', date: clinicClock().date, time: '09:00', reason:'Examination', status: 'Pending Approval', amount: 600, billing_status: 'Unbilled' }, { id: 'a2', pet_id: 'p2', vet_id: 'v2', date: clinicClock().date, time: '10:00', status: 'Pending Approval' }], requests: [{ id: 'r1', owner_id: 'o1', name:'Request One', status: 'Pending',revision:0 }, { id: 'r2', owner_id: 'o2', name:'Request Two',status: 'Pending',revision:0 }], consults: [], vaccs: [], logs: [], tasks: [] };
+  db = { owners: [{ id: 'o1', name: 'Own owner' }, { id: 'o2', name: 'Other owner' }], pets: [{ id: 'p1', owner_id: 'o1', name: 'Own pet', weight: 5, vaccination_card_id: 'VACC-SYNTHETIC' }, { id: 'p2', owner_id: 'o2', name: 'Other pet', weight: 7 }], appts: [{ id: 'a1', pet_id: 'p1', vet_id: 'v1', date: clinicClock().date, time: '09:00', reason:'Examination', status: 'Pending Approval', amount: 600, billing_status: 'Unbilled' }, { id: 'a2', pet_id: 'p2', vet_id: 'v2', date: clinicClock().date, time: '10:00', status: 'Pending Approval' }], requests: [{ id: 'r1', owner_id: 'o1', name:'Request One', status: 'Pending',revision:0 }, { id: 'r2', owner_id: 'o2', name:'Request Two',status: 'Pending',revision:0 }], consults: [], vaccs: [], logs: [], tasks: [], cards: [] };
 });
 const request = async (role, method, path, body) => {
   const res = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer session-${role}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });

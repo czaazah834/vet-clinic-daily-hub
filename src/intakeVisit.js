@@ -1,4 +1,9 @@
 import {vitalValueError} from './vitalValidation.js';
+export function intakeReasonError(reason) {
+  if(typeof reason!=='string' || !reason.trim() || reason.length>500) return 'Enter a visit reason of no more than 500 characters.';
+  if(!/\p{L}/u.test(reason)) return 'Describe the visit reason using words, such as vomiting or routine checkup.';
+  return '';
+}
 // Initial arrivals must use their reserved clinic day; ongoing intake can cross midnight.
 export function checkInDateError(visit, clinicDate) {
   if (!['Checked-in','In consultation'].includes(visit?.status) && visit?.date !== clinicDate) {
@@ -38,6 +43,6 @@ export function intakeFieldsError(v, reason) {
   if (v.triageLevel !== undefined && !['Routine','Priority','Emergency'].includes(v.triageLevel)) return 'Choose Routine, Priority or Emergency triage.';
   if (v.fasted !== undefined && typeof v.fasted !== 'boolean') return 'Fasted must be Yes or No.';
   if (v.notes !== undefined && (typeof v.notes !== 'string' || v.notes.length > 2000)) return 'Intake notes cannot exceed 2,000 characters.';
-  if (typeof reason !== 'string' || !reason.trim() || reason.length > 500) return 'Enter a visit reason of no more than 500 characters.';
+  if (intakeReasonError(reason)) return intakeReasonError(reason);
   return null;
 }

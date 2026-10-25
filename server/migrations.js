@@ -7,7 +7,7 @@ export const migrationFiles=Object.freeze([
  'owner-pet-onboarding','appointment-approval','staff-access','care-workflow',
  'prescriptions','reminder-calls','contact-changes','password-recovery',
  'verification-delivery','state-read-indexes','note-options','admissions',
- 'admission-workflow','admission-care','vitals-history','digital-vet-card','patient-reference-history'
+ 'admission-workflow','admission-care','vitals-history','digital-vet-card','patient-reference-history','vaccination-card-fields'
 ]);
 export function migrationSource(name){
  const source=readFileSync(new URL(`./database/${name}.sql`,import.meta.url),'utf8');

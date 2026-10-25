@@ -41,8 +41,7 @@ digitalVetCardRouter.get('/pets/:petId/vet-card{/:format}',async(req,res)=>{
    const pet=await cardPatient(client,req.params.petId,req.user);
    const shared=await cardHistory(client,pet);
    const document=await refreshDigitalVetCard(client,pet.id,{pet,history:shared});
-   const history=req.user.role==='owner'?shared:await cardHistory(client,pet,{staff:true});
-   return {success:true,history,document,publicationStatus:pet.registration_status && pet.registration_status!=='Verified'?'Awaiting pet registration verification':!shared.clinic.verifiedAt?'Clinic details await verification':!shared.visits.some(v=>v.qualified)?'Awaiting completed consultation and saved payment':'Published'};
+   return {success:true,history:shared,document};
   });
   if(req.params.format==='pdf'){
    if(!data.document)throw cardError(data.publicationStatus,409);
