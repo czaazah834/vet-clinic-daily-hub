@@ -63,7 +63,7 @@ export default function Forgot({ onBack, go }) {
   const reset = async (e) => {
     e.preventDefault();
     setTop("");
-    f.submit();
+    f.submit(e);
     if (!f.valid || pending.current) return;
     pending.current=true;
     setBusy(true);

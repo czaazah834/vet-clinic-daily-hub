@@ -24,3 +24,15 @@ test('owner synchronization preserves owner ID and normalizes address and birthd
   assert.equal(account.address, 'Street, City');
   assert.equal(account.birthday, '1990-01-02');
 });
+
+import {contactFieldErrors,contactCodeErrors} from '../src/accountProfile.js';
+test('profile inline feedback matches server phone, address and code constraints',()=>{
+ assert.deepEqual(contactFieldErrors({email:'owner@example.com',phone:'09171234567'}),{});
+ assert.ok(contactFieldErrors({email:'invalid',phone:'1234567890',city:'x\nInjected'}).email);
+ assert.ok(contactFieldErrors({email:'owner@example.com',phone:'1234567890'}).phone);
+ assert.ok(contactFieldErrors({email:'owner@example.com',phone:'09171234567',city:'x\nInjected'}).city);
+ assert.ok(contactFieldErrors({email:'owner@example.com',phone:'09171234567',zipCode:'x'.repeat(21)}).zipCode);
+ assert.deepEqual(contactCodeErrors({requireEmail:true,requirePhone:false},{emailCode:'123456'}),{});
+ for(const code of ['','123','abcdef'])assert.ok(contactCodeErrors({requireEmail:true},{emailCode:code}).emailCode);
+ assert.ok(contactCodeErrors({requirePhone:true},{phoneCode:''}).phoneCode);
+});

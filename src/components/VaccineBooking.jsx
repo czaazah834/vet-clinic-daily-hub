@@ -14,7 +14,7 @@ export function VaccinePicker({value,onChange,species,petSelected=true,error,id=
   const read=useBookingCatalog(),catalog=read?.data?.catalog || [];
   return <section className="vaccine-picker" aria-label="Requested vaccine">
     <label htmlFor={id}><Syringe size={18} aria-hidden="true" />Which vaccine is this visit for? <span>*</span></label>
-    <LiveControl as="select" required error={error || (value ? vaccineChoiceError(value,species) : '')} id={id} value={value} disabled={disabled||!petSelected} onChange={e=>onChange(e.target.value)} aria-invalid={!!error} aria-describedby={`${id}-hint`}>
+    <LiveControl as="select" name="vaccineId" required error={error || (value ? vaccineChoiceError(value,species) : '')} id={id} value={value} disabled={disabled||!petSelected} onChange={e=>onChange(e.target.value)} aria-invalid={!!error} aria-describedby={`${id}-hint`}>
       <option value="">{petSelected?'Choose a vaccine request':'Choose a pet first'}</option>
       {VACCINE_CHOICES.filter(c=>!vaccineChoiceError(c.id,species)).map(c=><option key={c.id} value={c.id}>{c.name}{vaccinePrice(c.id,catalog)!==null?` — ${phpPrice(vaccinePrice(c.id,catalog))}`:''}</option>)}
     </LiveControl>

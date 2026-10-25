@@ -1318,3 +1318,18 @@ remain intact. These suggestions never select a diagnosis automatically.
 Administrators can edit or retire any suggestion; retired entries are not
 reintroduced by initialization. Treatment suggestions and patient-specific free
 text remain independent of diagnosis and billing.
+
+### Walk-in reception process and inline feedback
+
+1. Search for the patient first. **Existing patient check-in** keeps the owner and clinical history linked; **Walk-In Registration** creates a patient only when they are new. An existing owner can add a new pet through the same registration form.
+2. Choose today's purpose, the requested vaccine when applicable, and the attending veterinarian. Review the owner/patient and visit details, then save the arrival. Walk-ins use the clinic's current Manila date/time, start **Scheduled / Unbilled**, and do not reserve a future slot. Saving registration alone (arrival unchecked) does not create a visit.
+3. Record today's measured weight and temperature, triage, reason and observations in intake. Registration weight and earlier measurements do not complete intake. Saving intake changes the visit to **Checked-in** and puts it in the assigned veterinarian's queue. For urgent cases, alert the attending veterinarian and record the assessed triage during intake.
+4. The veterinarian opens the visit and completes the form for its saved purpose: consultation/SOAP, vaccination, deworming or grooming. Admission is an explicit clinical decision. Reception handles checkout after the clinical record is finalized.
+
+If the pet already has an active visit today, continue that visit's intake instead of creating another arrival. Rejected, cancelled, completed and no-show visits remain in history and do not block a new walk-in. A rejected patient registration still needs correction and verification. Failed saves keep entries open; reception proceeds to intake only after the API confirms the patient, veterinarian, purpose, reason and Scheduled walk-in arrival.
+
+Active forms use inline feedback through `useFormValidation`, `LiveControl`, or the owner/authentication `useLive`/`Field` controls. Required values, format, length, date, numeric range and related-field rules are shown beside fields during editing/blur and on submission, with accessible error descriptions. Invalid submission focuses the first invalid field where the form supports field-level focus. Disabled and removed controls do not retain stale native submission errors. Search/filter controls remain optional. Browser feedback supplements server validation; clinic state, roles, revisions and transactional checks remain enforced by the API.
+
+Admission dropdowns capture their values before state updates, and validation runs after field change handlers. The review shows the reason and selected templates. Saved template names and patient-specific plan/instructions are retained in the staff care timeline; owners see only explicitly shared updates. Choosing another template replaces its starting text and requires the veterinarian to review the plan again. A new care update intentionally leaves optional plan/task inputs blank to keep existing instructions unless a change is entered.
+
+For DOM regressions, run `npm run dev` and open `/tests/browser/forms.html` in the application preview. The page reports `passed: true` after checking corrected vaccine selections, numeric ranges, disabled/removed fields and repeated admission selections after invalid submissions. It uses synthetic incomplete forms and makes no clinical save or provider request. Pure/SSR coverage runs with `node --test tests/*.test.js`; clinic security and local PostgreSQL workflows retain their documented commands above.

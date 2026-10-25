@@ -1,3 +1,4 @@
+import {validateStaffSetupField} from '../staffSetupValidation.js';
 import { useState, useEffect } from "react";
 import {
   Stethoscope,
@@ -15,7 +16,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { auth, OFFLINE_MSG } from "../authApi.js";
-import { pn, tc, pwOk, PW_RULES, pwStrength } from "../validate.js";
+import { tc, PW_RULES, pwStrength } from "../validate.js";
 import AuthShell, { AuthBrand } from "./AuthShell.jsx";
 import "./auth.css";
 import "./brand.css";
@@ -79,50 +80,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
 
   const touch = (field) => setTouched(p => ({ ...p, [field]: true }));
 
-  // Real-time validations matching create account
-  const validateField = (field, val) => {
-    const v = String(val || "").trim();
-    switch (field) {
-      case "firstName":
-        if (!v) return "First name is required.";
-        if (/\d/.test(val)) return "Numbers are not allowed in names. Please use letters only.";
-        if (v.length < 2) return "First name must be at least 2 characters.";
-        if (v.length > 50) return "First name cannot exceed 50 characters.";
-        return pn(v);
-      case "lastName":
-        if (!v) return "Last name is required.";
-        if (/\d/.test(val)) return "Numbers are not allowed in names. Please use letters only.";
-        if (v.length < 2) return "Last name must be at least 2 characters.";
-        if (v.length > 50) return "Last name cannot exceed 50 characters.";
-        return pn(v);
-      case "middleInitial":
-        return !v || /^[\p{L}]\.?$/u.test(v) ? "" : "Use 1 letter, optionally followed by a period (e.g. M or M.).";
-      case "birthday": {
-        if (!v) return "Date of birth is required.";
-        const dt = new Date(v + "T00:00:00");
-        if (isNaN(dt.getTime())) return "Enter a valid date.";
-        const today = new Date();
-        if (dt > today) return "Birth date cannot be in the future.";
-        const eighteenYearsAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
-        if (dt > eighteenYearsAgo) return "Staff members must be at least 18 years old.";
-        return "";
-      }
-      case "houseStreet":
-        if (!v) return "House number and street address are required.";
-        return v.length >= 3 ? "" : "Street address must be at least 3 characters.";
-      case "city":
-        return v.length >= 2 ? "" : "City/municipality is required.";
-      case "mobileNumber":
-        if (!v || v.replace(/\D/g, "").length < 10) return "Enter a valid Philippine mobile number (e.g. +63 917 123 4567).";
-        return "";
-      case "password":
-        return pwOk(val) ? "" : "Password must be at least 12 characters with upper, lower, number and symbol.";
-      case "confirmPassword":
-        return val === formData.password ? "" : "Passwords do not match.";
-      default:
-        return "";
-    }
-  };
+  const validateField=(field,value)=>validateStaffSetupField(field,value,formData);
 
   const getFieldError = (field) => (touched[field] ? validateField(field, formData[field]) : "");
   const isFieldValid = (field) => touched[field] && !validateField(field, formData[field]);
@@ -135,7 +93,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
 
     // Mark all as touched
     const fieldsToValidate = [
-      "firstName", "lastName", "birthday", "houseStreet", "city",
+      "firstName", "lastName", "middleInitial", "birthday", "houseStreet", "city", "state", "zipCode",
       "mobileNumber", "password", "confirmPassword"
     ];
     const newTouched = {};
@@ -145,7 +103,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
     for (const f of fieldsToValidate) {
       const fieldErr = validateField(f, formData[f]);
       if (fieldErr) {
-        setErr(fieldErr);
+        e.currentTarget.elements.namedItem(f)?.focus();
         return;
       }
     }
@@ -232,7 +190,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
             <button className="btn ghost" onClick={onCancel}>Back to PawCare Home</button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} noValidate onChangeCapture={e=>{if(e.target.name)touch(e.target.name);}}>
+          <form onSubmit={handleSubmit} noValidate onChange={e=>{if(e.target.name)touch(e.target.name);}}>
             
             {/* Authorized Role Card */}
             <div style={{
@@ -309,7 +267,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-fn"
                     type="text"
                     placeholder="First name"
-                    name="firstName" value={formData.firstName}
+                    name="firstName" aria-invalid={!!getFieldError('firstName')} aria-describedby="staff-firstName-error" value={formData.firstName}
                     className={getFieldError("firstName") ? "bad" : isFieldValid("firstName") ? "ok" : ""}
                     onChange={e => {
                       const raw = e.target.value;
@@ -322,7 +280,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     }}
                     required
                   />
-                  {getFieldError("firstName") && <span className="err" style={{ fontSize: "11px" }}>{getFieldError("firstName")}</span>}
+                  {getFieldError("firstName") && <span id="staff-firstName-error" aria-live="polite" className="err" style={{ fontSize: "11px" }}>{getFieldError("firstName")}</span>}
                 </div>
 
                 <div className="fld" style={{ margin: 0 }}>
@@ -331,7 +289,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-ln"
                     type="text"
                     placeholder="Last name"
-                    name="lastName" value={formData.lastName}
+                    name="lastName" aria-invalid={!!getFieldError('lastName')} aria-describedby="staff-lastName-error" value={formData.lastName}
                     className={getFieldError("lastName") ? "bad" : isFieldValid("lastName") ? "ok" : ""}
                     onChange={e => {
                       const raw = e.target.value;
@@ -344,7 +302,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     }}
                     required
                   />
-                  {getFieldError("lastName") && <span className="err" style={{ fontSize: "11px" }}>{getFieldError("lastName")}</span>}
+                  {getFieldError("lastName") && <span id="staff-lastName-error" aria-live="polite" className="err" style={{ fontSize: "11px" }}>{getFieldError("lastName")}</span>}
                 </div>
 
                 <div className="fld" style={{ margin: 0 }}>
@@ -354,11 +312,12 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     type="text"
                     maxLength={2}
                     placeholder="M."
-                    name="middleInitial" value={formData.middleInitial}
+                    name="middleInitial" aria-invalid={!!getFieldError('middleInitial')} aria-describedby="staff-middleInitial-error" value={formData.middleInitial}
                     className={getFieldError("middleInitial") ? "bad" : ""}
                     onChange={e => setFormData({ ...formData, middleInitial: e.target.value.replace(/[0-9]/g, "").toUpperCase() })}
                     onBlur={() => touch("middleInitial")}
                   />
+                  <span id="staff-middleInitial-error" className="err" aria-live="polite">{getFieldError("middleInitial")}</span>
                 </div>
               </div>
               {numWarn && <p style={{ fontSize: "11.5px", color: "#dc2626", margin: "-6px 0 8px" }}>{numWarn}</p>}
@@ -369,14 +328,14 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                 <input
                   id="staff-bday"
                   type="date"
-                  name="birthday" value={formData.birthday}
+                  name="birthday" aria-invalid={!!getFieldError('birthday')} aria-describedby="staff-birthday-error" value={formData.birthday}
                   max={new Date(new Date().getFullYear() - 18, new Date().getMonth(), new Date().getDate()).toISOString().slice(0, 10)}
                   className={getFieldError("birthday") ? "bad" : isFieldValid("birthday") ? "ok" : ""}
                   onChange={e => setFormData({ ...formData, birthday: e.target.value })}
                   onBlur={() => touch("birthday")}
                   required
                 />
-                {getFieldError("birthday") && <span className="err" style={{ fontSize: "11.5px" }}>{getFieldError("birthday")}</span>}
+                {getFieldError("birthday") && <span id="staff-birthday-error" aria-live="polite" className="err" style={{ fontSize: "11.5px" }}>{getFieldError("birthday")}</span>}
               </div>
             </div>
 
@@ -392,7 +351,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                   id="staff-street"
                   type="text"
                   placeholder="e.g. 128 Rizal Avenue, Brgy. 45"
-                  name="houseStreet" value={formData.houseStreet}
+                  name="houseStreet" aria-invalid={!!getFieldError('houseStreet')} aria-describedby="staff-houseStreet-error" value={formData.houseStreet}
                   className={getFieldError("houseStreet") ? "bad" : isFieldValid("houseStreet") ? "ok" : ""}
                   onChange={e => setFormData({ ...formData, houseStreet: e.target.value })}
                   onBlur={() => {
@@ -401,7 +360,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                   }}
                   required
                 />
-                {getFieldError("houseStreet") && <span className="err" style={{ fontSize: "11px" }}>{getFieldError("houseStreet")}</span>}
+                {getFieldError("houseStreet") && <span id="staff-houseStreet-error" aria-live="polite" className="err" style={{ fontSize: "11px" }}>{getFieldError("houseStreet")}</span>}
               </div>
 
               <div className="staff-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: "10px" }}>
@@ -411,7 +370,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-city"
                     type="text"
                     placeholder="e.g. Caloocan City"
-                    name="city" value={formData.city}
+                    name="city" aria-invalid={!!getFieldError('city')} aria-describedby="staff-city-error" value={formData.city}
                     className={getFieldError("city") ? "bad" : isFieldValid("city") ? "ok" : ""}
                     onChange={e => setFormData({ ...formData, city: e.target.value })}
                     onBlur={() => {
@@ -420,6 +379,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     }}
                     required
                   />
+                  <span id="staff-city-error" className="err" aria-live="polite">{getFieldError("city")}</span>
                 </div>
 
                 <div className="fld" style={{ margin: 0 }}>
@@ -428,11 +388,12 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-state"
                     type="text"
                     placeholder="e.g. Metro Manila"
-                    name="state" value={formData.state}
+                    name="state" aria-invalid={!!getFieldError('state')} aria-describedby="staff-state-error" value={formData.state}
                     onChange={e => setFormData({ ...formData, state: e.target.value })}
-                    onBlur={() => { if (formData.state.trim()) setFormData(p => ({ ...p, state: tc(p.state.trim()) })); }}
+                    onBlur={() => { touch("state"); if (formData.state.trim()) setFormData(p => ({ ...p, state: tc(p.state.trim()) })); }}
                     required
                   />
+                  <span id="staff-state-error" className="err" aria-live="polite">{getFieldError("state")}</span>
                 </div>
 
                 <div className="fld" style={{ margin: 0 }}>
@@ -442,9 +403,10 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     type="text"
                     maxLength={10}
                     placeholder="1400"
-                    name="zipCode" value={formData.zipCode}
+                    name="zipCode" aria-invalid={!!getFieldError('zipCode')} aria-describedby="staff-zipCode-error" value={formData.zipCode}
                     onChange={e => setFormData({ ...formData, zipCode: e.target.value.trim() })}
                   />
+                  <span id="staff-zipCode-error" className="err" aria-live="polite">{getFieldError("zipCode")}</span>
                 </div>
               </div>
             </div>
@@ -465,14 +427,14 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                   id="staff-phone"
                   type="tel"
                   placeholder="+63 917 123 4567"
-                  name="mobileNumber" value={formData.mobileNumber}
+                  name="mobileNumber" aria-invalid={!!getFieldError('mobileNumber')} aria-describedby="staff-mobileNumber-error" value={formData.mobileNumber}
                   className={getFieldError("mobileNumber") ? "bad" : isFieldValid("mobileNumber") ? "ok" : ""}
                   onChange={e => setFormData({ ...formData, mobileNumber: e.target.value })}
                   onBlur={() => touch("mobileNumber")}
                   required
                 />
                 {getFieldError("mobileNumber") ? (
-                  <span className="err" style={{ fontSize: "11.5px" }}>{getFieldError("mobileNumber")}</span>
+                  <span id="staff-mobileNumber-error" aria-live="polite" className="err" style={{ fontSize: "11.5px" }}>{getFieldError("mobileNumber")}</span>
                 ) : (
                   <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
                     A 6-digit SMS verification code will be sent to this number to verify your mobile identity.
@@ -491,7 +453,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-pw"
                     type={showPw ? "text" : "password"}
                     placeholder="12+ characters with uppercase, lowercase, number, and symbol"
-                    name="password" value={formData.password}
+                    name="password" aria-invalid={!!getFieldError('password')} aria-describedby="staff-password-error" value={formData.password}
                     className={getFieldError("password") ? "bad" : isFieldValid("password") ? "ok" : ""}
                     onChange={e => setFormData({ ...formData, password: e.target.value })}
                     onBlur={() => touch("password")}
@@ -517,6 +479,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                   </button>
                 </div>
 
+                <span id="staff-password-error" className="err" aria-live="polite">{getFieldError('password')}</span>
                 {/* Password Quality Indicator */}
                 <div style={{ marginTop: "6px", display: "flex", gap: "4px" }}>
                   <div style={{ height: "4px", flex: 1, borderRadius: "2px", background: pwStrengthCount >= 2 ? "#ef4444" : "#e2e8f0" }} />
@@ -547,7 +510,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-cpw"
                     type={showConfirmPw ? "text" : "password"}
                     placeholder="Re-enter your password"
-                    name="confirmPassword" value={formData.confirmPassword}
+                    name="confirmPassword" aria-invalid={!!getFieldError('confirmPassword')} aria-describedby="staff-confirmPassword-error" value={formData.confirmPassword}
                     className={getFieldError("confirmPassword") ? "bad" : isFieldValid("confirmPassword") ? "ok" : ""}
                     onChange={e => setFormData({ ...formData, confirmPassword: e.target.value })}
                     onBlur={() => touch("confirmPassword")}
@@ -572,7 +535,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     {showConfirmPw ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
-                {getFieldError("confirmPassword") && <span className="err" style={{ fontSize: "11px" }}>{getFieldError("confirmPassword")}</span>}
+                {getFieldError("confirmPassword") && <span id="staff-confirmPassword-error" aria-live="polite" className="err" style={{ fontSize: "11px" }}>{getFieldError("confirmPassword")}</span>}
               </div>
             </div>
 

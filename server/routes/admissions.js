@@ -100,6 +100,7 @@ async function addUpdate(client,req,id,kind,data,payload=data) {
 }
 async function saveCareDetails(client,req,id,data,row) {
   const details = {};
+  for (const key of ['reasonChoice','planTemplate','observationTemplate','planConfirmed']) if (data[key] !== undefined) details[key] = data[key];
   const now = (await client.query('SELECT clock_timestamp() now')).rows[0].now;
   if (data.nextObservationAt) {
     if (Date.parse(data.nextObservationAt) <= now.getTime()) throw admissionError('Set a future time for the next observation.');

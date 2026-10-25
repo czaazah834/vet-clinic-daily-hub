@@ -1,3 +1,5 @@
+import {parsePhoneNumberFromString} from 'libphonenumber-js/max';
+
 export const formatAccountAddress = address => [address.houseStreet, address.city,
   [address.state, address.zipCode].filter(Boolean).join(' '), address.country].filter(Boolean).join(', ');
 
@@ -16,4 +18,23 @@ export function saveAccountProfile(db, userId, profile) {
     owners: (db.owners || []).map(o => profile.role === 'owner' && (o.userId === userId || o.id === profile.ownerId)
       ? { ...o, ...profile, id: o.id, userId, ...(typeof profile.address === 'object' ? { ...profile.address, address: formatAccountAddress(profile.address) } : {}) } : o),
   };
+}
+
+// Keep profile feedback aligned with the account contact API's existing rules.
+export function contactFieldErrors(input) {
+  const errors={};
+  const email=String(input.email || '').trim();
+  if(!email || email.length>255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email='Enter a valid email address.';
+  if(!parsePhoneNumberFromString(String(input.phone || ''),'PH')?.isValid()) errors.phone='Enter a valid mobile number including its country code.';
+  for(const [key,limit] of Object.entries({houseStreet:255,city:100,state:100,country:100,zipCode:20})) {
+    const value=input[key] ?? '';
+    if(typeof value!=='string' || value.length>limit || /[\u0000-\u001f\u007f]/.test(value)) errors[key]=`Check this field (up to ${limit} characters).`;
+  }
+  return errors;
+}
+export function contactCodeErrors(pending,{emailCode,phoneCode}) {
+  const errors={};
+  if(pending?.requireEmail && !/^\d{6}$/.test(emailCode || '')) errors.emailCode='Enter the 6-digit code sent to your new email.';
+  if(pending?.requirePhone && !/^\d{6}$/.test(phoneCode || '')) errors.phoneCode='Enter the 6-digit code sent to your new mobile.';
+  return errors;
 }

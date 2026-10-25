@@ -1,4 +1,5 @@
-import LiveControl from '../components/LiveControl.jsx';
+import {useFormValidation} from '../components/useFormValidation.jsx';
+import {walkInReasonError,savedWalkInArrival} from '../walkInRegistration.js';
 import { VaccinePicker, useBookingCatalog } from '../components/VaccineBooking.jsx';
 import { vaccineChoiceError, vaccineReason, vaccinePriceLabel } from '../vaccineBooking.js';
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
@@ -34,15 +35,22 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
   const selectedOwner = selectedPet ? (db.owners || []).find(o => sameOwner(o, selectedPet.ownerId)) : null;
 
   // Do not allow the same patient to be queued twice on the same day.
-  const activeVisits = (db.appts || []).filter(a => a.petId === selectedPetId && a.date === TODAY && !["Cancelled", "Completed", "No-show"].includes(a.status));
+  const activeVisits = (db.appts || []).filter(a => a.petId === selectedPetId && a.date === TODAY && !["Cancelled", "Completed", "Rejected", "No-show"].includes(a.status));
   const alreadyToday = activeVisits.length > 0;
 
+  const validation=useFormValidation({
+    patient:!selectedPet || !selectedOwner ? 'Choose a patient with a saved owner record.' : selectedPet.registrationStatus==='Declined' ? 'Correct and verify this patient’s registration before check-in.' : '',
+    vetId:!alreadyToday && !doctors.some(([id])=>id===vetId) ? 'Choose an available veterinarian.' : '',
+    reason:!alreadyToday && service!=='vaccination' ? walkInReasonError(reason) : '',
+    vaccineId:!alreadyToday && service==='vaccination' ? vaccineChoiceError(vaccineId,selectedPet?.species) : '',
+  });
   const review = useSubmissionReview([selectedPet,selectedOwner,vetId,reason,service,vaccineId,activeVisits,doctors]);
 
   const handleSubmit = async e => {
     e.preventDefault();
     if (inFlight.current) return;
     setSaveError("");
+    if (!validation.validate(e)) return;
     if (!selectedPet || !selectedOwner) { setSaveError("Choose a patient with a saved owner record."); return; }
     if (alreadyToday) { setSaveError("Open today's existing visit below to continue intake."); return; }
     if (!doctors.some(([id]) => id === vetId)) { setSaveError("Choose an available veterinarian."); return; }
@@ -70,8 +78,7 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
     let newAppt;
     try {
       const res = await api.post("/api/appointments", payload);
-      if (res?.success !== true || !res?.appointment?.id || res.appointment.petId !== selectedPetId || res.appointment.vetId !== vetId || res.appointment.status !== "Scheduled" || (service === "vaccination" && res.appointment.reason !== visitReason)) throw new Error("The server did not confirm this patient’s visit. Refresh clinic records before continuing.");
-      newAppt = res.appointment;
+      newAppt = savedWalkInArrival(res,payload);
     } catch (error) {
       inFlight.current = false;
       setBusy(false);
@@ -97,25 +104,25 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
         </div>
 
         <ol className="sf-steps" aria-label="Check-in steps">
-          <li className="on">1. Choose patient</li><li>2. Record vitals</li><li>3. Doctor queue</li>
+          <li className="on">1. Save arrival</li><li>2. Record vitals</li><li>3. Doctor queue</li>
         </ol>
 
-        <form onSubmit={handleSubmit}>
+        <form {...validation.formProps} onSubmit={handleSubmit}><fieldset disabled={busy} style={{border:0,padding:0,margin:0}}>
           {review.card}
           <div className="sf-field">
             <label htmlFor="exw-search">Search patient or owner</label>
-            <LiveControl as="input" id="exw-search" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Pet name, breed, owner or mobile number" />
+            <input id="exw-search" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Pet name, breed, owner or mobile number" />
           </div>
 
           <div className="sf-field">
             <label htmlFor="exw-pet">Patient *</label>
-            <LiveControl as="select" id="exw-pet" value={selectedPetId} onChange={e => { setSelectedPetId(e.target.value); setVaccineId(""); setSaveError(""); }} disabled={busy} required>
+            <select {...validation.field('patient')} id="exw-pet" value={selectedPetId} onChange={e => { setSelectedPetId(e.target.value); setVaccineId(""); setSaveError(""); }} disabled={busy} required>
               <option value="">{filteredPets.length ? "Choose a patient" : "No matching patients"}</option>
-              {filteredPets.map(p => {
+              {[...filteredPets,...(selectedPet && !filteredPets.includes(selectedPet) ? [selectedPet] : [])].map(p => {
                 const o = (db.owners || []).find(x => sameOwner(x, p.ownerId)) || {};
                 return <option key={p.id} value={p.id}>{p.name} ({p.species}, {p.breed || "Breed not recorded"}) - {o.name || "Client"}{o.phone ? ` ${o.phone}` : ""}</option>;
               })}
-            </LiveControl>
+            </select>{validation.feedback('patient')}
           </div>
 
           {selectedPet && (
@@ -145,28 +152,28 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
 
           {!alreadyToday && <>
 
-          <div className="sf-field"><label htmlFor="exw-service">Purpose of visit *</label><LiveControl as="select" id="exw-service" value={service} disabled={busy} onChange={e=>{setService(e.target.value);setVaccineId('');setReason({checkup:'Walk-in consultation and routine exam',deworming:'Routine deworming',grooming:'Grooming and sanitary care'}[e.target.value] || 'Vaccination consultation');}}><option value="checkup">Consultation</option><option value="vaccination">Vaccination</option><option value="deworming">Deworming</option><option value="grooming">Grooming</option></LiveControl></div>
-          {service === 'vaccination' && <VaccinePicker id="exw-vaccine" value={vaccineId} onChange={setVaccineId} species={selectedPet?.species} petSelected={!!selectedPet} disabled={busy} />}
+          <div className="sf-field"><label htmlFor="exw-service">Purpose of visit *</label><select id="exw-service" value={service} disabled={busy} onChange={e=>{setService(e.target.value);setVaccineId('');setReason({checkup:'Walk-in consultation and routine exam',deworming:'Routine deworming',grooming:'Grooming and sanitary care'}[e.target.value] || 'Vaccination consultation');}}><option value="checkup">Consultation</option><option value="vaccination">Vaccination</option><option value="deworming">Deworming</option><option value="grooming">Grooming</option></select></div>
+          {service === 'vaccination' && <VaccinePicker id="exw-vaccine" error={validation.errors.vaccineId} value={vaccineId} onChange={value=>{setVaccineId(value);validation.changed('vaccineId');}} species={selectedPet?.species} petSelected={!!selectedPet} disabled={busy} />}
           {service !== 'vaccination' && <div className="sf-field">
             <label htmlFor="exw-reason">Reason for visit *</label>
-            <LiveControl as="input" id="exw-reason" type="text" required minLength={3} maxLength={300} disabled={busy} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Cough, routine check-up" />
+            <input {...validation.field('reason')} id="exw-reason" type="text" required minLength={3} maxLength={300} disabled={busy} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Cough, routine check-up" />{validation.feedback('reason')}
           </div>}
 
           <div className="sf-field">
             <label htmlFor="exw-vet">Veterinarian *</label>
-            <LiveControl as="select" id="exw-vet" required disabled={busy} value={vetId} onChange={e => setVetId(e.target.value)}>
+            <select {...validation.field('vetId')} id="exw-vet" required disabled={busy} value={vetId} onChange={e => setVetId(e.target.value)}>
               <option value="">Choose a veterinarian</option>
               {doctors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-            </LiveControl>
+            </select>{validation.feedback('vetId')}
           </div>
 
           </>}
           {saveError && <p className="err" role="alert">{saveError}</p>}
           <div className="row end" style={{flexWrap:"wrap"}}>
             <button type="button" className="btn ghost" disabled={busy} onClick={onClose}>Cancel</button>
-            {!alreadyToday && <button type="submit" className="btn gold" disabled={!selectedPet || !selectedOwner || !doctors.some(([id]) => id === vetId) || busy}>{busy ? "Saving arrival…" : "Review arrival"}<ArrowRight size={16} aria-hidden="true" /></button>}
+            {!alreadyToday && <button type="submit" className="btn gold" disabled={busy}>{busy ? "Saving arrival…" : "Review arrival"}<ArrowRight size={16} aria-hidden="true" /></button>}
           </div>
-        </form>
+        </fieldset></form>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 
 // For forms using HTML constraints. Keep native submit blocking and provide the
 // same constraint feedback while typing, including when related bounds change.
-export default function LiveControl({as:Control='input',error='',onChange,onBlur,onInvalid,id,children,...props}) {
+export default function LiveControl({as:Control='input',error='',onChange,onInput,onBlur,onInvalid,id,children,...props}) {
   const generated=useId(), control=useRef(null);
   const [touched,setTouched]=useState(false), [message,setMessage]=useState('');
   const errorId=`${generated}-error`;
@@ -22,6 +22,7 @@ export default function LiveControl({as:Control='input',error='',onChange,onBlur
   return <><Control {...props} id={id || generated} ref={control}
     aria-invalid={!!visible} aria-describedby={[props['aria-describedby'],errorId].filter(Boolean).join(' ')}
     onChange={event=>{setTouched(true);onChange?.(event);check();}}
+    onInput={event=>{setTouched(true);onInput?.(event);check();}}
     onBlur={event=>{setTouched(true);onBlur?.(event);check();}}
     onInvalid={event=>{setTouched(true);check();onInvalid?.(event);}}>{children}</Control>
     <span id={errorId} className="err field-feedback" aria-live="polite">{visible}</span></>;

@@ -26,6 +26,8 @@ buildSync({
       export { DischargeDocument } from './src/roles/AdmissionDischargeSummary.jsx';
       export {default as PetRequestsPage} from './src/roles/PetRequestsPage.jsx';
       export {RequestReview} from './src/roles/FrontDeskApprovals.jsx';
+      export { default as InClinicRegistration } from './src/roles/InClinicRegistration.jsx';
+      export { default as ExistingPatientCheckInModal } from './src/roles/ExistingPatientCheckInModal.jsx';
       export { default as AdmissionForm} from './src/roles/AdmissionForm.jsx';
       export { default as PetApprovalModal } from './src/roles/PetApprovalModal.jsx';
       export { default as Reports } from './src/roles/ReportsPage.jsx';
@@ -303,4 +305,17 @@ test('check-in reason presets match the booked service',()=>{
  const appt={id:'intake',petId:pet.id,vetId:'v1',date:'2026-10-25',time:'09:00',reason:'Routine exam',status:'Scheduled',service:'checkup'};
  db.appts=[appt];const html=render(ui.CheckInModal,{...props('assistant',db),appt});
  assert.match(html,/Vomiting \/ Diarrhea/);assert.doesNotMatch(html,/Vaccination: DHPP|Clinical Dispensing Brackets|Grooming &amp; Sanitary/);
+});
+
+
+test('both walk-in entry points expose the saved arrival then measured intake process',()=>{
+ const db=populated();
+ const registration=render(ui.InClinicRegistration,props('assistant',db));
+ assert.match(registration,/Register patient and save arrival/);assert.match(registration,/Registration weight does not complete/);
+ assert.match(registration,/name="ownerName" required/);assert.match(registration,/name="species" required/);
+ const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'});
+ db.appts=[{id:'rejected',petId:db.pets[0].id,date:today,status:'Rejected'}];
+ const existing=render(ui.ExistingPatientCheckInModal,{...props('assistant',db),initialPetId:db.pets[0].id,onCheckIn(){}});
+ assert.match(existing,/Review arrival/);assert.doesNotMatch(existing,/Today&#x27;s existing visit/);
+ assert.match(existing,/1. Save arrival/);assert.match(existing,/name="reason"/);
 });

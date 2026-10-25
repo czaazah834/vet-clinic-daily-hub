@@ -2,7 +2,7 @@ import { UserRound, Mail, MapPin, ShieldCheck, AlertCircle, KeyRound, Check, Cir
 import { ROLES } from "../../lib.jsx";
 import { useRef, useState } from "react";
 import "./account.css";
-import { accountProfile, saveAccountProfile, formatAccountAddress } from "../../accountProfile.js";
+import { accountProfile, saveAccountProfile, formatAccountAddress, contactFieldErrors, contactCodeErrors } from "../../accountProfile.js";
 import { PW_RULES, pwStrength, validatePasswordChange, clean, normEmail, normPhone, emOk } from "../../validate.js";
 import { auth, OFFLINE_MSG } from "../../authApi.js";
 import { useLive, Field, onlyDigitsPlus, noSpaces, PhotoUpload } from "./ui.jsx";
@@ -67,9 +67,6 @@ function Contact({ o, me, setDb, say }) {
   const [touched, setTouched] = useState({});
   const touch = k => setTouched(p => ({ ...p, [k]: true }));
 
-  const emailErr = !email.trim() ? "Email is required." : !emOk(email.trim()) ? "Enter a valid email (user@domain.com)." : "";
-  const phoneErr = !phone.trim() ? "Mobile number is required." : phone.replace(/\D/g, "").length < 10 ? "Enter a valid mobile number (e.g. +63 917 123 4567)." : "";
-
   const submitting = useRef(false);
   const [pending, setPending] = useState(null);
   const [emailCode, setEmailCode] = useState("");
@@ -78,6 +75,11 @@ function Contact({ o, me, setDb, say }) {
   const [busy, setBusy] = useState(false);
   const [top, setTop] = useState("");
 
+  const contactErrors=contactFieldErrors({email,phone,houseStreet,city,state,country,zipCode});
+  const codeErrors=contactCodeErrors(pending,{emailCode,phoneCode});
+  const fieldError=key=>srv[key] || (touched[key] ? contactErrors[key] || codeErrors[key] || '' : '');
+  const emailErr=contactErrors.email || '', phoneErr=contactErrors.phone || '';
+  const editContact=(key,setter,value)=>{touch(key);setter(value);setSrv(previous=>({...previous,[key]:''}));};
   const dirty =
     normEmail(email) !== (o.email || "").toLowerCase() ||
     normPhone(phone) !== normPhone(o.phone || "") ||
@@ -92,8 +94,13 @@ function Contact({ o, me, setDb, say }) {
     if (submitting.current) return;
     setTop("");
     setSrv({});
-    if (!email || emailErr) { touch("email"); return setTop(emailErr || "Email is required."); }
-    if (!phone || phoneErr) { touch("phone"); return setTop(phoneErr || "Mobile number is required."); }
+    const errors=pending ? codeErrors : contactErrors;
+    if(Object.keys(errors).length) {
+      setTouched(previous=>({...previous,...Object.fromEntries(Object.keys(errors).map(key=>[key,true]))}));
+      const form=e.currentTarget;
+      requestAnimationFrame(()=>form.querySelector('[aria-invalid="true"]:not(:disabled)')?.focus());
+      return;
+    }
     submitting.current = true;
     setBusy(true);
 
@@ -112,11 +119,11 @@ function Contact({ o, me, setDb, say }) {
       });
       if (r.pending) {
         setPending(r.pending);
-        setEmailCode("");setPhoneCode("");
+        setEmailCode("");setPhoneCode("");setTouched(previous=>({...previous,emailCode:false,phoneCode:false}));
       } else {
         if (!r.profile || r.profile.id !== me.id) throw new Error("The server did not confirm your saved profile. Refresh your profile before continuing.");
         setDb(p => saveAccountProfile(p, me.id, r.profile));
-        setPending(null);setEmailCode("");setPhoneCode("");
+        setPending(null);setEmailCode("");setPhoneCode("");setTouched(previous=>({...previous,emailCode:false,phoneCode:false}));
         say("Contact & address details saved successfully!");
       }
     } catch (x) {
@@ -153,14 +160,14 @@ function Contact({ o, me, setDb, say }) {
       </div>
 
       <div className="account-section-heading"><span><MapPin size={19} aria-hidden="true" /></span><div><h3>Address</h3><p>Keep your clinic contact record up to date.</p></div></div>
-      <Field id="phouse" label="House number & street" value={houseStreet} maxLen={120} onChange={setHouseStreet} hint="From registration form" />
+      <Field id="phouse" label="House number & street" value={houseStreet} maxLen={120} onChange={value=>editContact('houseStreet',setHouseStreet,value)} onBlur={()=>touch('houseStreet')} error={fieldError('houseStreet')} hint="From registration form" />
       <div className="ow-account-fields">
-        <Field id="pcity" label="City / Municipality" value={city} maxLen={60} onChange={setCity} hint="City / Municipality" />
-        <Field id="pstate" label="State / Province" value={state} maxLen={60} onChange={setState} hint="Province or region" />
+        <Field id="pcity" label="City / Municipality" value={city} maxLen={60} onChange={value=>editContact('city',setCity,value)} onBlur={()=>touch('city')} error={fieldError('city')} hint="City / Municipality" />
+        <Field id="pstate" label="State / Province" value={state} maxLen={60} onChange={value=>editContact('state',setState,value)} onBlur={()=>touch('state')} error={fieldError('state')} hint="Province or region" />
       </div>
       <div className="ow-account-fields">
-        <Field id="pcountry" label="Country" value={country} maxLen={60} onChange={setCountry} hint="Country" />
-        <Field id="pzip" label="ZIP / Postal code" value={zipCode} maxLen={20} onChange={setZipCode} hint="ZIP code" />
+        <Field id="pcountry" label="Country" value={country} maxLen={60} onChange={value=>editContact('country',setCountry,value)} onBlur={()=>touch('country')} error={fieldError('country')} hint="Country" />
+        <Field id="pzip" label="ZIP / Postal code" value={zipCode} maxLen={20} onChange={value=>editContact('zipCode',setZipCode,value)} onBlur={()=>touch('zipCode')} error={fieldError('zipCode')} hint="ZIP code" />
       </div>
 
       <div className="account-address-preview">
@@ -175,9 +182,9 @@ function Contact({ o, me, setDb, say }) {
         <p><b>Email:</b> {pending.email}<br/><b>Mobile:</b> {pending.phone}</p>
         {(!pending.emailSent || !pending.phoneSent) && <p className="err" role="alert">We could not confirm delivery of all codes. Your details have not changed. Wait one minute, then go back and request new codes.</p>}
         <fieldset disabled={busy} style={{border:0,padding:0,margin:0,minWidth:0}}>
-          {pending.requireEmail && <Field id="contact-email-code" label="Code sent to new email" value={emailCode} onChange={v=>setEmailCode(v.replace(/\D/g,""))} inputMode="numeric" maxLen={6} autoComplete="one-time-code" />}
-          {pending.requirePhone && <Field id="contact-phone-code" label="Code sent to new mobile" value={phoneCode} onChange={v=>setPhoneCode(v.replace(/\D/g,""))} inputMode="numeric" maxLen={6} autoComplete="one-time-code" />}
-          <button type="button" className="btn ghost" onClick={()=>{setPending(null);setEmailCode("");setPhoneCode("");setTop("");}}>Back to edit / request new codes</button>
+          {pending.requireEmail && <Field id="contact-email-code" label="Code sent to new email" req value={emailCode} onChange={v=>{touch('emailCode');setEmailCode(v.replace(/\D/g,""));}} onBlur={()=>touch('emailCode')} error={fieldError('emailCode')} inputMode="numeric" maxLen={6} autoComplete="one-time-code" />}
+          {pending.requirePhone && <Field id="contact-phone-code" label="Code sent to new mobile" req value={phoneCode} onChange={v=>{touch('phoneCode');setPhoneCode(v.replace(/\D/g,""));}} onBlur={()=>touch('phoneCode')} error={fieldError('phoneCode')} inputMode="numeric" maxLen={6} autoComplete="one-time-code" />}
+          <button type="button" className="btn ghost" onClick={()=>{setPending(null);setEmailCode("");setPhoneCode("");setTouched(previous=>({...previous,emailCode:false,phoneCode:false}));setTop("");}}>Back to edit / request new codes</button>
         </fieldset>
       </section>}
       {top && <p className="err" role="alert" style={{ marginTop: 12 }}>{top}</p>}
@@ -197,7 +204,7 @@ function Password({ me, say, onDone }) {
   const set = (k, x) => { f.set(k, x); if (srv[k]) setSrv(s => ({ ...s, [k]: "" })); };
   const t = show ? "text" : "password", s = pwStrength(v.next), rulesOk = PW_RULES.every(([r]) => r(v.next));
   const save = async e => {
-    e.preventDefault(); setTop(""); f.submit();
+    e.preventDefault(); setTop(""); f.submit(e);
     if (!f.valid || busy) return;
     setBusy(true);
     try { await auth.changePassword({ cur: v.cur, next: v.next, conf: v.conf }); say("Password changed. Use it next time you log in"); onDone(); return; }

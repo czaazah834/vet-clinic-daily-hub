@@ -8,3 +8,10 @@ test('walk-in validation preserves missing optional contacts and actual patient 
 test('walk-in validation rejects absent measurements/identity and malformed contacts',()=>{
  for(const change of [{weight:undefined},{weight:'5'},{weight:0},{birth:'2025-02-30'},{sex:''},{species:''},{phone:''},{phone:'123'},{email:'invalid'},{ownerName:''},{addToQueue:'yes'}]) assert.throws(()=>validateWalkInRegistration({...base,...change}));
 });
+
+test('queued registrations validate their visit before writing any patient records',()=>{
+ const queued={...base,addToQueue:true,vetId:'vet',serviceCategory:'consultation',reason:'Walk-in consultation'};
+ assert.equal(validateWalkInRegistration(queued).patient.name,'Milo');
+ for(const change of [{reason:'12345'},{reason:''},{reason:'x'.repeat(301)},{serviceCategory:'unknown'},{vetId:''},{serviceCategory:'vaccination',vaccineId:'feline-core'},{serviceCategory:'vaccination',vaccineId:''}]) assert.throws(()=>validateWalkInRegistration({...queued,...change}));
+ assert.equal(validateWalkInRegistration({...queued,serviceCategory:'vaccination',vaccineId:'canine-core',reason:''}).patient.name,'Milo');
+});

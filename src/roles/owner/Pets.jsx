@@ -351,7 +351,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSet
   const submit = async ev => {
     ev.preventDefault();
     if (savingRef.current || uploading) return;
-    setTop(""); f.submit();
+    setTop(""); f.submit(ev);
     if (!f.valid) return;
     if (editing) {
       const cur = (db.petRequests || []).find(r => r.id === editing.id && r.ownerId === me.ownerId);
@@ -618,7 +618,7 @@ function OwnerReferenceHistory({pet,setDb}) {
   const f=useLive({priorVaccines:pet.priorVaccines || [],externalClinicNotes:pet.externalClinicNotes || ''},externalHistoryErrors);
   const review=useSubmissionReview([f.v,baseline.current]);
   const submit=async event=>{
-    event.preventDefault();if(busy.current)return;f.submit();if(!f.valid)return;
+    event.preventDefault();if(busy.current)return;f.submit(event);if(!f.valid)return;
     if(!await review.ask({title:'Review previous-clinic references',confirmLabel:'Save references',description:'Owner-reported guide only. Existing clinic measurements, administered doses and approved booster dates remain separately recorded.',fields:[['Vaccines',f.v.priorVaccines.join(', ') || 'None reported'],['Previous clinic and notes',f.v.externalClinicNotes || 'None reported']]}))return;
     busy.current=true;setSaving(true);setError('');
     try {

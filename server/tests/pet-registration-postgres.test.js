@@ -308,3 +308,24 @@ test('additive reference migration preserves legacy submission retry identity an
  assert.deepEqual((await query('SELECT * FROM pets WHERE id=$1',[original.data.pet.id])).rows[0],petBefore);
  assert.equal((await query('SELECT count(*)::int n FROM pet_requests WHERE owner_id=$1',['o_legacy-reference-retry'])).rows[0].n,1);
 });
+
+test('invalid walk-in visit details leave owner, patient, protocol and arrival counts unchanged',async()=>{
+ await user('reason-vet','vet');await query("UPDATE users SET vet_id='reason-vet' WHERE id='reason-vet'");
+ const body={...walkIn,phone:'09176667788',petName:'Reason Check',species:'Canine',weight:5,addToQueue:true,vetId:'reason-vet',serviceCategory:'consultation',reason:'Walk-in examination'};
+ const counts=async()=> (await query('SELECT (SELECT COUNT(*) FROM owners)::int owners,(SELECT COUNT(*) FROM pets)::int pets,(SELECT COUNT(*) FROM pet_weights)::int weights,(SELECT COUNT(*) FROM vaccinations)::int vacc,(SELECT COUNT(*) FROM appointments)::int appts,(SELECT COUNT(*) FROM audit_logs)::int audits')).rows[0];
+ const before=await counts();
+ for(const change of [{reason:'123456'},{reason:''},{reason:'x'.repeat(301)},{serviceCategory:'invented'}]) {
+  assert.equal((await call(assistant,'POST','/walk-in',{...body,...change})).status,400);
+  assert.deepEqual(await counts(),before);
+ }
+ const saved=await call(assistant,'POST','/walk-in',body);assert.equal(saved.status,200,JSON.stringify(saved.data));
+ const appt=saved.data.appointment;
+ assert.equal(appt.status,'Scheduled');assert.equal(appt.intakeVitals,null);
+ await query("UPDATE appointments SET status='Rejected' WHERE id=$1",[appt.id]);
+ const arrival={petId:saved.data.pet.id,vetId:'reason-vet',bookingKind:'walk-in',service:'checkup',reason:'New walk-in examination'};
+ assert.equal((await call(assistant,'POST','/appointments',{...arrival,reason:'123456'})).status,400);
+ const next=await call(assistant,'POST','/appointments',arrival);assert.equal(next.status,200,JSON.stringify(next.data));
+ assert.equal(next.data.appointment.status,'Scheduled');assert.equal(next.data.appointment.bookingKind,'walk-in');
+ assert.equal(next.data.appointment.reason,arrival.reason);
+ const duplicate=await call(assistant,'POST','/appointments',arrival);assert.equal(duplicate.status,409);
+});

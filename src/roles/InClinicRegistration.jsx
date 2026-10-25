@@ -1,11 +1,10 @@
-import {addressError} from '../externalHistory.js';
 import DocumentHeader from "../components/DocumentHeader.jsx";
 import { VaccinePicker, useBookingCatalog } from '../components/VaccineBooking.jsx';
 import { vaccineChoiceError, vaccineReason, vaccinePriceLabel, VACCINE_CHOICES } from '../vaccineBooking.js';
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { useRef, useState } from "react";
 import { addLog } from "../lib.jsx";
-import { walkInBirthWindow, validWalkInBirth, savedWalkInRegistration } from "../walkInRegistration.js";
+import { walkInBirthWindow, validateWalkInFields, savedWalkInRegistration } from "../walkInRegistration.js";
 import { api } from "../api.js";
 import { formatSpeciesLabel, computeAgeDetails, normalizeSpecies } from "../preventiveSchedule.js";
 import {
@@ -18,98 +17,6 @@ import {
 } from "./owner/Pets.jsx";
 import { useLive, Field, onlyDigitsPlus, onlyDecimal, petAge } from "./owner/ui.jsx";
 import { CheckCircle2, ClipboardList, Printer, X } from "lucide-react";
-
-const NAME_RE = /^[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 .'\-]*$/;
-const LETTER_RE = /[A-Za-zÀ-ÿ]/;
-const PH_MOBILE_RE = /^(09|\+639)\d{9}$/;
-const DECIMAL_RE = /^(\d{1,3}(\.\d{1,2})?|\.\d{1,2})$/;
-
-function validateWalkIn(v) {
-  const {today:TODAY,oldest:OLDEST} = walkInBirthWindow();
-  const e = {};
-
-  // 1. Owner Name
-  const oName = (v.ownerName || "").trim();
-  if (!oName) e.ownerName = "Enter owner's full name";
-  else if (oName.length < 2) e.ownerName = "Use at least 2 characters";
-  else if (oName.length > 60) e.ownerName = "Keep name under 60 characters";
-  else if (!/^[A-Za-zÀ-ÿ.'\- ]+$/.test(oName)) e.ownerName = "Letters, spaces, . ' - only";
-
-  // 2. Mobile Phone (required, valid Philippine format)
-  const rawPh = (v.phone || "").trim().replace(/[\s-]/g, "");
-  if (!rawPh) e.phone = "Enter owner's mobile number";
-  else if (!PH_MOBILE_RE.test(rawPh)) e.phone = "Use valid PH mobile: 09XXXXXXXXX or +639XXXXXXXXX";
-
-  // 3. Email (optional, validated if present)
-  const em = (v.email || "").trim();
-  if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)) e.email = "Enter a valid email address";
-
-  // 4. Address (optional)
-  const addr = (v.address || "").trim();
-  if (addressError(addr)) e.address = addressError(addr);
-
-  // 5. Pet Name
-  const pName = (v.petName || "").trim();
-  if (!pName) e.petName = "Enter pet's name";
-  else if (pName.length < 2) e.petName = "Use at least 2 characters";
-  else if (pName.length > 30) e.petName = "Keep name under 30 characters";
-  else if (!NAME_RE.test(pName)) e.petName = "Start with a letter or number. Use letters, numbers and . ' - only";
-  else if (!LETTER_RE.test(pName)) e.petName = "The name needs at least one letter";
-
-  // 6. Species
-  if (!v.species) e.species = "Select animal species classification";
-
-  // 7. Other species details
-  if (v.species && v.species.includes("Other")) {
-    const o = (v.otherSpecies || "").trim();
-    if (!o) e.otherSpecies = "Specify what kind of animal";
-    else if (o.length < 2) e.otherSpecies = "Use at least 2 characters";
-    else if (o.length > 30) e.otherSpecies = "Keep it under 30 characters";
-    else if (!LETTER_RE.test(o)) e.otherSpecies = "Use words, not only numbers or symbols";
-  }
-
-  // 8. Breed
-  const br = (v.breed || "").trim();
-  if (br.length > 50) e.breed = "Keep breed under 50 characters";
-
-  // 9. Sex
-  if (!v.sex) e.sex = "Choose male or female";
-  else if (!["Male", "Female"].includes(v.sex)) e.sex = "Pick one from the list";
-
-  // 10. Birth date (Must be yesterday or earlier; never in the future)
-  if (!v.birth) e.birth = "Enter the birth date (yesterday or earlier)";
-  else if (!validWalkInBirth(v.birth)) e.birth = "Enter a valid birth date";
-  else if (v.birth >= TODAY) e.birth = "Birth date cannot be today or in the future. Please select yesterday or earlier";
-  else if (v.birth < OLDEST) e.birth = "That date is too far back. Check the year";
-
-  // 11. Weight
-  const wt = String(v.weight ?? "").trim();
-  if (!wt) e.weight = "Enter patient weight in kg";
-  else if (!DECIMAL_RE.test(wt)) e.weight = "Use numbers only, for example 5.5";
-  else if (+wt < 0.05) e.weight = "Weight must be at least 0.05 kg";
-  else if (+wt > 120) e.weight = "Weight cannot exceed 120 kg";
-
-  // 12. Neutered
-  if (!v.neutered) e.neutered = "Choose spayed/neutered status";
-
-  // 13. Rodent Dental Occlusion
-  if (v.species && v.species.includes("Rodent")) {
-    if (!v.dentalOcclusion) e.dentalOcclusion = "Please select occlusion status";
-  }
-
-  // 14. Notes
-  const notes = (v.notes || "").trim();
-  if (notes.length > 200) e.notes = "Keep notes under 200 characters";
-
-  // 15. Queue Reason
-  if (v.addToQueue) {
-    const r = (v.reason || "").trim();
-    if (!r) e.reason = "Enter a reason for today's visit";
-    else if (r.length < 3) e.reason = "Use at least 3 characters";
-  }
-
-  return e;
-}
 
 export default function InClinicRegistration({ db, setDb, me, onClose, onRegistered, existingOwner }) {
   const {yesterday:YESTERDAY,oldest:OLDEST} = walkInBirthWindow();
@@ -135,27 +42,26 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       customColor: "",
       dentalOcclusion: "Not Evaluated Yet",
       notes: "",
+      vetId: db.vets?.[0]?.id || '', serviceCategory:'consultation', vaccineId:'',
+      hasExternalHistory:false, priorVaccines:[], externalClinicNotes:'',
       // Queue / appointment option
       addToQueue: true,
       reason: "Walk-in Consultation & Routine Exam",
     },
-    validateWalkIn
+    value=>validateWalkInFields(value,{vets:db.vets || []})
   );
 
   const { v } = f;
-  const [vetId, setVetId] = useState(db.vets?.[0]?.id || "");
+  const {vetId,serviceCategory,vaccineId,hasExternalHistory,priorVaccines,externalClinicNotes}=v;
+  const setVetId=value=>f.set('vetId',value), setServiceCategory=value=>f.set('serviceCategory',value), setVaccineId=value=>f.set('vaccineId',value);
+  const setHasExternalHistory=value=>f.set('hasExternalHistory',value), setPriorVaccines=value=>f.set('priorVaccines',value), setExternalClinicNotes=value=>f.set('externalClinicNotes',value);
   const [loading, setLoading] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [successData, setSuccessData] = useState(null);
 
   // Clinical service needed today & prior history guide states
-  const [serviceCategory, setServiceCategory] = useState("consultation");
-  const [vaccineId,setVaccineId]=useState('');
   const specificVaccine = vaccineId === 'canine-core' ? 'DHPP (5-in-1 Core Vaccine)' : vaccineId === 'feline-core' ? 'FVRCP (4-in-1 Feline Core)' : VACCINE_CHOICES.find(c=>c.id===vaccineId)?.name || '';
   const catalog=useBookingCatalog()?.data?.catalog || [];
-  const [hasExternalHistory, setHasExternalHistory] = useState(false);
-  const [priorVaccines, setPriorVaccines] = useState([]);
-  const [externalClinicNotes, setExternalClinicNotes] = useState("");
 
   const availableBreeds = BREEDS_BY_SPECIES[v.species] || [];
   const canonicalSpecies = normalizeSpecies(v.species);
@@ -203,9 +109,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
   };
 
   const togglePriorVaccine = (vacName) => {
-    setPriorVaccines(prev => 
-      prev.includes(vacName) ? prev.filter(x => x !== vacName) : [...prev, vacName]
-    );
+    setPriorVaccines(priorVaccines.includes(vacName) ? priorVaccines.filter(x => x !== vacName) : [...priorVaccines,vacName]);
   };
 
   const review = useSubmissionReview([v,vetId,serviceCategory,specificVaccine,vaccineId,hasExternalHistory,priorVaccines,externalClinicNotes,existingOwner,db.vets]);
@@ -214,7 +118,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
     ev.preventDefault();
     if (inFlight.current) return;
     setSaveError("");
-    f.submit();
+    f.submit(ev);
     if (!f.valid) return;
     if (v.addToQueue && !vetId) { setSaveError("Choose a veterinarian before adding today’s arrival."); return; }
     if(v.addToQueue && serviceCategory === 'vaccination') {
@@ -304,7 +208,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
+    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !loading && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
       <div className={`modal ${successData?"print-document":""}`} style={{ width: "min(680px, 100%)", maxHeight: "94vh", overflowY: "auto", padding: "24px 28px" }}>
         
         {successData&&<DocumentHeader title="Client and patient registration slip"/>}
@@ -321,7 +225,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               </span>
             </div>
           </div>
-          <button type="button" className="btn sm ghost" onClick={onClose} aria-label="Close" style={{ padding: "6px 10px" }}><X size={16} aria-hidden="true" /></button>
+          <button type="button" className="btn sm ghost" onClick={onClose} disabled={loading} aria-label="Close" style={{ padding: "6px 10px" }}><X size={16} aria-hidden="true" /></button>
         </div>
 
         {successData ? (
@@ -333,7 +237,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               {successData.pet.name} &amp; {successData.owner.name} Successfully Registered!
             </h4>
             <p style={{ margin: "0 0 16px", fontSize: "13.5px", color: "#475569" }}>
-              Internal treatment reference <b style={{ color: "var(--navy)" }}>#{successData.pet.vaccinationCardId}</b> has been assigned. The official Digital Vet Card is published after consultation completion and saved payment using verified clinic details.
+              Internal treatment reference <b style={{ color: "var(--navy)" }}>#{successData.pet.vaccinationCardId}</b> has been assigned. The vaccination card shows vaccinations and deworming actually recorded by the veterinarian.
               {successData.appt && " Arrival created. Record current vitals to complete check-in."}
             </p>
 
@@ -352,7 +256,8 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
           </div>
         ) : (
           <form onSubmit={handleSubmit} noValidate>
-            {review.card}
+            {review.card}<fieldset disabled={loading} style={{border:0,padding:0,margin:0}}><legend className="sr-only">Walk-in registration</legend>
+            <ol className="sf-steps" aria-label="Walk-in steps"><li className="on">1. Register patient and save arrival</li><li>2. Record measured intake</li><li>3. Assigned veterinarian</li></ol><p>For a patient already on file, use Existing patient check-in to keep their history together. Registration weight does not complete today’s intake.</p>
             {/* Section 1: Pet Owner Information */}
             {existingOwner ? (
               <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -675,17 +580,12 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
 
               {v.addToQueue && (
                 <div style={{ display: "grid", gap: "10px" }}>
-                  <label>Attending veterinarian
-                    <select value={vetId} onChange={e => setVetId(e.target.value)} required>
-                      <option value="">Choose a veterinarian</option>
-                      {(db.vets || []).map(vet => <option key={vet.id} value={vet.id}>{vet.name}</option>)}
-                    </select>
-                  </label>
+                  <Field id="vetId" label="Attending veterinarian" req type="select" value={vetId} onChange={setVetId} onBlur={()=>f.blur('vetId')} error={f.show('vetId')} options={(db.vets || []).map(vet=>[vet.id,vet.name])} />
                   <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#1e3a8a", marginBottom: "4px" }}>
                       What does the patient need today? *
                     </label>
-                    <select
+                    <select id="serviceCategory" aria-label="Purpose of visit" aria-invalid={!!f.show('serviceCategory')} aria-describedby="walkin-service-error"
                       value={serviceCategory}
                       onChange={e => handleServiceChange(e.target.value)}
                       style={{ width: "100%", padding: "8px 10px", fontSize: "13px", borderRadius: "8px", border: "1.5px solid #93c5fd", fontWeight: 600, background: "#fff" }}
@@ -696,10 +596,10 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                       <option value="flea_tick">Flea, Tick &amp; Heartworm Prevention</option>
                       <option value="grooming">Grooming &amp; Sanitary Care</option>
                       <option value="emergency">Urgent / Emergency Clinical Triage</option>
-                    </select>
+                    </select><span id="walkin-service-error" className="err" aria-live="polite">{f.show('serviceCategory')}</span>
                   </div>
 
-                  {serviceCategory === "vaccination" && <VaccinePicker id="registration-vaccine" value={vaccineId} onChange={handleVaccineChange} species={canonicalSpecies} />}
+                  {serviceCategory === "vaccination" && <VaccinePicker id="vaccineId" error={f.show("vaccineId")} value={vaccineId} onChange={handleVaccineChange} species={canonicalSpecies} />}
 
                   {serviceCategory !== "vaccination" && <Field
                     id="reason"
@@ -801,7 +701,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
                       Previous Clinic Name &amp; External Notes (Optional):
                     </label>
-                    <input
+                    <input id="externalClinicNotes" aria-label="Previous clinic and external notes" aria-invalid={!!f.show('externalClinicNotes')} aria-describedby="walkin-history-error" maxLength={1000}
                       type="text"
                       value={externalClinicNotes}
                       onChange={e => setExternalClinicNotes(e.target.value)}
@@ -810,8 +710,9 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                     />
                   </div>
 
+                  <span id="walkin-history-error" className="err" aria-live="polite">{f.show('externalClinicNotes')}</span>
                   <div style={{ marginTop: "10px", padding: "8px 10px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "6px", fontSize: "11.5px", color: "#166534" }}>
-                    <b>Smart Pre-Scheduling Active:</b> Selected previous shots will be saved with an &ldquo;External Clinic (Guide)&rdquo; badge on Page 2 of the Digital Card. Suggested protocols still require veterinarian review; these entries do not certify doses or approve booster dates.
+                    <b>Smart Pre-Scheduling Active:</b> Selected previous shots will be saved as unverified references in the patient’s clinical history. Suggested protocols still require veterinarian review; these entries do not certify doses or approve booster dates.
                   </div>
                 </div>
               )}
@@ -825,12 +726,13 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
 
             {/* Actions */}
             <div className="row end" style={{ gap: "10px" }}>
-              <button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button>
+              <button type="button" className="btn ghost sm" onClick={onClose} disabled={loading}>Cancel</button>
               {saveError && <p className="err" role="alert">{saveError}</p>}
               <button type="submit" className="btn gold" disabled={loading} style={{ fontWeight: 700 }}>
                 {loading ? "Saving registration…" : "Review registration"}
               </button>
             </div>
+            </fieldset>
           </form>
         )}
 

@@ -325,3 +325,17 @@ test('consent saves without an alternate contact, preserves owner contact access
  const read=await call('owner','GET',`/${f.body.requestId}`);assert.equal(read.data.admission.consent.name,'Synthetic owner');
  assert.equal(read.data.admission.ownerPhone,undefined,'staff contact projection does not widen owner API');
 });
+
+test('admission dropdown selections survive save, retry and reload in private care history',async()=>{
+ const f=await fixture();
+ Object.assign(f.body,{reasonChoice:'Post-procedure recovery',clinicalNote:'Post-procedure recovery',planTemplate:'Post-procedure recovery',observationTemplate:'Recovery observation',planConfirmed:true});
+ const saved=await call('vet','POST','/',f.body);assert.equal(saved.status,200,JSON.stringify(saved));
+ assert.equal((await call('vet','POST','/',f.body)).status,200);
+ const detail=await call('vet','GET',`/${saved.data.admission.id}`);assert.equal(detail.status,200);
+ const entry=detail.data.updates.find(row=>row.id===f.body.requestId);
+ for(const key of ['reasonChoice','planTemplate','observationTemplate','planConfirmed']) assert.equal(entry.careDetails[key],f.body[key],key);
+ assert.equal(entry.carePlan,f.body.carePlan);
+ const owner=await call('owner','GET',`/${saved.data.admission.id}`);
+ assert.ok(!JSON.stringify(owner.data).includes('planTemplate'));
+ assert.equal(detail.data.updates.filter(row=>row.id===f.body.requestId).length,1);
+});

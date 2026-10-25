@@ -544,7 +544,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               {!preventive && <fieldset style={{gridColumn:"1/-1"}}><legend>Confirm services performed</legend>
                 <p>Select only services actually performed. Each selection is added to billing once at the fixed clinic price. The choices below match the reason for this visit.</p>
                 {catalogError ? <p role="alert">{catalogError} <button type="button" onClick={() => retryCatalog(n => n + 1)}>Retry prices</button></p> : !serviceCatalog.length ? <p>Loading services…</p> : relevantServices.map(p => {
-                  return <label key={p.id} className="service-check"><input type="checkbox" checked={selectedServices.includes(p.id)} onChange={e => setPerformedServices(prev => e.target.checked ? [...prev,p.id] : prev.filter(id => id !== p.id))} /> {p.name} · ₱{p.price.toLocaleString()}</label>;
+                  return <label key={p.id} className="service-check"><input type="checkbox" checked={selectedServices.includes(p.id)} onChange={e => {const checked=e.target.checked;setPerformedServices(prev => checked ? [...prev,p.id] : prev.filter(id => id !== p.id));}} /> {p.name} · ₱{p.price.toLocaleString()}</label>;
                 })}
               </fieldset>}
               {consultation && <div style={{gridColumn: "1/-1"}}><PrescriptionBuilder items={prescriptionItems} onChange={items=>{setPrescriptionItems(items);setActionErrors(previous=>({...previous,prescription:''}));}} notes={f.prescription} onNotes={v => set("prescription", v)} error={errs.prescription} /></div>}

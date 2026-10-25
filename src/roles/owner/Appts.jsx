@@ -58,7 +58,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
   const review = useSubmissionReview([v, editing, db.appts.find(a => a.id === editing?.id), db.vets, pets]);
   const moved = editing && editing.status === "Scheduled" && (editing.date !== v.date || editing.time !== v.time || editing.vetId !== v.vetId || editing.petId !== v.petId || editing.service !== v.service || (v.service === "vaccination" && editing.reason !== vaccineReason(v.vaccineId, v.vaccineId === "vet-review" ? initialReason : "")));
   const submit = async e => {
-    e.preventDefault(); if (bookingFlight.current) return; f.submit(); if (!f.valid) return;
+    e.preventDefault(); if (bookingFlight.current) return; f.submit(e); if (!f.valid) return;
     setSaveError("");
     if (!times.includes(v.time)) { say("Choose an available time from the refreshed list."); availability.refresh(); return; }
     if (!scope(db, me, "pets").some(p => p.id === v.petId)) { say("You can only book for your own pets"); return onClose(); }
@@ -170,7 +170,7 @@ function CancelDialog({ a, db, setDb, me, say, onClose }) {
   const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const f = useLive({ why: "", other: "" }, v => { const e = {}; if (!v.why) e.why = "Please tell us why"; else if (v.why === "Other") { const o = v.other.trim(); if (o.length < 3) e.other = "Add a short reason (3+ characters)"; else if (o.length > 120) e.other = "Keep it under 120 characters"; else if (!/[A-Za-zÀ-ÿ]/.test(o)) e.other = "Use words, not only numbers or symbols"; } return e; });
   const go = async e => {
-    e.preventDefault(); if (inFlight.current) return; f.submit(); if (!f.valid) return;
+    e.preventDefault(); if (inFlight.current) return; f.submit(e); if (!f.valid) return;
     const cur = db.appts.find(x => x.id === a.id), mine = scope(db, me, "pets").some(p => p.id === a.petId);
     if (!cur || !mine || !OPEN.includes(cur.status)) { say("This visit can no longer be cancelled"); return onClose(); }
     const why = f.v.why === "Other" ? f.v.other.trim() : f.v.why;

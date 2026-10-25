@@ -26,6 +26,7 @@ import { ensurePrescriptionSchema, normalizePrescription, prescriptionInvoice, v
 import { ensureCareSchema, validateCarePlan } from "../careWorkflow.js";
 import { priceCatalog, canonicalInvoice } from "../priceCatalog.js";
 import { adminRouter } from "./admin.js";
+import {walkInReasonError} from '../../src/walkInRegistration.js';
 import { validateWalkInRegistration } from '../walkInRegistration.js';
 import { ensurePetRegistrationSchema, validatePetRegistration, validatePetPhoto, lockRegistrationOwner, checkRegistrationCapacity, checkRequestRevision, registrationAudit, registrationError } from '../petRegistration.js';
 import { checkoutRouter } from "./checkout.js";
@@ -1185,6 +1186,7 @@ async function saveBooking(req, res, editing = false) {
         if(!(previous && v.service===previous.service && b.reason===previous.reason))v.reason=bookingReason(v.service,b.reasonChoice,b.otherReason);
       }
       if (typeof v.reason !== "string" || v.reason.trim().length < 3 || v.reason.length > 300 || typeof v.notes !== "string" || v.notes.length > 200) throw bookingError("Add a visit reason (3–300 characters) and keep notes under 200 characters.");
+      if ((!previous || v.reason !== previous.reason) && walkInReasonError(v.reason)) throw bookingError(walkInReasonError(v.reason));
       // Recheck ownership inside the transaction, after any simultaneous change.
       if (req.user.role === "owner") {
         for (const id of new Set([v.petId, previous?.pet_id].filter(Boolean))) {
@@ -1734,7 +1736,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
         seeded.push(cv2);
       }
 
-      // 5. If addToQueue: create Checked-in appointment with exact visit reason
+      // 5. Save an arrival; measured intake is required before Checked-in.
       let appt = null;
       if (addToQueue) {
         const apptId = "a_walk_" + Math.random().toString(36).slice(2, 8);
@@ -1756,8 +1758,6 @@ clinicRouter.post("/walk-in", async (req, res) => {
             visitReason = "Walk-in Consultation & Routine Exam";
           }
         }
-
-        const triageLvl = serviceCategory === "emergency" ? "Emergency" : "Routine";
 
         const insAppt = await client.query(
           `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount, intake_vitals, booking_kind, service)

@@ -48,6 +48,9 @@ export default function AdmissionForm({mode,admission,visits = [],consultationCo
     for (const key of ['temp','weight']) if (form[key] !== '') body.measurements[key] = Number(form[key]);
     if (!body.clinicalNote || (create && (!body.carePlan || !body.ownerUpdate)) || (discharge && !body.dischargeInstructions)) return setError('Complete the required notes and instructions.');
     const fields = [['Pet',create ? `${visit.petName} · ${visit.ownerName}` : admission.petName],['Clinic-only note',body.clinicalNote],
+      ...(create ? [['Admission reason',form.reasonChoice]] : []),
+      ...(body.planTemplate ? [['Care plan template',body.planTemplate]] : []),
+      ...(body.observationTemplate ? [['Monitoring template',body.observationTemplate]] : []),
       ...(body.carePlan ? [['Veterinarian care plan',body.carePlan]] : []),
       ['Measured observations',Object.entries(body.measurements).map(([key,value]) => `${key === 'temp' ? 'Temperature' : 'Weight'}: ${value} ${key === 'temp' ? '°C' : 'kg'}`).join('\n') || 'None entered'],
       ...(body.nextObservationAt ? [['Next observation (Manila)',new Date(body.nextObservationAt).toLocaleString('en-PH',{timeZone:'Asia/Manila'})],['Observation task',body.observationInstructions]] : []),
@@ -84,7 +87,7 @@ export default function AdmissionForm({mode,admission,visits = [],consultationCo
           {create && !context && <label>Consultation visit *<select required {...validation.field('apptId')} value={form.apptId} onChange={event => set('apptId',event.target.value)}>
             <option value="">Choose a consultation</option>{sources.map(row => <option key={row.id} value={row.id}>{row.petName} · {row.ownerName} · {row.date} {row.time} · {row.status}</option>)}
           </select>{validation.feedback('apptId')}</label>}
-          {create && <label>Reason for admission *<select required {...validation.field('reasonChoice')} value={form.reasonChoice} onChange={e=>setForm(previous=>({...previous,reasonChoice:e.target.value,clinicalNote:e.target.value==='Other'?'':e.target.value}))}><option value="">Choose an admission reason</option>{admissionReasons.map(v=><option key={v}>{v}</option>)}</select>{validation.feedback('reasonChoice')}</label>}
+          {create && <label>Reason for admission *<select required {...validation.field('reasonChoice')} value={form.reasonChoice} onChange={e=>{const value=e.target.value;setForm(previous=>({...previous,reasonChoice:value,clinicalNote:value==='Other'?'':value}));}}><option value="">Choose an admission reason</option>{admissionReasons.map(v=><option key={v}>{v}</option>)}</select>{validation.feedback('reasonChoice')}</label>}
           {(!create || form.reasonChoice==='Other') && !consent && <label>{create ? 'Other reason for admission (clinic only)' : release ? 'Release confirmation (clinic only)' : discharge ? 'Discharge summary (clinic only)' : 'Observations / care provided (clinic only)'} *
             <textarea required rows={3} maxLength={3000} {...validation.field('clinicalNote')} value={form.clinicalNote} onChange={event => set('clinicalNote',event.target.value)} />{validation.feedback('clinicalNote')}</label>}
           {me.role==='vet' && !discharge && !release && <label>Care plan template<select {...validation.field('planTemplate')} value={form.planTemplate} onChange={e=>template('planTemplate',e.target.value,'carePlan',carePlanTemplates)}><option value="">Choose a starting template (optional)</option>{Object.keys(carePlanTemplates).map(v=><option key={v}>{v}</option>)}<option value="Custom">Custom plan</option></select>{validation.feedback('planTemplate')}</label>}

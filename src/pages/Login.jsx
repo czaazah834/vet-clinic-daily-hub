@@ -47,7 +47,7 @@ export default function Login({ role, notice, bad, onLogin, onBack, go }) {
     setTop("");
     setRv("");
     setUnver(false);
-    f.submit();
+    f.submit(e);
     if (!f.valid || busy) return;
     setBusy(true);
     try {

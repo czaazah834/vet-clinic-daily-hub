@@ -30,7 +30,11 @@ export function useLive(init, validate) {
   const filled = k => String(v[k] ?? "").trim() !== "";
   const show = (k, eager = true) => ((t[k] || sub || (eager && filled(k))) ? errs[k] || "" : "");
   const ok = k => !!t[k] && filled(k) && !errs[k];
-  return { v, set, patch, quiet, blur, errs, show, ok, valid: !Object.keys(errs).length, submit: () => setSub(true), count: Object.keys(errs).length, submitted: sub };
+  return { v, set, patch, quiet, blur, errs, show, ok, valid: !Object.keys(errs).length, submit: event => {
+    setSub(true);
+    const form=event?.currentTarget;
+    if(form && Object.keys(errs).length) requestAnimationFrame(()=>form.querySelector('[aria-invalid="true"]:not(:disabled)')?.focus());
+  }, count: Object.keys(errs).length, submitted: sub };
 }
 
 /* One field = label + control + live error / hint + optional character counter. */
@@ -42,7 +46,7 @@ export function Field({ id, label, req, type = "text", value, onChange, onBlur, 
     if (filter && raw.replace(/\s/g, "") !== val.replace(/\s/g, "")) { setBlk(filterMsg || "That character isn’t allowed here"); clearTimeout(tm.current); tm.current = setTimeout(() => setBlk(""), 2200); } else if (blk) setBlk("");
     onChange && onChange(val);
   };
-  const common = { id, value: value ?? "", onChange: change, onBlur, disabled, readOnly, "aria-invalid": !!error, "aria-describedby": `${id}-m`, className: valid && !error ? "ow-valid" : "" };
+  const common = { id, name:id, required:!!req, value: value ?? "", onChange: change, onBlur, disabled, readOnly, "aria-invalid": !!error, "aria-describedby": `${id}-m`, className: valid && !error ? "ow-valid" : "" };
   const len = String(value ?? "").length;
   let ctl;
   if (type === "select") ctl = <select {...common}><option value="" />{options.map(([a, b, dis]) => <option key={a} value={a} disabled={dis}>{b}</option>)}</select>;
