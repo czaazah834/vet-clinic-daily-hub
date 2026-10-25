@@ -889,3 +889,21 @@ dates still require veterinarian certification.
 Checks: `node --test tests/assistant-workflow.test.js tests/appointment-status.test.js tests/reception-saves.test.js tests/owner-vaccination.test.js tests/ui-rendering.test.js`
 and `npm run build`. Browser checks cover selected-date handoff, retry behavior,
 photo controls and owner/assistant layouts at phone, tablet and desktop sizes.
+
+### Booking feedback and portal layouts
+
+Owner booking forms explain the one-visit-per-pet-per-day rule and show the
+existing visit before submission. Different pets can book the same day;
+Cancelled and No-show visits release the restriction. Completed visits still
+count. The server serializes reservations and remains authoritative for current
+availability, ownership, follow-up links and service duration. Client checks now
+reject invalid calendar dates and use the same date window and clinic hours.
+
+Owner and assistant pages share clearer navigation, focus indicators, compact
+cards and consistent filters. Assistant payment, patient, household and
+consultation tables become labelled cards on phones. Patient recall labels use
+the latest certified vaccine dose; no active recall does not imply vaccine coverage.
+
+Checks: `node --test tests/owner-booking.test.js`, `npm run test:ui`,
+`TEST_DATABASE_URL=postgresql://localhost/disposable_test_database npm run test:scheduling:postgres`
+and `npm run build`.

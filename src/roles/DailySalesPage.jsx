@@ -67,7 +67,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
   if(db.summary && !db.historyComplete && selDate!==TODAY)return <section className="card"><h3>Historical sales</h3><p>Load all saved history above before viewing totals for {selDate}.</p><button className="btn ghost" onClick={()=>setSelDate(TODAY)}>Today's sales</button></section>;
 
   return (
-    <div>
+    <div className="staff-sales">
       {/* Top Controls Toolbar */}
       <div style={{
         display: "flex",
@@ -280,7 +280,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
           <div style={{ position: "relative", width: "240px" }}>
             <Search size={15} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
             <input
-              type="search"
+              type="search" aria-label="Search payments"
               placeholder="Filter by owner, pet, visit reference..."
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -318,7 +318,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                       title="Click to view full official receipt and print invoice"
                     >
                       {/* Time and OR */}
-                      <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
+                      <td data-label="Payment time • Visit reference" style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
                         <b style={{ color: "var(--navy)" }}>{paymentTime(a.paidAt)}</b>
                         <small style={{ display: "block", color: "#64748b", fontFamily: "monospace", fontSize: "11px" }}>
                           {a.id}
@@ -326,7 +326,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                       </td>
 
                       {/* Patient & Owner */}
-                      <td style={{ padding: "12px 16px" }}>
+                      <td data-label="Patient • Owner" style={{ padding: "12px 16px" }}>
                         <div style={{ fontWeight: 700, color: "var(--navy)" }}>
                           {pet.name || "Patient"}
                         </div>
@@ -336,7 +336,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                       </td>
 
                       {/* Services Rendered */}
-                      <td style={{ padding: "12px 16px", maxWidth: "260px" }}>
+                      <td data-label="Services Rendered" style={{ padding: "12px 16px", maxWidth: "260px" }}>
                         <div style={{ fontWeight: 500, color: "#1e293b" }}>
                           {a.reason || "Clinical Consultation / Exam"}
                         </div>
@@ -348,7 +348,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                       </td>
 
                       {/* Payment Method */}
-                      <td style={{ padding: "12px 16px" }}>
+                      <td data-label="Payment Method" style={{ padding: "12px 16px" }}>
                         <span style={{
                           padding: "3px 8px",
                           borderRadius: "6px",
@@ -363,14 +363,14 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                       </td>
 
                       {/* Amount */}
-                      <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      <td data-label="Amount Collected" style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
                         <b style={{ fontSize: "14.5px", color: "#0f172a" }}>
                           {money(ownerBill(a).amount)}
                         </b>
                       </td>
 
                       {/* Action */}
-                      <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                      <td data-label="Action" style={{ padding: "12px 16px", textAlign: "right" }}>
                         <button
                           type="button"
                           className="btn sm ghost"

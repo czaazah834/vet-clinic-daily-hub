@@ -42,6 +42,7 @@ export default function OwnerBills({db, me, go}) {
   return <section className="card ow-bills" aria-label="Bills and payments">
     <h3>Bills & Payments</h3><p>View your pets’ saved charges and payments. Reception confirms and records payments at the clinic.</p>
     {go && <button className="btn sm ghost" onClick={() => go("prices")}>View clinic prices</button>}
+    <div className="portal-metrics" aria-label="Payment summary">{["Paid","Awaiting checkout","No bill yet"].map(status => <div key={status}><b>{all.filter(a => ownerBill(a).status === status).length}</b><span>{status}</span></div>)}</div>
     <div className="ow-bill-filters">
       <label>Search visits or charges<input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Pet, date, product or visit reference" /></label>
       <label>Pet<select value={pet} onChange={e=>setPet(e.target.value)}><option value="">All my pets</option>{pets.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>

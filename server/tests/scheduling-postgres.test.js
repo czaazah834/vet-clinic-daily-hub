@@ -489,3 +489,27 @@ test('locked saved day gates initial arrival, rejects slot rewrites and preserve
  assert.equal(remeasure.status,200);assert.equal(remeasure.data.appointment.date,today);assert.equal(remeasure.data.appointment.time,original.time);
  assert.equal((await req('vet','PATCH',`/appointments/${id}/status`,{status:'In consultation'})).status,200);
 });
+
+test('owner duplicate day bookings serialize across different vets and preserve rebooking rules', async () => {
+  await query("INSERT INTO users(id,first_name,last_name,birthday,password_hash,email,role,vet_id,mobile_number) VALUES('booking_vet_two','Synthetic','Vet','1990-01-01','unused','booking-vet@example.invalid','vet','booking_v2','+639000000002')");
+  await query("INSERT INTO pets(id,owner_id,name,birth) VALUES('booking_day_pet','o1','Day patient','2020-01-01'),('booking_other_pet','o1','Other patient','2020-01-01')");
+  let day=shiftDate(clinicClock().date,3);while(holidayName(day))day=shiftDate(day,1);
+  const body=patch=>booking({petId:'booking_day_pet',date:day,service:'vaccination',time:'08:00',...patch});
+  const results=await Promise.all([
+    req('owner','POST','/appointments',body()),
+    req('owner','POST','/appointments',body({vetId:'booking_v2',time:'12:00'}))
+  ]);
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+  const saved=results.find(r=>r.status===200).data.appointment;
+  assert.equal((await query("SELECT count(*)::int n FROM appointments WHERE pet_id='booking_day_pet' AND date=$1",[day])).rows[0].n,1);
+  const duplicate=await req('owner','POST','/appointments',body({vetId:'booking_v2',time:'15:00',service:'checkup'}));
+  assert.equal(duplicate.status,409);assert.match(duplicate.data.error,/already has a visit that day/);
+  assert.equal((await req('owner','PUT',`/appointments/${saved.id}`,{notes:'Updated notes only'})).status,200);
+  assert.equal((await req('owner','POST','/appointments',body({petId:'booking_other_pet',vetId:'booking_v2',time:'16:00'}))).status,200);
+  await query("UPDATE appointments SET status='Completed' WHERE id=$1",[saved.id]);
+  assert.equal((await req('owner','POST','/appointments',body({time:'14:00'}))).status,409);
+  await query("UPDATE appointments SET status='Cancelled' WHERE id=$1",[saved.id]);
+  const rebooked=await req('owner','POST','/appointments',body({time:'14:00'}));assert.equal(rebooked.status,200);
+  await query("UPDATE appointments SET status='No-show' WHERE id=$1",[rebooked.data.appointment.id]);
+  assert.equal((await req('owner','POST','/appointments',body({time:'15:00'}))).status,200);
+});

@@ -1,3 +1,4 @@
+import { currentVaccinationDue, vaccinationStatus } from "../ownerVaccination.js";
 import { today as bookingToday } from "../booking.js";
 import { canBookAppointments } from "../appointmentPermissions.js";
 import { useState } from "react";
@@ -19,7 +20,7 @@ import {
   Filter,
   Check
 } from "lucide-react";
-import { TODAY, uid, addLog, petName, ICON, I } from "../lib.jsx";
+import { uid, addLog, petName, ICON, I } from "../lib.jsx";
 import { api } from "../api.js";
 import { petAge } from "./owner/ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails, normalizeSpecies } from "../preventiveSchedule.js";
@@ -33,25 +34,12 @@ function getPetVaccState(petId, vaccList) {
     return { label: "No records yet", status: "none", color: "#64748b", bg: "#f1f5f9", border: "#e2e8f0" };
   }
 
-  const now = new Date(TODAY + "T00:00:00");
-  let overdueCount = 0;
-  let dueSoonCount = 0;
-  let nextUpcoming = null;
-
-  for (const v of mine) {
-    if (!v.done && v.nextDue) {
-      const dt = new Date(v.nextDue + "T00:00:00");
-      const diff = Math.ceil((dt - now) / (1000 * 60 * 60 * 24));
-      if (diff < 0) {
-        overdueCount++;
-      } else if (diff <= 14) {
-        dueSoonCount++;
-      }
-      if (!nextUpcoming || v.nextDue < nextUpcoming.nextDue) {
-        nextUpcoming = v;
-      }
-    }
-  }
+  const current = currentVaccinationDue(mine);
+  const date = bookingToday();
+  const overdueCount = current.filter(v => vaccinationStatus(v, current, date) === "Overdue").length;
+  const dueSoonCount = current.filter(v => vaccinationStatus(v, current, date) === "Due soon").length;
+  const nextUpcoming = [...current].sort((a,b) => a.nextDue.localeCompare(b.nextDue))[0] || null;
+  if (!current.length) return { label: "No active recall", status: "none", color: "#64748b", bg: "#f1f5f9", border: "#e2e8f0" };
 
   if (overdueCount > 0) {
     return {
@@ -74,7 +62,7 @@ function getPetVaccState(petId, vaccList) {
     };
   }
   return {
-    label: "Up to date",
+    label: "On track",
     status: "ok",
     color: "#15803d",
     bg: "#f0fdf4",
@@ -151,7 +139,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
   });
 
   return (
-    <div>
+    <div className="staff-clients">
       {/* Top Banner Toolbar */}
       <div style={{
         display: "flex",
@@ -170,7 +158,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
         <div style={{ display: "inline-flex", background: "#f1f5f9", padding: "3px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
           <button
             type="button"
-            onClick={() => setTab("patients")}
+            aria-pressed={tab === "patients"} onClick={() => setTab("patients")}
             style={{
               padding: "7px 16px",
               fontSize: "13px",
@@ -191,7 +179,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
           </button>
           <button
             type="button"
-            onClick={() => setTab("owners")}
+            aria-pressed={tab === "owners"} onClick={() => setTab("owners")}
             style={{
               padding: "7px 16px",
               fontSize: "13px",
@@ -219,7 +207,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
             onClick={() => setShowWalkIn(true)}
             style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700, padding: "8px 16px", fontSize: "13.5px" }}
           >
-            <Plus size={16} /> + Register Walk-in (Owner &amp; Pet)
+            <Plus size={16} /> Register walk-in
           </button>}
         </div>
       </div>
@@ -240,7 +228,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
         <div style={{ position: "relative", flex: "1 1 260px", maxWidth: "420px" }}>
           <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
           <input
-            type="search"
+            type="search" aria-label="Search patients and owners"
             placeholder={tab === "patients" ? "Search patient, owner name, phone, card #..." : "Search client name, phone, address, pet name..."}
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -253,7 +241,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
             <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", margin: 0, fontWeight: 600, color: "#475569" }}>
               <Filter size={14} />
               <select
-                value={speciesFilter}
+                aria-label="Species" value={speciesFilter}
                 onChange={e => setSpeciesFilter(e.target.value)}
                 style={{ padding: "6px 10px", fontSize: "12.5px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
               >
@@ -268,12 +256,12 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
             </label>
 
             <select
-              value={vaccFilter}
+              aria-label="Vaccination status" value={vaccFilter}
               onChange={e => setVaccFilter(e.target.value)}
               style={{ padding: "6px 10px", fontSize: "12.5px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
             >
               <option value="all">All Vaccine Statuses</option>
-              <option value="ok">Up to date</option>
+              <option value="ok">On track</option>
               <option value="dueSoon">Due soon (within 14 days)</option>
               <option value="overdue">Overdue</option>
             </select>
@@ -327,7 +315,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                         title="Click row to open Digital Vaccination Card"
                       >
                         {/* Patient info */}
-                        <td style={{ padding: "12px 14px" }}>
+                        <td data-label="Patient Profile" style={{ padding: "12px 14px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                             <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "#e0f2fe", color: "#0369a1", display: "grid", placeItems: "center", fontSize: "18px" }}>
                               <I e={ICON[p.species] || "paw"} size={18} />
@@ -349,7 +337,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                         </td>
 
                         {/* Owner info */}
-                        <td style={{ padding: "12px 14px" }}>
+                        <td data-label="Registered Owner & Contact" style={{ padding: "12px 14px" }}>
                           <b style={{ color: "#1e293b" }}>{o.name || "Walk-in Client"}</b>
                           <div style={{ fontSize: "12px", color: "#64748b", display: "flex", alignItems: "center", gap: "6px" }}>
                             <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Phone size={12} /> {o.phone || "No phone"}</span>
@@ -358,7 +346,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                         </td>
 
                         {/* Card ID */}
-                        <td style={{ padding: "12px 14px" }}>
+                        <td data-label="Vaccination Card" style={{ padding: "12px 14px" }}>
                           <span style={{
                             display: "inline-flex",
                             alignItems: "center",
@@ -377,7 +365,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                         </td>
 
                         {/* Vaccine status */}
-                        <td style={{ padding: "12px 14px" }}>
+                        <td data-label="Immunization Status" style={{ padding: "12px 14px" }}>
                           <span style={{
                             display: "inline-block",
                             padding: "3px 8px",
@@ -398,7 +386,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                         </td>
 
                         {/* Action link */}
-                        <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                        <td data-label="Action" style={{ padding: "12px 14px", textAlign: "right" }}>
                           <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }} onClick={e => e.stopPropagation()}>
                             {canCheckIn && isArrivable(todayApptByPet[p.id]) && (
                               <button
@@ -489,18 +477,18 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
 
                     return (
                       <tr key={o.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                        <td style={{ padding: "12px 14px" }}>
+                        <td data-label="Client Name & Contact" style={{ padding: "12px 14px" }}>
                           <b style={{ color: "var(--navy)", fontSize: "14px" }}>{o.name}</b>
                           <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px", display: "flex", alignItems: "center", gap: "8px" }}>
                             <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Phone size={12} /> {o.phone || "No phone"}</span> &bull; <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Mail size={12} /> {o.email || "No email"}</span>
                           </div>
                         </td>
 
-                        <td style={{ padding: "12px 14px", color: "#475569" }}>
+                        <td data-label="Address / Location" style={{ padding: "12px 14px", color: "#475569" }}>
                           {o.address || "Metro Manila, PH"}
                         </td>
 
-                        <td style={{ padding: "12px 14px" }}>
+                        <td data-label="Registered Pets" style={{ padding: "12px 14px" }}>
                           {ownerPets.length ? (
                             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                               {ownerPets.map(p => (
@@ -533,7 +521,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                           )}
                         </td>
 
-                        <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                        <td data-label="Quick Access" style={{ padding: "12px 14px", textAlign: "right" }}>
                           <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
                             {canCheckIn && <button
                               type="button"
