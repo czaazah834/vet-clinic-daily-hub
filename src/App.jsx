@@ -4,13 +4,15 @@ import { createClinicStateLoader } from "./clinicStateLoader.js";
 import { emptyClinicState, applyClinicState } from "./clinicState.js";
 import { bindStore, setSessionUser } from "./api.js";
 import { auth, OFFLINE_MSG } from "./authApi.js";
-import Landing from "./pages/Landing.jsx";
-import Login from "./pages/Login.jsx";
-import Register from "./pages/Register.jsx";
-import Forgot from "./pages/Forgot.jsx";
-import { CheckEmail, Otp, Unlock } from "./pages/Verify.jsx";
-import StaffSetup from "./pages/StaffSetup.jsx";
-import DevInbox from "./pages/DevInbox.jsx";
+const Landing = lazy(() => import("./pages/Landing.jsx"));
+const Login = lazy(() => import("./pages/Login.jsx"));
+const Register = lazy(() => import("./pages/Register.jsx"));
+const Forgot = lazy(() => import("./pages/Forgot.jsx"));
+const CheckEmail = lazy(() => import("./pages/Verify.jsx").then(module => ({default:module.CheckEmail})));
+const Otp = lazy(() => import("./pages/Verify.jsx").then(module => ({default:module.Otp})));
+const Unlock = lazy(() => import("./pages/Verify.jsx").then(module => ({default:module.Unlock})));
+const StaffSetup = lazy(() => import("./pages/StaffSetup.jsx"));
+const DevInbox = lazy(() => import("./pages/DevInbox.jsx"));
 const portalFor = (loadRole, name) => lazy(async () => {
   const [{default: Portal}, role] = await Promise.all([import("./Portal.jsx"), loadRole()]);
   return {default: props => <Portal cfg={role[name]} {...props} />};
@@ -231,5 +233,5 @@ export default function App() {
     : view === "unlock" ? <Unlock token={flow.token} onDone={(msg, isBad) => toLogin(msg, isBad)} />
     : view === "forgot" ? <Forgot onBack={() => go("login")} go={go} />
     : <Landing onLogin={r => { setRole(r || ""); setView("login"); }} onRegister={() => setView("register")} />;
-  return <>{screen}<DevInbox onOpen={openLink} /></>;
+  return <Suspense fallback={<div className="clinic-loading" role="status">Loading page…</div>}>{screen}{import.meta.env.DEV && <DevInbox onOpen={openLink} />}</Suspense>;
 }

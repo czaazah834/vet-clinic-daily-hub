@@ -1,0 +1,74 @@
+// Exercise the connected workflow through real authenticated HTTP routes and PostgreSQL.
+import { test, after, mock } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import pg from 'pg';
+import express from 'express';
+import cookieParser from 'cookie-parser';
+import { intakeVisitSnapshot } from '../../src/intakeVisit.js';
+if (!process.env.TEST_DATABASE_URL) throw Error('Set TEST_DATABASE_URL to a disposable local PostgreSQL database');
+const url = new URL(process.env.TEST_DATABASE_URL);
+if (!['localhost','127.0.0.1'].includes(url.hostname)) throw Error('Use a local disposable database.');
+const admin = new pg.Pool({connectionString:url.href});
+const schema = `test_connected_${crypto.randomUUID().replaceAll('-','')}`;
+await admin.query(`CREATE SCHEMA ${schema}`);
+url.searchParams.set('options',`-c search_path=${schema},public`); process.env.DATABASE_URL = url.href;
+const {query,pool} = await import('../db.js');
+await query(readFileSync(new URL('../database/schema.sql',import.meta.url),'utf8'));
+mock.timers.enable({apis:['Date'],now:new Date('2026-10-26T00:00:00Z').getTime()});
+const {sha256} = await import('../security.js');
+const {clinicRouter} = await import('../routes/clinic.js');
+const app = express(); app.use(express.json()); app.use(cookieParser()); app.use('/api',clinicRouter);
+const server = app.listen(0,'127.0.0.1'); await new Promise(resolve => server.once('listening',resolve));
+after(async () => { mock.timers.reset(); await new Promise(resolve => server.close(resolve)); await pool.end(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); });
+const call = async (role, method, path, body) => {
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`,{method,headers:{'Content-Type':'application/json',...(role?{Authorization:`Bearer connected-${role}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  return {status:response.status,data:await response.json()};
+};
+for (const role of ['owner','assistant','vet','admin','other-owner']) {
+  const actual = role === 'other-owner' ? 'owner' : role;
+  await query("INSERT INTO users(id,first_name,last_name,birthday,password_hash,email,role,owner_id,vet_id,mobile_number,email_verified_at,mobile_verified) VALUES($1,'Synthetic',$2,'1990-01-01','unused',$3,$4,$5,$6,'+639170000001',NOW(),true)",[`connected-${role}`,role,`${role}@example.invalid`,actual,actual==='owner'?role:null,role==='vet'?'connected-vet':null]);
+  await query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '2 days')",[sha256(`connected-${role}`),`connected-${role}`]);
+}
+await query("INSERT INTO owners(id,name,email,phone,address) VALUES('owner','Synthetic owner','owner@example.invalid','+639170000001','Synthetic address'),('other-owner','Other owner','other@example.invalid','+639170000002','Synthetic address')");
+await query("INSERT INTO pets(id,owner_id,name,species,birth,weight) VALUES('connected-pet','owner','Synthetic patient','Dog','2020-01-01',10)");
+let configured;
+test('clinic choices require authorized roles, persist, reject concurrent overwrites and audit atomically', async () => {
+  assert.equal((await call(null,'GET','/clinical/note-options')).status,401);
+  for (const role of ['owner','assistant']) assert.equal((await call(role,'GET','/clinical/note-options')).status,403);
+  const baseline = await call('admin','GET','/clinical/note-options'); assert.equal(baseline.status,200); assert.ok(baseline.data.options.diagnosis.includes('Dermatitis'));
+  const body = {revision:baseline.data.revision,options:{diagnosis:['Synthetic assessment'],treatment:['Synthetic home care']}};
+  for (const role of ['owner','assistant','vet']) assert.equal((await call(role,'PUT','/clinical/note-options',body)).status,403);
+  assert.equal((await call('admin','PUT','/clinical/note-options',{...body,options:{diagnosis:['Repeated','repeated'],treatment:[]}})).status,400);
+  const concurrent = await Promise.all([call('admin','PUT','/clinical/note-options',body),call('admin','PUT','/clinical/note-options',body)]);
+  assert.deepEqual(concurrent.map(result => result.status).sort(),[200,409]);
+  configured = (await call('vet','GET','/clinical/note-options')).data;
+  assert.deepEqual(configured.options,body.options);
+  assert.equal((await query("SELECT count(*)::int n FROM audit_logs WHERE action LIKE 'Updated diagnosis and treatment choices%'")).rows[0].n,1);
+  await query("CREATE FUNCTION reject_options_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Updated diagnosis and treatment choices%' THEN RAISE EXCEPTION 'Synthetic audit failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_options BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_options_audit()");
+  assert.equal((await call('admin','PUT','/clinical/note-options',{revision:configured.revision,options:{diagnosis:[],treatment:[]}})).status,500);
+  assert.deepEqual((await call('vet','GET','/clinical/note-options')).data,configured);
+  await query('DROP TRIGGER reject_options ON audit_logs');
+});
+test('booking → approval → check-in → consultation → billing → owner records stays connected', async () => {
+  const booking = await call('owner','POST','/appointments',{petId:'connected-pet',vetId:'connected-vet',date:'2026-10-26',time:'09:00',service:'checkup',reason:'Synthetic clinical concern'});
+  assert.equal(booking.status,200,JSON.stringify(booking)); let visit = booking.data.appointment; assert.equal(visit.status,'Scheduled');
+  const patch = async (role,body) => { const result = await call(role,'PATCH',`/appointments/${visit.id}/status`,{...body,expectedVisit:intakeVisitSnapshot(visit)}); assert.equal(result.status,200,JSON.stringify(result)); visit = (await call(role,'GET','/state')).data.data.appts.find(row => row.id === visit.id); };
+  await patch('assistant',{status:'Confirmed'}); assert.equal(visit.status,'Confirmed');
+  await patch('assistant',{status:'Checked-in',intakeVitals:{weight:10.5,temp:38.5,triageLevel:'Routine',notes:'Synthetic intake'}}); assert.equal(visit.intakeVitals.weight,10.5);
+  await patch('vet',{status:'In consultation'});
+  const note = {id:'connected-note',petId:visit.petId,apptId:visit.id,date:'2026-10-26',symptoms:'Synthetic concern',objective:'Synthetic examination',diagnosis:configured.options.diagnosis[0],treatment:configured.options.treatment[0],prescription:'Synthetic home instructions',performedServices:['srv_consult'],prescriptionItems:[{catalogId:'product_multivitamin',quantity:1,instructions:'Synthetic directions'}],expectedVisit:intakeVisitSnapshot(visit),weight:10.5,careStatus:'Routine care'};
+  const saved = await call('vet','POST','/consultations',note); assert.equal(saved.status,200,JSON.stringify(saved)); assert.equal(saved.data.appointment.status,'Completed');
+  const inbox = await call('assistant','GET','/checkout-inbox'); assert.ok(inbox.data.tasks.some(task => task.appointmentId === visit.id));
+  const claim = await call('assistant','POST',`/checkout-inbox/${visit.id}/claim`,{}); assert.equal(claim.status,200,JSON.stringify(claim));
+  const invoiceItems = claim.data.invoiceItems; const amount = invoiceItems.reduce((total,line)=>total+line.price*line.qty,0); assert.equal(amount,750);
+  const paid = await call('assistant','POST',`/appointments/${visit.id}/billing`,{claimToken:claim.data.claimToken,invoiceItems,amount,paymentMethod:'Cash',cashTendered:1000}); assert.equal(paid.status,200,JSON.stringify(paid));
+  const records = (await call('owner','GET','/state')).data.data;
+  assert.equal(records.appts.find(row => row.id === visit.id).billingStatus,'Paid');
+  const record = records.consults.find(row => row.id === note.id); assert.equal(record.apptId,visit.id); assert.equal(record.diagnosis,note.diagnosis); assert.equal(record.treatment,note.treatment); assert.equal(record.prescriptionItems[0].catalogId,'product_multivitamin');
+  const foreign = (await call('other-owner','GET','/state')).data.data;
+  assert.ok(!foreign.appts.some(row => row.id === visit.id)); assert.ok(!foreign.consults.some(row => row.id === note.id));
+  assert.equal((await query('SELECT status FROM checkout_tasks WHERE appointment_id=$1',[visit.id])).rows[0].status,'completed');
+  assert.equal((await call('admin','PUT','/clinical/note-options',{revision:configured.revision,options:{diagnosis:[],treatment:[]}})).status,200);
+  assert.equal((await call('owner','GET','/state')).data.data.consults.find(row => row.id === note.id).diagnosis,note.diagnosis,'retiring choices preserves saved medical notes');
+});

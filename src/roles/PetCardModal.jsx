@@ -1,3 +1,4 @@
+import ClinicDialog from "../components/ClinicDialog.jsx";
 import { PaginatedTable } from "../components/Pagination.jsx";
 import PetPortrait from "./PetPortrait.jsx";
 import {HistoryControls,useHistoryComplete} from "../ClinicHistory.jsx";
@@ -102,7 +103,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1000, display: "grid", placeItems: "center", padding: "16px" }}>
+    <ClinicDialog label="Patient health passport" onClose={onClose} style={{padding:16}}>
       <div className="modal staff-pet-card" style={{ width: "min(880px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "20px 24px" }}>
         <HistoryControls auto />
         
@@ -530,7 +531,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
         </div>
 
       </div>
-    </div>
+    </ClinicDialog>
   );
 }
 

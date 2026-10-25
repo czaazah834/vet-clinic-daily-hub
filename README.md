@@ -949,3 +949,61 @@ Manila time and record reference. Exact saved actions remain available in the
 expanded details. Search uses the saved audit history; role/type filters apply to
 loaded entries. Cursor loading retains older history and screens show at most
 10 entries per page. Failed reads retain the last loaded entries for retry.
+
+
+### Unfinished SOAP consultations and keyboard access
+
+SOAP edits (including prescriptions, performed services, vaccines and follow-up
+fields) are saved as a browser draft for the signed-in veterinarian, appointment
+and patient. Close, Cancel, Escape and the backdrop offer **Keep editing**,
+**Keep draft and close**, and **Discard edits**. Reloading or leaving the browser
+prompts when there are edits. Reopening the same visit automatically recovers its
+draft, including its original visit snapshot and request IDs. A changed assignment,
+intake or visit still blocks finalization; recovered notes stay visible for reference.
+Drafts stay on this browser until finalized or discarded and are
+not medical records or a substitute for finalization. Storage failures are visible
+and keep the form available. Confirmed finalization and explicit discard remove
+the draft. Network failures retain it.
+
+Consultation, saved-record, handoff and patient-card dialogs use native modal
+behavior. Tab and Shift+Tab remain inside the active dialog; Escape closes the
+active dialog (or opens the unfinished-note confirmation). Nested reviews return
+to the underlying dialog. Closing returns focus to the opening control, with the
+workspace as a fallback if the control no longer exists.
+
+### Clinic-managed diagnosis and treatment entries
+
+Administrators can open **Clinical Note Choices** to add, edit, order or retire
+optional diagnosis and treatment entries (one per line). Empty lists are allowed.
+Veterinarians load the saved lists when opening SOAP; they can always type their
+own notes, including if choices are unavailable. Entries append text only; billed
+services still require separate confirmation. Retiring an entry does not alter
+existing clinical records.
+
+Deploy `server/database/note-options.sql` with the migration role for existing
+databases. `npm run db:init` includes it for new installations. The endpoint can
+initialize it when the runtime role has DDL permission. The initial seed preserves
+the former built-in entries. Only administrators can update the catalog; vets and
+administrators can read it. Updates use a revision check and commit the audit entry
+in the same transaction, so concurrent changes cannot silently overwrite one another.
+
+### Loading and connected workflow checks
+
+Public screens load on demand alongside the existing role portals. The network
+client no longer initializes unreachable in-memory API routes. Registration-only
+location and provider data can be eliminated from screens that do not use it;
+validation and real server acknowledgments retain their existing rules. The build
+keeps Vite's original chunk warning threshold.
+
+Run the connected HTTP/PostgreSQL regression against a disposable local database:
+
+```bash
+TEST_DATABASE_URL=<disposable-local-db> npm run test:workflow:postgres
+node --test tests/soap-draft.test.js server/tests/note-options.test.js
+npm run build
+```
+
+The workflow regression follows owner booking, reception approval and measured
+check-in, assigned-vet consultation, reception checkout and payment, then owner
+record visibility and isolation. It also checks catalog authorization, concurrent
+edits, audit rollback, and preservation of medical notes after retiring choices.

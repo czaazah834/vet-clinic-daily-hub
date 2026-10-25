@@ -1,3 +1,4 @@
+import ClinicDialog from "../components/ClinicDialog.jsx";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { useRef, useState } from "react";
 import { api } from "../api.js";
@@ -44,7 +45,7 @@ export default function HandoffModal({ appt, db, me, setDb, onClose }) {
     } catch(e){setError(e.message);inFlight.current=false;}
     finally {setSaving(false);}
   }
-  return <div className="scrim" style={{padding:16}}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="handoff-title" style={{width:'min(600px,100%)',maxHeight:'94vh',overflowY:'auto',overflowWrap:'anywhere'}}>
+  return <ClinicDialog labelledBy="handoff-title" onClose={() => {if ((!inFlight.current || saved) && !refreshFlight.current) onClose();}}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="handoff-title" style={{width:'min(600px,100%)',maxHeight:'94vh',overflowY:'auto',overflowWrap:'anywhere'}}>
     {review.card}<h3 id="handoff-title">Hand over patient care</h3>
     {saved ? <>
       <section role="status" className="sf-note"><b>Care transferred to {saved.to}</b><p>The visit is in the receiving veterinarian’s waiting queue.</p><p>{new Intl.DateTimeFormat('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'}).format(new Date(saved.at))}</p><p style={{whiteSpace:'pre-wrap'}}>{saved.note}</p></section>
@@ -76,5 +77,5 @@ export default function HandoffModal({ appt, db, me, setDb, onClose }) {
       <p>The visit returns to the receiving vet’s waiting queue. Save any relevant draft findings in these instructions before transferring.</p>
       {error&&<p role="alert" className="err">{error}</p>}<div className="row end" style={{flexWrap:'wrap',gap:10}}><button type="button" className="btn ghost" disabled={saving} onClick={onClose}>Close</button><button type="submit" className="btn gold" disabled={saving||stale||!recipients.length}>{saving?'Transferring…':'Review care transfer'}</button></div>
     </form>}
-  </div></div>;
+  </div></ClinicDialog>;
 }
