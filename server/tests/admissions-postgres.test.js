@@ -312,3 +312,16 @@ test('vet admission order leaves an assistant consent task; consent saves are sc
  try{assert.equal((await call('assistant','POST',path,{...correction,requestId:crypto.randomUUID(),revision:2,emergencyName:'Must roll back'})).status,500);}finally{await query('DROP TRIGGER fail_consent_audit ON audit_logs');}
  record=(await call('vet','GET',`/${f.body.requestId}`)).data;assert.equal(record.admission.revision,2);assert.equal(record.admission.consent.emergencyName,'Updated contact');assert.equal(record.updates.length,3);
 });
+
+test('consent saves without an alternate contact, preserves owner contact access and rejects incomplete alternates',async()=>{
+ const f=await fixture();
+ for(const key of ['consentConfirmed','consentName','consentMethod','emergencyName','emergencyPhone','emergencyRelationship'])delete f.body[key];
+ const created=await call('vet','POST','',f.body);assert.equal(created.status,200,JSON.stringify(created));
+ const body=update(0,{measurements:{},consentConfirmed:true,consentName:'Synthetic owner',consentMethod:'In person'});
+ const path=`/${f.body.requestId}/consent`;
+ assert.equal((await call('assistant','POST',path,{...body,emergencyName:'Alternate'})).status,400);
+ const saved=await call('assistant','POST',path,body);assert.equal(saved.status,200,JSON.stringify(saved));
+ assert.equal(saved.data.admission.consent.emergencyName,'');assert.equal(saved.data.admission.ownerPhone,'+639170000001');
+ const read=await call('owner','GET',`/${f.body.requestId}`);assert.equal(read.data.admission.consent.name,'Synthetic owner');
+ assert.equal(read.data.admission.ownerPhone,undefined,'staff contact projection does not widen owner API');
+});

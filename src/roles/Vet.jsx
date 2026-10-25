@@ -40,7 +40,7 @@ function Dash({ db, setDb, me, go, say }) {
     starting.current = true;
     setStartingId(a.id);
     try {
-      if (!a.intakeVitals) say("No intake vitals on file for this patient. Record them in the SOAP notes.");
+      if (!a.intakeVitals) say("No intake vitals on file for this patient. Record them in the visit notes.");
       if (!await moveAppt(setDb, a.id, "In consultation", me, setActionError, a)) return;
       setStage("active");
       setActiveSoap({ appt: { ...a, status: "In consultation" }, pet });
@@ -95,7 +95,7 @@ function Dash({ db, setDb, me, go, say }) {
         <div className="sf-section-hd">
           <div>
             <h3>Active clinical queue</h3>
-            <p>Patients checked in by the front desk appear here for examination and SOAP notes.{notArrived > 0 ? ` ${notArrived} more expected today, not yet checked in.` : ""}</p>
+            <p>Patients checked in by the front desk appear here for examination and visit notes.{notArrived > 0 ? ` ${notArrived} more expected today, not yet checked in.` : ""}</p>
           </div>
           <span className="meta">Assigned patients only</span>
         </div>
@@ -148,7 +148,7 @@ function Dash({ db, setDb, me, go, say }) {
                     {["Checked-in","In consultation"].includes(a.status)&&<button className="btn sm ghost" onClick={()=>setIntake(a)}>Record vitals</button>}
                     {["Checked-in", "In consultation"].includes(a.status) && <button className="btn sm" disabled={!!startingId} onClick={() => setHandoff(a)}>Hand over care</button>}
                     {a.status === "Checked-in" && <button className="btn sm gold" disabled={!!startingId} onClick={() => startConsult(a)}>{startingId === a.id ? "Starting…" : "Start consultation"}</button>}
-                    {a.status === "In consultation" && <button className="btn sm gold" disabled={!!startingId} onClick={() => setActiveSoap({ appt: a, pet: p })}>Resume SOAP notes</button>}
+                    {a.status === "In consultation" && <button className="btn sm gold" disabled={!!startingId} onClick={() => setActiveSoap({ appt: a, pet: p })}>Resume visit notes</button>}
                     {a.status === "Completed" && <button className="btn sm ghost" onClick={() => openCompleted(a)}><FileText size={14} aria-hidden="true" />View saved notes</button>}
                   </div>
                 </div>
@@ -156,7 +156,7 @@ function Dash({ db, setDb, me, go, say }) {
             })}
           </PaginatedList>
         ) : (
-          <div className="empty sm vet-queue-empty"><I e={stage==='completed'?'check':'stethoscope'} size={28} /><h4>{stage==='waiting'?'Your waiting queue is clear':stage==='active'?'No consultations in progress':'No completed visits yet'}</h4><p>{stage==='waiting'?'Patients appear here after the front desk completes check-in.':stage==='active'?'Start a checked-in patient from Waiting to begin their SOAP notes.':'Completed consultations and their saved notes appear here.'}</p></div>
+          <div className="empty sm vet-queue-empty"><I e={stage==='completed'?'check':'stethoscope'} size={28} /><h4>{stage==='waiting'?'Your waiting queue is clear':stage==='active'?'No consultations in progress':'No completed visits yet'}</h4><p>{stage==='waiting'?'Patients appear here after the front desk completes check-in.':stage==='active'?'Start a checked-in patient from Waiting to begin their visit notes.':'Completed consultations and their saved notes appear here.'}</p></div>
         )}
       </section>
 

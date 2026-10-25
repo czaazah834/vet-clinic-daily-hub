@@ -37,7 +37,7 @@ let configured;
 test('clinic choices require authorized roles, persist, reject concurrent overwrites and audit atomically', async () => {
   assert.equal((await call(null,'GET','/clinical/note-options')).status,401);
   for (const role of ['owner','assistant']) assert.equal((await call(role,'GET','/clinical/note-options')).status,403);
-  const baseline = await call('admin','GET','/clinical/note-options'); assert.equal(baseline.status,200); assert.ok(baseline.data.options.diagnosis.includes('Dermatitis'));
+  const baseline = await call('admin','GET','/clinical/note-options'); assert.equal(baseline.status,200); assert.ok(baseline.data.options.diagnosis.includes('Dermatitis')); assert.ok(baseline.data.options.diagnosis.includes('Diabetes mellitus')); assert.ok(baseline.data.options.diagnosis.length>40);
   const body = {revision:baseline.data.revision,options:{diagnosis:['Synthetic assessment'],treatment:['Synthetic home care']}};
   for (const role of ['owner','assistant','vet']) assert.equal((await call(role,'PUT','/clinical/note-options',body)).status,403);
   assert.equal((await call('admin','PUT','/clinical/note-options',{...body,options:{diagnosis:['Repeated','repeated'],treatment:[]}})).status,400);
@@ -104,4 +104,14 @@ test('booking → approval → check-in → consultation → billing → owner r
   assert.equal((await query('SELECT status FROM checkout_tasks WHERE appointment_id=$1',[visit.id])).rows[0].status,'completed');
   assert.equal((await call('admin','PUT','/clinical/note-options',{revision:configured.revision,options:{diagnosis:[],treatment:[]}})).status,200);
   assert.equal((await call('owner','GET','/state')).data.data.consults.find(row => row.id === note.id).diagnosis,note.diagnosis,'retiring choices preserves saved medical notes');
+});
+
+test('diagnosis default expansion preserves custom lists and retired suggestions across server initialization',async()=>{
+  const {ensureNoteOptionsSchema}=await import(`../noteOptions.js?defaults-check=${crypto.randomUUID()}`);
+  const before=(await call('admin','GET','/clinical/note-options')).data;
+  const retired=await call('admin','PUT','/clinical/note-options',{revision:before.revision,options:{diagnosis:[],treatment:before.options.treatment}});
+  assert.equal(retired.status,200);
+  await ensureNoteOptionsSchema();
+  const after=(await call('vet','GET','/clinical/note-options')).data;
+  assert.deepEqual(after,retired.data,'initialization must not reintroduce retired defaults');
 });

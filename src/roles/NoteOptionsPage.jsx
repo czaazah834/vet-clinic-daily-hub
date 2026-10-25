@@ -27,9 +27,9 @@ export default function NoteOptionsPage() {
         setError('Use up to 100 unique entries in each list, with at most 1,000 characters per entry.'); return;
       }
     }
-    if (!await review.ask({title:'Review clinic note choices',confirmLabel:'Save choices',description:'These optional entries will be available when veterinarians next open a consultation. Saved clinical notes keep their existing text.',fields:[['Diagnosis choices',options.diagnosis.join('\n') || 'No choices'],['Treatment choices',options.treatment.join('\n') || 'No choices']]})) return;
+    if (!await review.ask({title:'Review diagnosis and treatment suggestions',confirmLabel:'Save choices',description:'These optional entries will be available when veterinarians next open a consultation. Saved clinical notes keep their existing text.',fields:[['Diagnosis choices',options.diagnosis.join('\n') || 'No choices'],['Treatment choices',options.treatment.join('\n') || 'No choices']]})) return;
     pending.current = true; setSaving(true);
-    try { const data = await api.put('/api/clinical/note-options',{options,revision:config.revision}); setConfig(data); setDiagnosis(data.options.diagnosis.join('\n')); setTreatment(data.options.treatment.join('\n')); setMessage('Clinic note choices saved.'); }
+    try { const data = await api.put('/api/clinical/note-options',{options,revision:config.revision}); setConfig(data); setDiagnosis(data.options.diagnosis.join('\n')); setTreatment(data.options.treatment.join('\n')); setMessage('Diagnosis and treatment suggestions saved.'); }
     catch (e) { setError(e.message); }
     finally { pending.current = false; setSaving(false); }
   };
@@ -37,7 +37,7 @@ export default function NoteOptionsPage() {
     {review.card}<h2>Diagnosis &amp; treatment choices</h2>
     <p>Enter one choice per line, up to 100 choices in each list. Remove a line to retire a choice. Veterinarians can always enter their own notes. These text entries do not add billing charges.</p>
     <p>Use entries approved by the clinic's veterinarians. Vets choose diagnosis and treatment independently and can edit either. Custom visit notes join the shared lists only when an administrator adds and saves them here.</p>
-    {loading ? <p role="status">Loading clinic choices…</p> : <form {...validation.formProps} onSubmit={submit}>
+    {loading ? <p role="status">Loading saved suggestions…</p> : <form {...validation.formProps} onSubmit={submit}>
       <fieldset disabled={saving || !config} style={{border:0,padding:0}}>
         <label>Diagnosis choices<textarea rows={9} {...validation.field('diagnosis')} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} />{validation.feedback('diagnosis')}</label>
         <label>Treatment choices<textarea rows={9} {...validation.field('treatment')} value={treatment} onChange={e => setTreatment(e.target.value)} />{validation.feedback('treatment')}</label>

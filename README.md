@@ -303,10 +303,11 @@ or prescription diets requires a structured product order for that visit.
 
 The assigned veterinarian selects catalog products in the SOAP prescription
 builder, enters directions and confirms a whole item/package supply quantity.
-The optional calculator uses the vet-entered dose, unit, route, doses/day, days
-and units per billed item/package. It rounds required packages up and generates
-directions. It does not select drugs, infer doses from weight/diagnosis, convert
-strengths, or infer package sizes. This replaces the former generic dose presets
+The builder shows directions, a whole quantity, product total, and Remove.
+It does not ask the veterinarian to calculate course supply. Valid calculations
+in older browser drafts are converted to editable directions and quantity;
+unfinished calculations require manual completion. The legacy API still accepts
+structured dose calculations for compatibility. This replaces the former generic dose presets
 and their fallback 5 kg weight. Product forms grouped in the PDF (tablets/drops,
 liquid/capsules, wet/kibble, etc.) still need confirmation against the actual
 product dispensed. The guide supplies no antibiotic/painkiller/dewormer prices
@@ -1142,9 +1143,9 @@ save fails. Validation messages must be linked to controls with
 
 ### Admission care and discharge documents
 
-Admission is an explicit veterinarian decision based on examination and clinical need; a diagnosis or vaccination booking never admits a pet automatically. Preventive/vaccination visits still record the veterinarian’s suitability assessment and actual care using SOAP, without requiring an illness diagnosis.
+Admission is an explicit veterinarian decision based on examination and clinical need; a diagnosis or vaccination booking never admits a pet automatically. Vaccination and deworming visits use a focused record with suitability assessment, care/after-care instructions and actual administration; they do not display SOAP, admission, unrelated services or take-home product controls. Grooming uses its own care record and grooming service. Consultations and surgical assessments use SOAP, admission and prescriptions, with unrelated vaccine and grooming controls hidden. Explicit booking service takes precedence; legacy visits use their reason. All forms retain the existing durable clinical record format for history, checkout and documents, with visit reason and saved intake retained. Hidden selections in earlier drafts do not become charges or follow-up requests.
 
-New admissions require the veterinarian to record staff-confirmed owner/representative consent (name and method), an emergency contact, and a future first observation time in Manila time. This is not an electronic signature or automatic emergency treatment authorization. Existing stays retain unknown consent/times as unrecorded. The veterinarian can record or replace consent/contact details in an update; prior entries remain in the private care timeline.
+New admissions require a future first observation time in Manila time. The assistant records staff-confirmed owner/representative consent (name and method). The pet owner’s existing contact details are the primary contact; a separate alternate contact is optional. If any alternate detail is entered, the name, valid phone and relationship must all be supplied. This is not an electronic signature or automatic emergency treatment authorization. Existing stays retain unknown consent/times as unrecorded. Care staff can record or replace consent/contact details in an update; prior entries remain in the private care timeline.
 
 Assistants see the saved care plan and pending observation, record findings and explicitly confirm a scheduled check performed now. General updates and medicine events do not complete it. Only a veterinarian can set another observation time; no checks or medicines are recorded automatically. Task changes, completion and consent are transactional, audited and revision guarded. Owner updates remain explicitly shared; internal care plans/tasks remain private.
 
@@ -1323,3 +1324,15 @@ recorded. Never run the demo-seeding `db:init` against a live clinic.
 See [workflow rollout](docs/workflow-rollout.md) for backup/staging steps, verified
 clinic configuration, Vercel release settings, and acceptance checks. Real clinic
 identity and hosting/database access are required to finish a live rollout.
+
+### Visit form suggestions and saved intake
+
+Saved intake measurements are displayed as text, separately from additional
+examination findings. A veterinarian may record a new measured weight in its
+own field; saving notes alone does not create a measurement. Diagnosis suggestions
+include an expanded default list of common veterinary conditions as documentation
+shortcuts. Existing untouched defaults are expanded once; administrator edits
+remain intact. These suggestions never select a diagnosis automatically.
+Administrators can edit or retire any suggestion; retired entries are not
+reintroduced by initialization. Treatment suggestions and patient-specific free
+text remain independent of diagnosis and billing.

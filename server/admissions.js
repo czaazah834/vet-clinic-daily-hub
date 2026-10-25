@@ -49,7 +49,7 @@ export function admissionInput(body, action, role) {
   if (action === 'consent' || careFields.slice(2).some(key => body[key] !== undefined)) {
     const error = Object.values(consentErrors(body)).find(Boolean);
     if (error) throw admissionError(error);
-    data.consent = {name:body.consentName.trim(),method:body.consentMethod,emergencyName:body.emergencyName.trim(),emergencyPhone:body.emergencyPhone.trim(),emergencyRelationship:body.emergencyRelationship.trim()};
+    data.consent = {name:body.consentName.trim(),method:body.consentMethod,emergencyName:(body.emergencyName || '').trim(),emergencyPhone:(body.emergencyPhone || '').trim(),emergencyRelationship:(body.emergencyRelationship || '').trim()};
   }
   if (body.completeObservation !== undefined) {
     if (action !== 'update' || !['vet','assistant'].includes(role)) throw admissionError('Only care staff can complete an observation.',403);
@@ -101,7 +101,7 @@ export function admissionView(row, owner = false) {
   const publicFields = {id:row.id,petId:row.pet_id,petName:row.pet_name,apptId:row.appt_id,vetName:row.vet_name,
     status:row.status,admittedAt:row.admitted_at,dischargeApprovedAt:row.discharge_approved_at,dischargedAt:row.discharged_at,billingStatus:row.billing_status,
     dischargeInstructions:row.discharge_instructions,consent:row.consent || null,latestUpdate:row.latest_update || '',latestUpdateAt:row.latest_update_at || null};
-  return owner ? publicFields : {...publicFields,ownerName:row.owner_name,vetId:row.vet_id,revision:row.revision,reason:row.reason,carePlan:row.care_plan,visitStatus:row.visit_status,nextObservationAt:row.next_observation_at,observationInstructions:row.observation_instructions,observationCompletedAt:row.observation_completed_at};
+  return owner ? publicFields : {...publicFields,ownerName:row.owner_name,vetId:row.vet_id,revision:row.revision,ownerPhone:row.owner_phone || '',reason:row.reason,carePlan:row.care_plan,visitStatus:row.visit_status,nextObservationAt:row.next_observation_at,observationInstructions:row.observation_instructions,observationCompletedAt:row.observation_completed_at};
 }
 export function admissionUpdateView(row, owner = false) {
   const publicFields = {id:row.id,kind:row.kind,at:row.created_at,by:row.actor_name,role:row.actor_role,ownerUpdate:row.owner_update};

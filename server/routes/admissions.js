@@ -14,7 +14,7 @@ admissionsRouter.use(async (req,res,next) => {
   try { await ensureAdmissionsSchema(); await ensureVitalsSchema(); next(); }
   catch { res.status(500).json({error:'Unable to load admissions. Please retry.'}); }
 });
-const base = `SELECT d.*,p.name pet_name,p.owner_id,o.name owner_name,a.vet_id,a.status visit_status,a.billing_status,
+const base = `SELECT d.*,p.name pet_name,p.owner_id,o.name owner_name,o.phone owner_phone,a.vet_id,a.status visit_status,a.billing_status,
   COALESCE((SELECT CONCAT('Dr. ',u.first_name,' ',u.last_name) FROM users u WHERE u.id=a.vet_id OR u.vet_id=a.vet_id LIMIT 1),'Veterinarian') vet_name,
   latest.owner_update latest_update,latest.created_at latest_update_at
   FROM admissions d JOIN pets p ON p.id=d.pet_id JOIN owners o ON o.id=p.owner_id JOIN appointments a ON a.id=d.appt_id

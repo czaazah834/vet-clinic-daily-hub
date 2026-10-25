@@ -19,3 +19,13 @@ export function prescriptionText(items, notes = '') {
   if (notes.trim()) lines.push(notes.trim());
   return lines.join('\n');
 }
+
+// Old drafts may contain a calculator entry. Present it as editable directions
+// and quantity; an unfinished calculation falls back to manual entry.
+export function editablePrescription(item) {
+  if (!item.dose) return item;
+  try {
+    const supply = calculateSupply(item.dose);
+    return {...item,quantity:supply.quantity,instructions:supply.directions,dose:null};
+  } catch { return {...item,dose:null}; }
+}

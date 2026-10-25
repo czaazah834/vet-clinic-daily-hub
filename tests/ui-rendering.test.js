@@ -35,6 +35,7 @@ buildSync({
       export { QuickBookModal } from './src/roles/ClinicCalendar.jsx';
       export { default as BookingReason } from './src/components/BookingReason.jsx';
       export { default as CheckInModal } from './src/roles/CheckInModal.jsx';
+      export { default as PrescriptionBuilder } from './src/roles/PrescriptionBuilder.jsx';
       export { default as SoapConsultationModal } from './src/roles/SoapConsultationModal.jsx';
       export { emptyClinicState } from './src/clinicState.js';
     `,
@@ -263,4 +264,30 @@ test('standalone registration page excludes booked pending pets while retaining 
  const html=render(ui.PetRequestsPage,props('assistant',db));
  assert.ok(html.includes('Unbooked New Patient'));assert.ok(!html.includes('Booked New Patient'));
  assert.ok(html.includes('Pending (1)'));
+});
+
+for(const [service,title] of [['vaccination','Vaccination record'],['deworming','Deworming record'],['grooming','Grooming record']]) test(`${service} form shows only relevant documentation`,()=>{
+ const db=populated(),pet=db.pets[0],appt={...db.appts.find(a=>a.petId===pet.id),service,reason:service,status:'In consultation',intakeVitals:{weight:10.25,temp:38.5}};db.appts=[appt];
+ const html=render(ui.SoapConsultationModal,{...props('vet',db),pet,appt});
+ assert.match(html,new RegExp(title));assert.match(html,/10.25 kg/);
+ assert.doesNotMatch(html,/S - Subjective|O - Objective|A - Assessment|P - Plan|SOAP Clinical Notes|Prescription &amp; take-home|Admit |Clinical Follow-up/);
+ assert.equal(html.includes('Record vaccine given'),service==='vaccination');
+});
+test('consultation shows read-only intake and separate additional findings with diagnosis suggestions',()=>{
+ const db=populated(),pet=db.pets[0],appt={...db.appts.find(a=>a.petId===pet.id),service:'checkup',status:'In consultation',intakeVitals:{weight:10.25,temp:38.5}};db.appts=[appt];
+ const html=render(ui.SoapConsultationModal,{...props('vet',db),pet,appt});
+ assert.match(html,/SOAP Clinical Notes/);assert.match(html,/Saved intake measurements/);assert.match(html,/Additional examination findings/);
+ assert.match(html,/<textarea[^>]*name="objective"[^>]*><\/textarea>/);
+ assert.match(html,/Diagnosis suggestions/);
+ assert.doesNotMatch(html,/Clinic diagnosis choices|Clinic treatment choices|Record vaccine given/);
+});
+test('dispensing has manual quantity, correct total and a short Remove action',()=>{
+ const html=render(ui.PrescriptionBuilder,{items:[{catalogId:'water',name:'Water Additive Plaque Remover',price:550,quantity:2,instructions:'Vet directions'}],notes:'',onChange(){},onNotes(){}});
+ assert.match(html,/Quantity/);assert.match(html,/Product total: ₱1,100/);assert.match(html,/>Remove<\/button>/);
+ assert.doesNotMatch(html,/Calculate supply|Items \/ packages to dispense|Dose per administration/);
+});
+test('admission consent defaults to the saved owner contact without requiring another person',()=>{
+ const html=render(ui.AdmissionForm,{mode:'consent',me:me('assistant'),admission:{id:'stay',petName:'Patient',ownerName:'Synthetic Owner',ownerPhone:'+639170000001',revision:0},onClose(){},onSaved(){}});
+ assert.match(html,/Primary contact: Synthetic Owner/);assert.match(html,/Add an alternate contact/);
+ assert.doesNotMatch(html,/Emergency phone|Emergency contact name|name="emergencyPhone"/);
 });
