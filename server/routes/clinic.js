@@ -1,4 +1,5 @@
 import { noteOptionsRouter } from "./noteOptions.js";
+import { admissionsRouter } from './admissions.js';
 import { requestedVaccineReason } from '../vaccineBooking.js';
 import { vaccineIdFromReason } from '../../src/vaccineBooking.js';
 import {stateReadPlan,historyPage} from '../stateReadPlan.js';
@@ -33,6 +34,7 @@ clinicRouter.use(requireAuth, clinicAccess);
 clinicRouter.use("/checkout-inbox", checkoutRouter);
 clinicRouter.use("/admin", adminRouter);
 clinicRouter.use("/clinical/note-options", noteOptionsRouter);
+clinicRouter.use('/admissions', admissionsRouter);
 
 /* Helper: log an action to audit_logs */
 async function recordAudit(userName, userRole, action) {

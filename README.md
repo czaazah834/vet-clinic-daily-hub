@@ -997,6 +997,47 @@ the former built-in entries. Only administrators can update the catalog; vets an
 administrators can read it. Updates use a revision check and commit the audit entry
 in the same transaction, so concurrent changes cannot silently overwrite one another.
 
+### Basic admission and owner updates
+
+Veterinarians open **Admitted Pets** from the Clinical Queue to admit an assigned
+patient after starting consultation (or from a finalized visit). They record the
+reason, care/monitoring instructions and an initial message for the owner. A pet
+has at most one active admission; a visit has at most one admission. The admission
+follows the visit's veterinarian assignment when active care is handed over.
+Staff deactivation is blocked while a veterinarian still has an admitted patient,
+including after the consultation has been signed.
+
+Veterinarians review the care timeline, add clinical updates and revise the plan.
+Assistants use **Admitted Pets** to follow that plan, record observations and
+optional measured temperature/weight, and explicitly share a factual owner
+message. Internal notes, plans and measurements are never returned by the owner
+API. Owners see their own pets' status, saved shared messages and discharge
+instructions in **Pet Admission Updates**, with an active-stay shortcut on My Pets.
+The pages poll while open and show refresh failures and the last check time.
+
+Only the assigned veterinarian can approve discharge, after finalizing SOAP. A
+clinical discharge summary and owner-visible home-care instructions are required.
+Discharged stays remain readable; new observations cannot be added to them.
+Appointment completion and payment remain separate from admission status: signing
+SOAP still prepares the existing checkout, and payment does not discharge the pet.
+This feature records care and does not create diagnoses, treatments or admission
+fees. Confirm billable services and products through the existing workflow.
+
+All writes require a connected server save. Forms keep entries on save failure,
+confirm discarding unsaved text and warn before browser navigation; they do not
+store admission entries on the device. Revisions reject conflicting staff saves,
+request IDs make retries idempotent, and updates and audit entries commit together.
+Timeline and stay history are paginated. No external clinic records are retrieved.
+
+Apply `server/database/admissions.sql` using the migration role before deploying
+when the runtime role cannot create tables. `npm run db:init` includes the migration
+for new installations; do not run demo seeding on a live database. Admission routes
+otherwise initialize missing tables on first use.
+
+Checks: `npm run test:admissions:postgres`, `npm run test:workflow:postgres`
+(with `TEST_DATABASE_URL` pointing at a disposable local PostgreSQL database),
+`npm run test:ui`, and `npm run build`.
+
 ### Loading and connected workflow checks
 
 Public screens load on demand alongside the existing role portals. The network

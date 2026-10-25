@@ -1,4 +1,5 @@
 import { PaginatedList } from "../components/Pagination.jsx";
+import AdmissionsPage, { AdmissionsSummary } from './AdmissionsPage.jsx';
 import OwnerBills from "./owner/Bills.jsx";
 import { today as bookingToday } from "../booking.js";
 import { currentVaccinationDue, nextVaccination, vaccinationStatus } from "../ownerVaccination.js";
@@ -75,6 +76,7 @@ function Dash({ db, setDb, me, go, say }) {
 
     {over.length > 0 && <div className="ow-banner"><Icon n="alert" size={20} /><span><b>Vaccine overdue:</b> {over.map(v => `${petName(db, v.petId)} (${v.vaccine})`).join(", ")}</span><button className="btn sm" onClick={() => go("vacc")}>View records</button></div>}
     <CareFollowUps db={db} go={go} owner />
+    <AdmissionsSummary me={me} go={go} />
     <RequestList db={db} setDb={setDb} me={me} say={say} onEdit={r => setModal({ form: true, editing: r })} />
     {pets.length ? <PaginatedList label="My pets" resetKey={null} className="petgrid">{pets.map(p => {
       const { recall: nv, appointment: nvAppt, matched } = nextVaccination(p.id, V, A, TODAY);
@@ -107,6 +109,7 @@ const P = (k, l, i, sub, Page, s) => ({ k, l, i, sub, Page, s });
 export const owner = { portal: "Pet Owner Portal", Dash, Header: OwnerHeader, menu: [
   { k: "home", l: "My Pets", s: "Pets", i: "paw", dash: 1, sub: "Your pets, their profiles, next vaccines and visits." },
   P("appts", "My Appointments", "calendar", "Book, change or cancel a visit. Switch between the list and the calendar.", OwnerAppts, "Visits"),
+  P('admissions', 'Pet Admission Updates', 'hospital', 'Clinic-shared updates during your pet’s stay and discharge instructions.', AdmissionsPage, 'Updates'),
   P("prices", "Services & Prices", "file", "Official clinic service and product prices.", Prices, "Prices"),
   P("bills", "Bills & Payments", "receipt", "View saved charges, checkout status and payment records.", OwnerBills, "Bills"),
   P("vacc", "Vaccination Cards", "syringe", "Pick a pet to see its vaccination card.", OwnerVacc, "Vaccines"),

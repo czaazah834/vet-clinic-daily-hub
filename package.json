@@ -26,7 +26,8 @@
   "test:scheduling:postgres": "node --test server/tests/scheduling-postgres.test.js",
   "test:registration:postgres": "node --test server/tests/pet-registration-postgres.test.js",
   "test:admin:postgres": "node --experimental-test-module-mocks --test server/tests/admin-postgres.test.js",
-  "test:workflow:postgres": "node --experimental-test-module-mocks --test server/tests/connected-workflow-postgres.test.js"
+  "test:workflow:postgres": "node --experimental-test-module-mocks --test server/tests/connected-workflow-postgres.test.js",
+  "test:admissions:postgres": "node --experimental-test-module-mocks --test server/tests/admissions-postgres.test.js"
  },
  "dependencies": {
   "bcryptjs": "^3.0.3",

@@ -1,0 +1,36 @@
+.admissions-page { display:grid; gap:16px; }
+.admissions-page .card,.admission-detail { padding:22px; }
+.admissions-page p,.admission-detail p,.admission-form p { line-height:1.7; overflow-wrap:anywhere; }
+.admission-summary,.admission-heading,.admission-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.admission-summary { margin:18px 0; padding:20px; }
+.admission-summary h3,.admission-summary p { margin:0 0 7px; }
+.admission-heading { margin:18px 0 10px; }
+.admission-heading h2,.admission-heading h3 { margin:0; }
+.admission-status { display:inline-flex; padding:6px 12px; border-radius:20px; background:#fff3d1; color:#735315; font-size:12px; font-weight:700; }
+.admission-status.discharged { background:#e5f5ee; color:#245b43; }
+.admission-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:14px; }
+.admission-list article { border:1px solid #dce5f2; padding:18px; border-radius:12px; min-width:0; }
+.admission-preview { white-space:pre-wrap; max-height:8em; overflow:auto; }
+.admission-plan { background:#f3f7fd; border:1px solid #dce5f2; border-radius:12px; padding:16px; margin:18px 0; }
+.admission-plan h3 { margin:0 0 8px; font-size:15px; }
+.admission-plan p { white-space:pre-wrap; margin:0 0 12px; }
+.admission-actions { justify-content:flex-start; margin:16px 0; }
+.admission-actions p { flex-basis:100%; margin:0; }
+.admission-timeline { list-style:none; padding:0; }
+.admission-timeline li { border:1px solid #dce5f2; border-left:4px solid #769ad0; border-radius:10px; padding:16px; margin:14px 0; }
+.admission-timeline h4 { margin:0 0 5px; }
+.admission-timeline h4 small { display:block; margin-top:5px; font-weight:400; }
+.admission-timeline p { white-space:pre-wrap; }
+.admission-by,.admission-footnote { font-size:12px; color:#536781; }
+.admission-owner-update { border-radius:8px; background:#eef7f3; padding:10px 14px; color:#284e41; }
+.admission-owner-update p { margin:4px 0; }
+.admission-form { width:min(680px,100%); max-height:90dvh; overflow-y:auto; padding:24px; }
+.admission-form fieldset { border:0; padding:0; margin:0; min-width:0; }
+.admission-form label { display:block; font-size:13px; font-weight:600; margin:14px 0; }
+.admission-form input,.admission-form select,.admission-form textarea { display:block; width:100%; margin-top:7px; min-height:44px; }
+.admission-measurements { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+@media (max-width:600px) {
+  .admissions-page .card,.admission-detail,.admission-form { padding:16px; }
+  .admission-measurements { grid-template-columns:1fr; gap:0; }
+  .admission-summary .btn { width:100%; }
+}
