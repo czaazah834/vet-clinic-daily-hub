@@ -1133,3 +1133,19 @@ save fails. Validation messages must be linked to controls with
 - Keep server checks for permissions, saved revisions, availability, remaining
   medicine authorization and all record writes. Inline feedback does not prove
   a record was saved or replace a veterinarian's clinical judgment.
+
+### Admission care and discharge documents
+
+Admission is an explicit veterinarian decision based on examination and clinical need; a diagnosis or vaccination booking never admits a pet automatically. Preventive/vaccination visits still record the veterinarian’s suitability assessment and actual care using SOAP, without requiring an illness diagnosis.
+
+New admissions require the veterinarian to record staff-confirmed owner/representative consent (name and method), an emergency contact, and a future first observation time in Manila time. This is not an electronic signature or automatic emergency treatment authorization. Existing stays retain unknown consent/times as unrecorded. The veterinarian can record or replace consent/contact details in an update; prior entries remain in the private care timeline.
+
+Assistants see the saved care plan and pending observation, record findings and explicitly confirm a scheduled check performed now. General updates and medicine events do not complete it. Only a veterinarian can set another observation time; no checks or medicines are recorded automatically. Task changes, completion and consent are transactional, audited and revision guarded. Owner updates remain explicitly shared; internal care plans/tasks remain private.
+
+After veterinarian discharge approval, staff and the owning client can open **View / print discharge summary**. The document uses saved consultation assessment, take-home prescriptions/directions, discharge instructions and invoice/payment data. Inpatient medicine orders are not take-home prescriptions. Unpaid checkout and pending actual release are labeled; saved payment never implies release. Clinical and administration history remains retained separately after discharge.
+
+### First-pet setup and pending registration
+
+After account email/SMS verification and login, owners without a saved pet or prior registration see required first-pet setup. Escape and backdrop clicks keep it open; logout remains available. Fields validate inline, and failed saves retain entries for retry. A successful save immediately shows **Pending verification**, unlocks the dashboard, and allows appointment requests. Setup completion persists across reloads and withdrawal of an unused request.
+
+`server/database/owner-pet-onboarding.sql` adds provisional patient status and persistent setup completion, and backfills existing pending requests. Registration saves and retries preserve one patient identity; clinic approval verifies that same patient so bookings stay linked. Pending patients have no official card or invented vitals history. Pet verification is still required before appointment confirmation and clinical intake; combined appointment/pet approval is a separate workflow change. Requests with appointment history cannot be withdrawn. Account verification before login is unchanged.

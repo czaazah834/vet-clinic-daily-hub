@@ -14,8 +14,14 @@ const fakeQuery = async (sql, params = []) => {
   if (failSql && failSql.test(sql)) throw Error('synthetic database failure');
   const rows = value => ({ rows: structuredClone(value), rowCount: value.length });
   if (sql.includes('FROM sessions s')) return rows(users[params[0]] ? [users[params[0]]] : []);
+  if (sql==="SELECT version FROM pawcare_schema_migrations WHERE version='owner-pet-onboarding-v1'") return rows([{version:'owner-pet-onboarding-v1'}]);
+  if (sql.startsWith('SELECT *,submission_payload=')) return rows([]);
+  if (sql==='SELECT owner_id FROM pets WHERE id=$1') return rows(db.pets.filter(p=>p.id===params[0]));
+  if (sql==='SELECT registration_status FROM pets WHERE id=$1') return rows(db.pets.filter(p=>p.id===params[0]).map(p=>({registration_status:p.registration_status || 'Verified'})));
+  if (sql==="SELECT id FROM pets WHERE id=$1 AND registration_status<>'Verified'") return rows(db.pets.filter(p=>p.id===params[0] && p.registration_status && p.registration_status!=='Verified'));
   if (sql.startsWith('SELECT to_regclass')) return rows([]);
   if (sql.startsWith('-- Preserve owner-submitted') || sql.startsWith('-- Durable reception') || sql.startsWith('-- Idempotent migration') || sql.startsWith('SELECT pg_advisory_xact_lock')) return rows([]);
+  if (sql.startsWith("SELECT version FROM pawcare_schema_migrations WHERE version='admission-care-v1'")) return rows([{version:'admission-care-v1'}]);
   if (sql.startsWith('-- Admission is separate') || sql.startsWith('-- Extend existing stays')) return rows([]);
   if (sql.includes('FROM admissions WHERE appt_id') || sql.includes('FROM admission_updates e JOIN admissions')) return rows([]);
   if (sql.startsWith('ALTER TABLE')) return rows([]);
@@ -55,6 +61,10 @@ const fakeQuery = async (sql, params = []) => {
   if (sql.startsWith('UPDATE consultations SET performed_services')) { const row = db.consults.find(c => c.id === params[1]); row.performed_services=JSON.parse(params[0]); return rows([row]); }
   if (sql.startsWith('UPDATE consultations SET prescription_items')) { const row = db.consults.find(c => c.id === params[1]); row.prescription_items=JSON.parse(params[0]); return rows([row]); }
   if (sql.startsWith('INSERT INTO vaccinations')) { const row = { id: params[0], pet_id: params[1], card_id: params[2], vaccine: params[3], brand: params[4], batch: params[5], done: true, vet_id: params[9], recorded_by: params[10] }; db.vaccs.push(row); return rows([row]); }
+  if (sql.startsWith('INSERT INTO pets(id,owner_id,name')) { const row=Object.fromEntries(['id','owner_id','name','species','species_other','breed','sex','birth','weight','color','neutered','notes','photo','dental_occlusion'].map((k,i)=>[k,params[i]]));row.registration_status='Pending';db.pets.push(row);return rows([row]); }
+  if (sql.startsWith('UPDATE pet_requests SET pet_id=')) {const r=db.requests.find(r=>r.id===params[0]);r.pet_id=params[1];return rows([]);}
+  if (sql.startsWith('UPDATE pet_requests SET submission_payload=')) {db.requests.find(r=>r.id===params[0]).submission_payload=JSON.parse(params[1]);return rows([]);}
+  if (sql.startsWith('UPDATE owners SET first_pet_registered_at=')) {db.owners.find(o=>o.id===params[0]).first_pet_registered_at='2026-10-25T00:00:00Z';return rows([]);}
   if (sql.startsWith('INSERT INTO pet_requests')) { const row = { id: params[12], owner_id: params[13], name: params[0], status: 'Pending',revision:0 }; db.requests.push(row); return rows([row]); }
   if (sql.startsWith('UPDATE appointments')) {
     if (sql.startsWith('UPDATE appointments SET pet_id=$2')) {
@@ -94,7 +104,7 @@ const request = async (role, method, path, body) => {
   return { status: res.status, data: await res.json() };
 };
 const endpoints = [['GET','/admin/staff'],['GET','/admin/audit'],['POST','/admin/staff/u_vet/access'],['POST','/admin/invitations/inv1/revoke'],['GET', '/checkout-inbox'], ['POST', '/checkout-inbox/a1/claim'], ['POST', '/checkout-inbox/a1/renew'], ['POST', '/checkout-inbox/a1/release'], ['GET', '/appointments/availability'], ['GET', '/reminders/status'], ['GET','/reminders/calls'], ['GET', '/state'], ['GET', '/logs'], ['GET', '/services/prices'], ['POST', '/owners'], ['POST', '/pets'], ['POST', '/owner/contact'], ['POST', '/owner/pets'], ['POST', '/pets/p1/weights'], ['POST', '/pets/p1/photo'], ['POST', '/owner/pets/p1/photo'], ['POST', '/pet-requests'], ['PUT', '/pet-requests/r1'], ['DELETE', '/pet-requests/r1'], ['POST', '/pet-requests/r1/approve'], ['POST', '/pet-requests/r1/decline'], ['POST', '/appointments'], ['PUT', '/appointments/a1'], ['PATCH', '/appointments/a1/status'], ['DELETE', '/appointments/a1'], ['POST', '/appointments/a1/billing'], ['POST', '/walk-in'], ['POST', '/vaccinations'], ['DELETE', '/vaccinations/v1'], ['POST', '/consultations'], ['POST', '/logs'], ['POST', '/reminders/send'], ['POST', '/reminders/log-call']];
-endpoints.push(['GET','/admissions'],['GET','/admissions/eligible'],['GET','/admissions/00000000-0000-0000-0000-000000000000'],['POST','/admissions'],['POST','/admissions/00000000-0000-0000-0000-000000000000/update'],['POST','/admissions/00000000-0000-0000-0000-000000000000/discharge']);
+endpoints.push(['GET','/admissions/00000000-0000-0000-0000-000000000000/discharge-summary'],['GET','/admissions'],['GET','/admissions/eligible'],['GET','/admissions/00000000-0000-0000-0000-000000000000'],['POST','/admissions'],['POST','/admissions/00000000-0000-0000-0000-000000000000/update'],['POST','/admissions/00000000-0000-0000-0000-000000000000/discharge']);
 for(const action of ['release','order','stop-medication','medication','correct-medication']) endpoints.push(['POST',`/admissions/00000000-0000-0000-0000-000000000000/${action}`]);
 test('all clinic endpoints reject anonymous access before any database query', async () => {
   for (const [method, path] of endpoints) assert.equal((await request(null, method, path, method === 'GET' ? undefined : {})).status, 401, path);

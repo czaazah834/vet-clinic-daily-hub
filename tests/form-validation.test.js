@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { admissionErrors, medicineErrors, medicineEventTime, paymentErrors, intakeErrors, noteChoiceError } from '../src/formValidation.js';
 
-const form={apptId:'visit',clinicalNote:'Observed care',carePlan:'Vet monitoring plan',ownerUpdate:'Under observation',temp:'',weight:'',dischargeInstructions:''};
+const form={apptId:'visit',clinicalNote:'Observed care',carePlan:'Vet monitoring plan',ownerUpdate:'Under observation',temp:'',weight:'',dischargeInstructions:'',nextObservationAt:'2099-10-25T15:00',observationInstructions:'Check observations',consentConfirmed:true,consentName:'Synthetic owner',consentMethod:'Phone',emergencyName:'Synthetic contact',emergencyPhone:'+639170000001',emergencyRelationship:'Owner'};
 test('admission required notes, optional measurements and discharge requirements follow action',()=>{
   assert.ok(Object.values(admissionErrors(form,{mode:'create',vet:true,visits:[{id:'visit'}]})).every(v=>!v));
   const errors=admissionErrors({...form,clinicalNote:'  ',temp:'32.9',weight:'120.01',ownerUpdate:''},{mode:'create',vet:true,visits:[]});
@@ -54,4 +54,13 @@ test('intake and editable clinic choices show required, range, length and duplic
   assert.ok(noteChoiceError('Choice\n choice '));
   assert.ok(noteChoiceError('x'.repeat(1001)));
   assert.ok(noteChoiceError(Array.from({length:101},(_,i)=>`Choice ${i}`).join('\n')));
+});
+
+test('new admission consent, emergency contact and observation time validate live',()=>{
+  const context={mode:'create',vet:true,visits:[{id:'visit'}]};
+  const errors=admissionErrors({...form,consentConfirmed:false,consentName:' ',consentMethod:'Guessed',emergencyName:'',emergencyPhone:'123',emergencyRelationship:'',nextObservationAt:'2026-02-30T12:00',observationInstructions:''},context);
+  for(const key of ['consentConfirmed','consentName','consentMethod','emergencyName','emergencyPhone','emergencyRelationship','nextObservationAt','observationInstructions'])assert.ok(errors[key],key);
+  assert.ok(admissionErrors({...form,nextObservationAt:'2000-01-01T12:00'},context).nextObservationAt);
+  const kept=admissionErrors({...form,nextObservationAt:'',observationInstructions:'',consentConfirmed:false},{mode:'update',vet:true});
+  assert.equal(kept.nextObservationAt,'');assert.equal(kept.consentName,undefined);
 });

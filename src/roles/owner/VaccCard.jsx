@@ -67,7 +67,7 @@ const tone = s => s === "Overdue" ? "er" : s === "Due soon" ? "wa" : "";
 
 export function OwnerVacc({ db, setDb, me, go, say }) {
   const historyComplete=useHistoryComplete();
-  const pets = scope(db, me, "pets");
+  const pets = scope(db, me, "pets").filter(p=>!p.registrationStatus || p.registrationStatus==='Verified');
   const vetOf = v => veterinarianLabel(v, db.vets || []);
   const [selectedId, setSel] = useState(() => (pick.petId && pets.some(p => p.id === pick.petId) ? pick.petId : pets[0] ? pets[0].id : ""));
   const sel = pets.some(p => p.id === selectedId) ? selectedId : pets[0]?.id || "";

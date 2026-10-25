@@ -78,3 +78,4 @@
   .admission-filters .btn { flex:1 1 42%; }
   .consultation-admission { padding:14px; }
 }
+.admission-check{display:flex!important;align-items:flex-start;gap:10px}.admission-check input[type=checkbox]{width:auto;flex:0 0 auto;margin-top:4px}.admission-discharge{width:min(850px,100%)}.discharge-document p{white-space:pre-wrap;overflow-wrap:anywhere}.discharge-document li{break-inside:avoid}.discharge-document h3{margin-top:22px}

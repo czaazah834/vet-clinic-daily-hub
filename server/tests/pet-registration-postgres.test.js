@@ -122,7 +122,7 @@ test('audit failures roll back submission, edits, approval, decline and withdraw
   assert.equal((await review(saved.id,'decline',0,{reason:'Check birth date'})).status,500);
   assert.equal((await call(owner,'DELETE',`/pet-requests/${saved.id}`)).status,500);
   const rows=(await query("SELECT * FROM pet_requests WHERE owner_id='o_rollback'")).rows;assert.equal(rows.length,1);assert.equal(rows[0].revision,0);assert.equal(rows[0].status,'Pending');assert.equal(rows[0].photo,photo);
-  assert.equal((await query("SELECT COUNT(*)::int n FROM pets WHERE owner_id='o_rollback'")).rows[0].n,0);
+  assert.equal((await query("SELECT COUNT(*)::int n FROM pets WHERE owner_id='o_rollback'")).rows[0].n,1);
  } finally {await query('DROP TRIGGER reject_registration_audit ON audit_logs');}
  assert.equal((await review(saved.id,'approve',0)).status,200);
 });
@@ -211,4 +211,50 @@ test('new customer vaccination arrivals validate species before inserts and pers
  assert.equal(saved.data.appointment.reason,'Vaccination: Feline 4-in-1');assert.equal(saved.data.appointment.service,'vaccination');assert.equal(saved.data.appointment.bookingKind,'walk-in');
  const row=(await query('SELECT reason,service FROM appointments WHERE id=$1',[saved.data.appointment.id])).rows[0];assert.equal(row.reason,saved.data.appointment.reason);assert.equal(row.service,'vaccination');
  assert.equal((await query('SELECT COUNT(*)::int n FROM vaccinations WHERE pet_id=$1 AND done=true',[saved.data.pet.id])).rows[0].n,0);
+});
+
+test('new owner saves once, reloads pending patient and books before review; approval preserves the same patient and appointment',async()=>{
+ const owner=await user('onboarding'),other=await user('onboarding-other');
+ await user('onboarding-vet','vet');await query("UPDATE users SET vet_id='onboarding-vet' WHERE id='onboarding-vet'");
+ const requestId=crypto.randomUUID(),body={...base,requestId};
+ const submitted=await call(owner,'POST','/pet-requests',body);assert.equal(submitted.status,200,JSON.stringify(submitted));
+ const {pet,request}=submitted.data;
+ assert.equal(pet.registration_status,'Pending');assert.equal(request.pet_id,pet.id);assert.equal(pet.vaccination_card_id,null);
+ const retry=await call(owner,'POST','/pet-requests',body);assert.equal(retry.status,200);assert.equal(retry.data.pet.id,pet.id);
+ assert.equal((await call(owner,'POST','/pet-requests',{...body,name:'Changed payload'})).status,409);
+ assert.equal((await call(other,'POST','/pet-requests',body)).status,409);
+ const state=(await call(owner,'GET','/state')).data.data;
+ assert.ok(state.owners[0].firstPetRegisteredAt);assert.equal(state.pets.find(p=>p.id===pet.id).registrationStatus,'Pending');assert.deepEqual(state.pets.find(p=>p.id===pet.id).weights,[]);
+ assert.ok(!(await call(other,'GET','/state')).data.data.pets.some(p=>p.id===pet.id));
+ const {clinicClock,shiftDate}=await import('../scheduling.js');const {holidayName}=await import('../../src/booking.js');
+ let date=shiftDate(clinicClock().date,1);while(holidayName(date))date=shiftDate(date,1);
+ const booking={petId:pet.id,vetId:'onboarding-vet',date,time:'09:00',reason:'Routine examination',service:'checkup'};
+ assert.equal((await call(other,'POST','/appointments',booking)).status,404);
+ const booked=await call(owner,'POST','/appointments',booking);assert.equal(booked.status,200,JSON.stringify(booked));
+ assert.equal(booked.data.appointment.status,'Scheduled');assert.equal(booked.data.appointment.petId,pet.id);
+ assert.equal((await query('SELECT registration_status FROM pets WHERE id=$1',[pet.id])).rows[0].registration_status,'Pending');
+ assert.equal((await call(assistant,'PATCH',`/appointments/${booked.data.appointment.id}/status`,{status:'Confirmed'})).status,409,'staff must review registration before confirming visit');
+ assert.equal((await call(owner,'DELETE',`/pet-requests/${request.id}`)).status,409,'cannot erase patient or appointment history');
+ const approved=await review(request.id,'approve',0);assert.equal(approved.status,200,JSON.stringify(approved));assert.equal(approved.data.pet.id,pet.id);assert.equal(approved.data.pet.registration_status,'Verified');
+ assert.equal((await query('SELECT pet_id FROM appointments WHERE id=$1',[booked.data.appointment.id])).rows[0].pet_id,pet.id);
+ assert.equal((await query('SELECT count(*)::int n FROM pets WHERE owner_id=$1',[pet.owner_id])).rows[0].n,1);
+ assert.equal((await call(assistant,'PATCH',`/appointments/${booked.data.appointment.id}/status`,{status:'Confirmed'})).status,200);
+});
+
+test('withdrawal removes an unused pending profile without resetting completed first-pet setup',async()=>{
+ const owner=await user('onboarding-withdraw');const request=await create(owner);
+ assert.equal((await call(owner,'DELETE',`/pet-requests/${request.id}`)).status,200);
+ assert.equal((await query('SELECT id FROM pets WHERE id=$1',[request.pet_id])).rows.length,0);
+ assert.ok((await query('SELECT first_pet_registered_at FROM owners WHERE id=$1',['o_onboarding-withdraw'])).rows[0].first_pet_registered_at);
+});
+
+test('onboarding migration backfills pending legacy requests, keeps approved identities and is repeatable',async()=>{
+ const owner=await user('legacy-pending');
+ await query("INSERT INTO pet_requests(id,owner_id,name,species,sex,birth,weight) VALUES('legacy-request','o_legacy-pending','Legacy Pet','Canine','Male','2025-01-01',5)");
+ const before=(await query('SELECT id,registration_status FROM pets ORDER BY id')).rows;
+ for(let n=0;n<2;n++)await query(readFileSync(new URL('../database/owner-pet-onboarding.sql',import.meta.url),'utf8'));
+ const request=(await query("SELECT pet_id FROM pet_requests WHERE id='legacy-request'")).rows[0];
+ const pet=(await query('SELECT * FROM pets WHERE id=$1',[request.pet_id])).rows[0];assert.equal(pet.registration_status,'Pending');assert.equal(pet.name,'Legacy Pet');assert.equal(pet.vaccination_card_id,null);
+ for(const original of before) assert.deepEqual((await query('SELECT id,registration_status FROM pets WHERE id=$1',[original.id])).rows[0],original);
+ assert.equal((await query("SELECT count(*)::int n FROM pets WHERE owner_id='o_legacy-pending'")).rows[0].n,1);
 });

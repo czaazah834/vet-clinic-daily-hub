@@ -295,6 +295,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
           <b>Care handoff history</b>
           {appt.handoffs.map((h,i)=><div key={i}><p><b>{h.from} → {h.to}</b> · {new Intl.DateTimeFormat('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'}).format(new Date(h.at))}</p><p style={{whiteSpace:'pre-wrap'}}>{h.note}</p></div>)}
         </section>}
+        <section className="ow-note info" aria-label="Visit purpose"><b>Reason for this visit: {appt.reason || "Not recorded"}</b><p>Assess the pet for this requested care. A vaccination visit includes a veterinarian suitability check; record vaccine administration only if actually given. Routine visits can finish as outpatient care.</p></section>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px", marginBottom: "14px" }}>
           <div>
@@ -486,10 +487,10 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
-                <label htmlFor="soap-diagnosis"><b>A - Assessment (Diagnosis)</b><i> *</i></label>
+                <label htmlFor="soap-diagnosis"><b>A - Assessment (Diagnosis / Visit Suitability)</b><i> *</i></label>
                 {optionsError && <p role="alert">Choices could not load. You can still type your notes. <button type="button" onClick={() => retryOptions(n => n + 1)}>Retry choices</button></p>}
                 <NoteShortcuts field="diagnosis" label="Clinic diagnosis choices" options={noteOptions.diagnosis} value={f.diagnosis} onChange={value => set("diagnosis", value)} />
-                <p id="soap-diagnosis-hint" className="soap-note-label">Enter your diagnosis and patient-specific details here. All added text is editable; you can include multiple diagnoses.</p>
+                <p id="soap-diagnosis-hint" className="soap-note-label">Record findings for the owner’s reason for visiting. For vaccination or preventive care, document suitability or why care is deferred; an illness diagnosis is not required. All added text is editable.</p>
                   <textarea
                     id="soap-diagnosis"
                     rows={2}
@@ -524,7 +525,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
               <section className="consultation-admission" aria-labelledby="soap-admission-title" style={{gridColumn:'1/-1'}}>
                 <div className="consultation-admission-heading"><div><h4 id="soap-admission-title">Admission · care at the clinic</h4>
-                  <p>If {pet.name} needs to stay for treatment or monitoring, record your admission decision here.</p></div>
+                  <p>Admit {pet.name} only if your assessment shows a need for clinic treatment or monitoring. A diagnosis or vaccination visit does not automatically require admission.</p></div>
                   {admissionStatus && <span className="admission-status">{admissionStatus}</span>}
                 </div>
                 {admissionStatus ? <>

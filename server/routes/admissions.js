@@ -53,6 +53,25 @@ admissionsRouter.get('/eligible', async (req,res) => {
     res.json({visits:rows.map(row => ({...intakeVisitSnapshot(row),petName:row.pet_name,ownerName:row.owner_name}))});
   } catch (error) { errorResponse(res,error); }
 });
+// Owner-safe saved document: no internal care notes, inpatient orders or audit payloads.
+admissionsRouter.get('/:id/discharge-summary', async (req,res) => {
+  try {
+    if (!isUuid(req.params.id)) throw admissionError('Admission not found.',404);
+    const params = [req.params.id];
+    const row = (await query(`${base.replace("SELECT d.*,", "SELECT document.appointment,document.consultation,d.*,")}, LATERAL (SELECT to_jsonb(a2) appointment,
+      (SELECT to_jsonb(c) FROM consultations c WHERE c.appt_id=a2.id ORDER BY c.date DESC,c.created_at DESC,c.id DESC LIMIT 1) consultation
+      FROM appointments a2 WHERE a2.id=d.appt_id) document WHERE d.id=$1 AND ${scope(req.user,params)}`,params)).rows[0];
+    if (!row) throw admissionError('Admission not found or no longer assigned to you.',404);
+    if (row.status === 'Admitted') throw admissionError('The veterinarian must approve discharge before a discharge summary is available.',409);
+    const a = row.appointment, c = row.consultation || {}, payment = a.payment_details || {};
+    res.json({admission:admissionView(row,true),ownerName:row.owner_name,
+      consultation:{diagnosis:c.diagnosis || '',treatment:c.treatment || '',prescription:c.prescription || '',prescriptionItems:(c.prescription_items || []).map(item=>({name:item.name,quantity:item.quantity,unit:item.unit,instructions:item.instructions}))},
+      appointment:{id:a.id,status:a.status,billingStatus:a.billing_status,admissionStatus:row.status,amount:a.amount === null ? null : Number(a.amount),
+        invoiceItems:a.invoice_items || [],discount:payment.discount ?? 0,paymentMethod:a.payment_method,paidAt:a.paid_at,
+        paymentReference:payment.reference || '',cashTendered:payment.cashTendered ?? null,changeAmount:payment.changeAmount ?? null},
+      generatedAt:new Date().toISOString()});
+  } catch (error) { errorResponse(res,error); }
+});
 admissionsRouter.get('/:id', async (req,res) => {
   try {
     if (!isUuid(req.params.id)) throw admissionError('Admission not found.',404);
@@ -65,7 +84,7 @@ admissionsRouter.get('/:id', async (req,res) => {
       if (!cursor || !isUuid(cursor.id) || typeof cursor.at !== 'string' || !Number.isFinite(Date.parse(cursor.at))) throw admissionError('Invalid update page.');
       params.push(cursor.at,cursor.id); filter += ' AND (created_at,id)<($2::timestamptz,$3::uuid)';
     }
-    const rows = (await query(`SELECT id,kind,created_at,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') cursor_at,actor_name,actor_role,owner_update${owner ? '' : ",clinical_note,care_plan,measurements,medication,EXISTS (SELECT 1 FROM admission_updates correction WHERE correction.admission_id=admission_updates.admission_id AND correction.kind='Medication correction' AND correction.medication->>'voids'=admission_updates.id::text) AS voided"} FROM admission_updates WHERE ${filter} ORDER BY created_at DESC,id DESC LIMIT 51`,params)).rows;
+    const rows = (await query(`SELECT id,kind,created_at,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') cursor_at,actor_name,actor_role,owner_update${owner ? '' : ",clinical_note,care_plan,measurements,medication,care_details,EXISTS (SELECT 1 FROM admission_updates correction WHERE correction.admission_id=admission_updates.admission_id AND correction.kind='Medication correction' AND correction.medication->>'voids'=admission_updates.id::text) AS voided"} FROM admission_updates WHERE ${filter} ORDER BY created_at DESC,id DESC LIMIT 51`,params)).rows;
     const more = rows.length > 50; rows.length = Math.min(rows.length,50);
     const last = rows.at(-1);
     const orders = owner ? [] : (await query('SELECT id,medicine,dose,route,frequency,instructions,catalog_id,supply_limit,ordered_by,ordered_at,stopped_at FROM admission_medication_orders WHERE admission_id=$1 ORDER BY ordered_at,id',[row.id])).rows;
@@ -75,8 +94,28 @@ admissionsRouter.get('/:id', async (req,res) => {
 const audit = (client,user,action) => client.query('INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)',[user.name,user.role,action]);
 async function addUpdate(client,req,id,kind,data,payload=data) {
   const ownerMessage = kind === 'Discharge' ? [data.ownerUpdate,data.dischargeInstructions].filter(Boolean).join('\n\n') : data.ownerUpdate;
-  await client.query(`INSERT INTO admission_updates (id,admission_id,kind,clinical_note,care_plan,measurements,owner_update,actor_id,actor_name,actor_role,request_payload,medication)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[req.body.requestId,id,kind,data.clinicalNote,data.carePlan || '',JSON.stringify(data.measurements),ownerMessage,req.user.id,req.user.name,req.user.role,JSON.stringify(payload),JSON.stringify(data.medication || {})]);
+  await client.query(`INSERT INTO admission_updates (id,admission_id,kind,clinical_note,care_plan,measurements,owner_update,actor_id,actor_name,actor_role,request_payload,medication,care_details)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,[req.body.requestId,id,kind,data.clinicalNote,data.carePlan || '',JSON.stringify(data.measurements),ownerMessage,req.user.id,req.user.name,req.user.role,JSON.stringify(payload),JSON.stringify(data.medication || {}),JSON.stringify(data.careDetails || {})]);
+}
+async function saveCareDetails(client,req,id,data,row) {
+  const details = {};
+  const now = (await client.query('SELECT clock_timestamp() now')).rows[0].now;
+  if (data.nextObservationAt) {
+    if (Date.parse(data.nextObservationAt) <= now.getTime()) throw admissionError('Set a future time for the next observation.');
+    details.nextObservationAt = data.nextObservationAt;
+    details.observationInstructions = data.observationInstructions;
+    if (row) await client.query('UPDATE admissions SET next_observation_at=$2,observation_instructions=$3,observation_completed_at=NULL WHERE id=$1',[id,data.nextObservationAt,data.observationInstructions]);
+  }
+  if (data.consent) {
+    details.consent = {...data.consent,recordedAt:now.toISOString(),recordedBy:req.user.name};
+    if (row) await client.query('UPDATE admissions SET consent=$2 WHERE id=$1',[id,JSON.stringify(details.consent)]);
+  }
+  if (data.completeObservation) {
+    if (!row.next_observation_at || row.observation_completed_at) throw admissionError('There is no pending observation. Refresh the care plan.',409);
+    details.completedObservation = {dueAt:row.next_observation_at,instructions:row.observation_instructions,completedAt:now.toISOString()};
+    await client.query('UPDATE admissions SET observation_completed_at=$2 WHERE id=$1',[id,now]);
+  }
+  return details;
 }
 async function replay(client,req,id,data) {
   const row = (await client.query('SELECT admission_id,actor_id,request_payload=$2::jsonb AS same FROM admission_updates WHERE id=$1',[req.body.requestId,JSON.stringify(data)])).rows[0];
@@ -103,8 +142,9 @@ admissionsRouter.post('/', async (req,res) => {
       if (!req.body.expectedVisit || !sameIntakeVisit(visit,req.body.expectedVisit)) throw admissionError('This visit changed. Refresh clinic records and reopen admission.',409);
       if (visit.status === 'Completed' && !(await client.query('SELECT id FROM consultations WHERE appt_id=$1',[visit.id])).rows.length) throw admissionError('A completed visit needs saved SOAP notes before admission.',409);
       await client.query('SELECT id FROM pets WHERE id=$1 FOR UPDATE',[visit.pet_id]);
-      await client.query('INSERT INTO admissions (id,pet_id,appt_id,reason,care_plan) VALUES ($1,$2,$3,$4,$5)',[id,visit.pet_id,visit.id,data.clinicalNote,data.carePlan]);
-      await addUpdate(client,req,id,'Admission',data);
+      const careDetails = await saveCareDetails(client,req,id,data);
+      await client.query('INSERT INTO admissions (id,pet_id,appt_id,reason,care_plan,next_observation_at,observation_instructions,consent) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',[id,visit.pet_id,visit.id,data.clinicalNote,data.carePlan,data.nextObservationAt,data.observationInstructions,JSON.stringify(careDetails.consent)]);
+      await addUpdate(client,req,id,'Admission',{...data,careDetails},data);
       await audit(client,req.user,`Admitted pet ${visit.pet_id} for visit ${visit.id} (${id})`);
       return readAdmission(client.query.bind(client),id,req.user);
     });
@@ -140,7 +180,8 @@ admissionsRouter.post('/:id/:action', async (req,res) => {
           await addUpdate(client,req,id,'Discharge',data);
         } else if (action === 'update') {
           await client.query("UPDATE admissions SET care_plan=COALESCE(NULLIF($2,''),care_plan),revision=revision+1 WHERE id=$1",[id,data.carePlan || '']);
-          await addUpdate(client,req,id,req.user.role === 'vet' ? 'Veterinarian update' : 'Observation',data);
+          const careDetails = await saveCareDetails(client,req,id,data,row);
+          await addUpdate(client,req,id,req.user.role === 'vet' ? 'Veterinarian update' : 'Observation',{...data,careDetails},data);
         } else {
           const event = await saveMedicineAction(client,req,row,data);
           await addUpdate(client,req,id,event.kind,{...data,...event},data);

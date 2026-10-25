@@ -23,7 +23,7 @@ export function approvedRegistration(data) {
   return {
     request:reviewedRequest(data.request),
     cardId:p.vaccination_card_id,
-    pet:{id:p.id, ownerId:p.owner_id, name:p.name, species:p.species, speciesOther:p.species_other || '',
+    pet:{id:p.id, ownerId:p.owner_id,registrationStatus:p.registration_status || 'Verified', name:p.name, species:p.species, speciesOther:p.species_other || '',
       breed:p.breed || '', sex:p.sex, birth:dateOnly(p.birth), weight:Number(p.weight),
       color:p.color || '', neutered:p.neutered || 'Not sure', allergies:p.allergies || [],
       vaccinationCardId:p.vaccination_card_id, notes:p.notes || '', photo:p.photo || '',

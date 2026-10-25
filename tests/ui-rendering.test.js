@@ -23,6 +23,7 @@ buildSync({
       export { assistant } from './src/roles/Assistant.jsx';
       export { ProfileBody, PasswordBody } from './src/roles/owner/Profile.jsx';
       export { PetFormModal, PetProfileModal } from './src/roles/owner/Pets.jsx';
+      export { DischargeDocument } from './src/roles/AdmissionDischargeSummary.jsx';
       export { default as Reports } from './src/roles/ReportsPage.jsx';
       export { default as ErrorBoundary } from './src/ErrorBoundary.jsx';
       export { SEED } from './src/lib.jsx';
@@ -178,4 +179,13 @@ test('pagination clamps invalid or removed pages and represents empty results ho
   assert.equal(ui.pageBounds(10,2).page,1);
   assert.equal(ui.pageBounds(23,-1).page,1);
   assert.equal(ui.pageBounds(23,Infinity).page,3);
+});
+
+test('discharge print document distinguishes prescribed medicine, clinic use, unpaid and released records',()=>{
+  const data={admission:{id:'stay',petName:'Patient',vetName:'Vet',status:'Ready for discharge',admittedAt:'2026-10-25T00:00:00Z',dischargeApprovedAt:'2026-10-25T01:00:00Z',dischargeInstructions:'Home care saved'},ownerName:'Owner',consultation:{diagnosis:'Vaccination suitability assessment',treatment:'Care saved',prescription:'Home directions saved',prescriptionItems:[{name:'Home medicine',quantity:2,unit:'packages',instructions:'Vet directions'}]},appointment:{id:'visit',status:'Completed',billingStatus:'Unbilled',invoiceItems:[{name:'Clinic medicine',source:'admission',price:100,qty:1}]},generatedAt:'2026-10-25T01:00:00Z'};
+  const pending=render(ui.DischargeDocument,{data});
+  for(const text of ['Release to owner has not yet been confirmed','Awaiting checkout','Draft total','Home directions saved','Vet directions','Home care saved','Clinic medicine (clinic use)','print-document'])assert.ok(pending.includes(text),text);
+  const paid=render(ui.DischargeDocument,{data:{...data,admission:{...data.admission,status:'Discharged',dischargedAt:'2026-10-25T02:00:00Z'},appointment:{...data.appointment,billingStatus:'Paid',amount:90,discount:10,paymentMethod:'Cash',cashTendered:100,changeAmount:10,paidAt:'2026-10-25T01:30:00Z'}}});
+  for(const text of ['Paid amount','90.00','Cash received','Change recorded'])assert.ok(paid.includes(text),text);
+  assert.ok(!paid.includes('Release to owner has not yet been confirmed'));
 });
