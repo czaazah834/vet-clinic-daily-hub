@@ -34,3 +34,17 @@ test('patient birth bounds consultation dates while allowing valid historical ca
  assert.ok(validateSoapFields({...form,date:'2010-01-01'},today,'2020-01-01').date);
  assert.equal(validateSoapFields({...form,date:'2024-02-29'},today,'2020-01-01').date,undefined);
 });
+
+test('vaccine requirements use field errors that recompute as staff correct the entries',()=>{
+ const vaccine={...form,giveVaccine:true,vaccine:'Anti-rabies',doseNo:'',doseOf:'',intervalDays:'',scheduleApproved:false,brand:' ',batch:''};
+ const errors=validateSoapFields(vaccine,today);
+ for(const field of ['doseNo','doseOf','intervalDays','scheduleApproved','brand','batch'])assert.ok(errors[field],field);
+ const valid={...vaccine,doseNo:'1',doseOf:'3',intervalDays:'21',scheduleApproved:true,brand:'Synthetic brand',batch:'Synthetic batch'};
+ assert.deepEqual(validateSoapFields(valid,today),{});
+ for(const [field,values] of [['doseNo',['0','21','1.5']],['doseOf',['0','21','1.5']],['intervalDays',['0','3651','1.5']]])for(const value of values)assert.ok(validateSoapFields({...valid,[field]:value},today)[field],`${field}:${value}`);
+ assert.ok(validateSoapFields({...valid,doseNo:'4'},today).doseOf,'series total responds to a changed administered dose');
+ assert.equal(validateSoapFields({...valid,doseNo:'2'},today).doseOf,undefined);
+ assert.ok(validateSoapFields({...valid,date:'2026-02-30'},today).intervalDays,'interval responds to an invalid administration date');
+ assert.equal(validateSoapFields({...valid,date:today},today).intervalDays,undefined);
+ assert.deepEqual(validateSoapFields({...vaccine,giveVaccine:false},today),{},'hidden administration fields do not block routine care');
+});

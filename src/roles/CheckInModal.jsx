@@ -75,14 +75,14 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
     const cur = parseFloat(weight);
     if (!Number.isFinite(cur)) return;
     const next = Math.max(0.05, +(cur + delta).toFixed(1));
-    setWeight(String(next));
+    validation.changed('weight');setWeight(String(next));
   };
 
   const handleStepTemp = (delta) => {
     const cur = parseFloat(temp);
     if (!Number.isFinite(cur)) return;
     const next = +(cur + delta).toFixed(1);
-    setTemp(String(next));
+    validation.changed('temp');setTemp(String(next));
   };
 
   const normSpecies = normalizeSpecies(pet.species);
@@ -407,7 +407,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       type="button"
                       className="btn ghost sm"
                       title="Set to standard normal baseline with lesser manual input"
-                      onClick={() => setTemp(String(speciesConfig.normalTempPreset))}
+                      onClick={() => {validation.changed('temp');setTemp(String(speciesConfig.normalTempPreset));}}
                       style={{ background: "#e0f2fe", color: "#0369a1", borderColor: "#bae6fd" }}
                     >
                       Use measured normal ({speciesConfig.normalTempPreset}°C)
