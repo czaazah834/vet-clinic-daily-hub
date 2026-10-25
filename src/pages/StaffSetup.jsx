@@ -232,7 +232,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
             <button className="btn ghost" onClick={onCancel}>Back to PawCare Home</button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} noValidate>
+          <form onSubmit={handleSubmit} noValidate onChangeCapture={e=>{if(e.target.name)touch(e.target.name);}}>
             
             {/* Authorized Role Card */}
             <div style={{
@@ -309,7 +309,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-fn"
                     type="text"
                     placeholder="First name"
-                    value={formData.firstName}
+                    name="firstName" value={formData.firstName}
                     className={getFieldError("firstName") ? "bad" : isFieldValid("firstName") ? "ok" : ""}
                     onChange={e => {
                       const raw = e.target.value;
@@ -331,7 +331,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-ln"
                     type="text"
                     placeholder="Last name"
-                    value={formData.lastName}
+                    name="lastName" value={formData.lastName}
                     className={getFieldError("lastName") ? "bad" : isFieldValid("lastName") ? "ok" : ""}
                     onChange={e => {
                       const raw = e.target.value;
@@ -354,7 +354,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     type="text"
                     maxLength={2}
                     placeholder="M."
-                    value={formData.middleInitial}
+                    name="middleInitial" value={formData.middleInitial}
                     className={getFieldError("middleInitial") ? "bad" : ""}
                     onChange={e => setFormData({ ...formData, middleInitial: e.target.value.replace(/[0-9]/g, "").toUpperCase() })}
                     onBlur={() => touch("middleInitial")}
@@ -369,7 +369,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                 <input
                   id="staff-bday"
                   type="date"
-                  value={formData.birthday}
+                  name="birthday" value={formData.birthday}
                   max={new Date(new Date().getFullYear() - 18, new Date().getMonth(), new Date().getDate()).toISOString().slice(0, 10)}
                   className={getFieldError("birthday") ? "bad" : isFieldValid("birthday") ? "ok" : ""}
                   onChange={e => setFormData({ ...formData, birthday: e.target.value })}
@@ -392,7 +392,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                   id="staff-street"
                   type="text"
                   placeholder="e.g. 128 Rizal Avenue, Brgy. 45"
-                  value={formData.houseStreet}
+                  name="houseStreet" value={formData.houseStreet}
                   className={getFieldError("houseStreet") ? "bad" : isFieldValid("houseStreet") ? "ok" : ""}
                   onChange={e => setFormData({ ...formData, houseStreet: e.target.value })}
                   onBlur={() => {
@@ -411,7 +411,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-city"
                     type="text"
                     placeholder="e.g. Caloocan City"
-                    value={formData.city}
+                    name="city" value={formData.city}
                     className={getFieldError("city") ? "bad" : isFieldValid("city") ? "ok" : ""}
                     onChange={e => setFormData({ ...formData, city: e.target.value })}
                     onBlur={() => {
@@ -428,7 +428,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-state"
                     type="text"
                     placeholder="e.g. Metro Manila"
-                    value={formData.state}
+                    name="state" value={formData.state}
                     onChange={e => setFormData({ ...formData, state: e.target.value })}
                     onBlur={() => { if (formData.state.trim()) setFormData(p => ({ ...p, state: tc(p.state.trim()) })); }}
                     required
@@ -442,7 +442,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     type="text"
                     maxLength={10}
                     placeholder="1400"
-                    value={formData.zipCode}
+                    name="zipCode" value={formData.zipCode}
                     onChange={e => setFormData({ ...formData, zipCode: e.target.value.trim() })}
                   />
                 </div>
@@ -465,7 +465,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                   id="staff-phone"
                   type="tel"
                   placeholder="+63 917 123 4567"
-                  value={formData.mobileNumber}
+                  name="mobileNumber" value={formData.mobileNumber}
                   className={getFieldError("mobileNumber") ? "bad" : isFieldValid("mobileNumber") ? "ok" : ""}
                   onChange={e => setFormData({ ...formData, mobileNumber: e.target.value })}
                   onBlur={() => touch("mobileNumber")}
@@ -491,7 +491,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-pw"
                     type={showPw ? "text" : "password"}
                     placeholder="12+ characters with uppercase, lowercase, number, and symbol"
-                    value={formData.password}
+                    name="password" value={formData.password}
                     className={getFieldError("password") ? "bad" : isFieldValid("password") ? "ok" : ""}
                     onChange={e => setFormData({ ...formData, password: e.target.value })}
                     onBlur={() => touch("password")}
@@ -547,7 +547,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                     id="staff-cpw"
                     type={showConfirmPw ? "text" : "password"}
                     placeholder="Re-enter your password"
-                    value={formData.confirmPassword}
+                    name="confirmPassword" value={formData.confirmPassword}
                     className={getFieldError("confirmPassword") ? "bad" : isFieldValid("confirmPassword") ? "ok" : ""}
                     onChange={e => setFormData({ ...formData, confirmPassword: e.target.value })}
                     onBlur={() => touch("confirmPassword")}

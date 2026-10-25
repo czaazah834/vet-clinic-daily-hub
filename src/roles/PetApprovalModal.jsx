@@ -1,3 +1,4 @@
+import LiveControl from '../components/LiveControl.jsx';
 import { api } from "../api.js";
 import { useRef, useState } from "react";
 import { Syringe, CheckCircle2, X } from "lucide-react";
@@ -114,7 +115,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
             <div className="fld full" style={{ marginBottom: "16px" }}>
               <label>
                 <b>Reason for Declining</b><i> *</i>
-                <textarea
+                <LiveControl as="textarea"
                   rows={3}
                   value={declineReason}
                   onChange={e => setDeclineReason(e.target.value)}

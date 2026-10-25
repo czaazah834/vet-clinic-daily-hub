@@ -1,3 +1,5 @@
+import { useFormValidation } from '../components/useFormValidation.jsx';
+import { paymentErrors } from '../formValidation.js';
 import DocumentHeader from "../components/DocumentHeader.jsx";
 import { VaccineEstimate } from "../components/VaccineBooking.jsx";
 import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
@@ -62,7 +64,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
       if (existing?.source === 'performed') return prev;
       const limit = item.requiresPrescription ? prescribed.find(p => p.catalogId === item.id && p.source !== 'admission')?.quantity || 0 : 1000;
       if (!limit || (existing?.qty || 0) >= limit) return prev;
-      return existing ? prev.map(p => p.catalogId === item.id && p.source !== 'admission' ? {...p, qty:p.qty + 1} : p) : [...prev, {catalogId:item.id,name:item.name,category:item.category,price:item.price,qty:1}];
+      return existing ? prev.map(p => p.catalogId === item.id && p.source !== 'admission' ? {...p, qty:Number(p.qty) + 1} : p) : [...prev, {catalogId:item.id,name:item.name,category:item.category,price:item.price,qty:1}];
     });
     setSearch("");
   };
@@ -72,11 +74,13 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   };
 
   const updateQty = (idx, qty) => {
-    setItems(prev => prev.map((item, i) => i === idx && !['performed','admission'].includes(item.source) ? { ...item, qty: Math.max(1, +qty || 1) } : item));
+    setItems(prev => prev.map((item, i) => i === idx && !['performed','admission'].includes(item.source) ? { ...item, qty } : item));
   };
 
   const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
-  const total = Math.max(0, subtotal - (+discount || 0));
+  const total = Math.max(0, (Math.round(subtotal * 100) - Math.round(Number(discount) * 100)) / 100);
+  const errors = paymentErrors({items,discount,cashTendered,refNo,method,prescribed});
+  const validation = useFormValidation(errors);
   const change = method === "Cash" ? Math.max(0, (+cashTendered || 0) - total) : 0;
 
   const filteredCatalog = search.trim()
@@ -89,6 +93,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
     ev.preventDefault();
     setFormErr("");
     if (paying.current || me.role !== "assistant") return;
+    if (!validation.validate(ev)) return;
 
     if (!items.length || !Number.isFinite(total) || total <= 0) {
       setFormErr("At least one billable procedure or product is required.");
@@ -136,7 +141,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
       paymentReference: method !== "Cash" ? refNo.trim() : `CASH-${Date.now().toString().slice(-6)}`,
       cashTendered: method === "Cash" ? Number(cashTendered) : total,
       changeAmount: change,
-      invoiceItems: items,
+      invoiceItems: items.map(item=>({...item,qty:Number(item.qty)})),
       actorName: me.name,
       actorRole: me.role
     };
@@ -237,7 +242,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             </div>
           </div>
         ) : (
-          me.role !== "assistant" ? <p role="status">This visit is awaiting front desk checkout. Financial records are available for review after payment.</p> : <form onSubmit={handlePay}>
+          me.role !== "assistant" ? <p role="status">This visit is awaiting front desk checkout. Financial records are available for review after payment.</p> : <form {...validation.formProps} onSubmit={handlePay}>
             <fieldset disabled={loading || !claim.ready} style={{border:0,padding:0,margin:0,minWidth:0}}>
             <p><b>Requested purpose:</b> {appt.reason}</p><VaccineEstimate appointment={appt} />
             {/* Patient Context Card */}
@@ -378,13 +383,14 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                       <td style={{ padding: "8px 10px", textAlign: "center" }}>
                         <input
                           type="number"
-                          min="1"
+                          min="1" max="1000" step="1" required
+                          {...validation.field(`qty-${idx}`)}
                           readOnly={['performed','admission'].includes(it.source)}
                           aria-label={['performed','admission'].includes(it.source) ? 'Recorded service or clinic supply quantity' : 'Quantity'}
                           value={it.qty}
                           onChange={e => updateQty(idx, e.target.value)}
                           style={{ width: "50px", textAlign: "center", padding: "4px", fontSize: "12px", border: "1px solid #cbd5e1", borderRadius: "4px" }}
-                        />
+                        />{validation.feedback(`qty-${idx}`)}
                       </td>
                       <td style={{ padding: "8px 10px", textAlign: "right" }}>
                         <input
@@ -429,15 +435,14 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                 <input
                   type="number"
                   min="0"
-                  id="billing-discount"
                   step="0.01"
-                  value={discount}
+                  {...validation.field('discount')} id="billing-discount" value={discount}
                   onChange={e => { setDiscount(e.target.value); setFormErr(""); }}
                   placeholder="0"
                   className={+discount > subtotal ? "bad" : discount > 0 ? "ok" : ""}
                   style={{ padding: "6px 10px", fontSize: "13px" }}
                 />
-                {+discount > subtotal && <span className="err" style={{ fontSize: "11px" }}>Discount cannot exceed subtotal (₱{subtotal.toLocaleString()}).</span>}
+                {validation.feedback('discount')}
               </div>
 
               <div className="fld" style={{ margin: 0 }}>
@@ -459,20 +464,15 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                   <input
                     type="number"
                     min="0"
-                    id="billing-cash"
                     step="0.01"
                     placeholder="Enter actual cash received"
-                    value={cashTendered}
+                    {...validation.field('cashTendered')} id="billing-cash" value={cashTendered}
                     onChange={e => { setCashTendered(e.target.value); setFormErr(""); }}
                     className={cashTendered.trim() && (+cashTendered || 0) < total ? "bad" : (+cashTendered || 0) >= total ? "ok" : ""}
                     style={{ padding: "6px 10px", fontSize: "13px", fontWeight: 700 }}
                     required
                   />
-                  {cashTendered.trim() && (+cashTendered || 0) < total && (
-                    <span className="err" style={{ fontSize: "11px" }}>
-                      Cash is short by ₱{(total - (+cashTendered || 0)).toLocaleString()}.
-                    </span>
-                  )}
+                  {validation.feedback('cashTendered')}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
                   <span style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 600 }}>Change Due</span>
@@ -488,17 +488,13 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                   type="text"
                   placeholder="e.g. GCASH-98213894 or POS-4412"
                   maxLength={100}
-                  value={refNo}
+                  {...validation.field('refNo')} value={refNo}
                   onChange={e => { setRefNo(e.target.value); setFormErr(""); }}
                   className={refNo.trim() && refNo.trim().length < 4 ? "bad" : refNo.trim().length >= 4 ? "ok" : ""}
                   style={{ padding: "6px 10px", fontSize: "13px" }}
                   required
                 />
-                {refNo.trim() && refNo.trim().length < 4 && (
-                  <span className="err" style={{ fontSize: "11px" }}>
-                    Reference code must be at least 4 characters.
-                  </span>
-                )}
+                {validation.feedback('refNo')}
               </div>
             )}
 
@@ -513,6 +509,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
               </div>
             </div>
 
+            {errors.invoice && <p className="err" role="status">{errors.invoice}</p>}
             {formErr && (
               <div role="alert" style={{ background: "#fef2f2", border: "1px solid #f87171", color: "#b91c1c", padding: "8px 12px", borderRadius: "8px", fontSize: "12.5px", marginBottom: "14px", fontWeight: 600 }}>
                 {formErr}

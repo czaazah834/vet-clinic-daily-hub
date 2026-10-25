@@ -1,3 +1,4 @@
+import { numberError } from '../formValidation.js';
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { calculateSupply, prescriptionText } from '../prescription.js';
@@ -23,6 +24,7 @@ export default function PrescriptionBuilder({items, onChange, notes, onNotes, er
     <div className="rx-grid"><label>Find product<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label><label>Product category<select value={category} onChange={e => setCategory(e.target.value)}><option value="">All products</option>{[...new Set(catalog.map(p => p.category))].map(c => <option key={c}>{c}</option>)}</select></label></div>
     {loadError ? <p role="alert">{loadError} <button type="button" className="btn sm" onClick={() => retry(n => n + 1)}>Retry products</button></p> : !catalog.length ? <p role="status">Loading products…</p> : <div className="rx-catalog">{found.map(p => <button type="button" className="rx-product" key={p.id} disabled={selected.has(p.id) || items.length >= 30} onClick={() => onChange([...items, {catalogId:p.id,name:p.name,price:p.price,unit:p.unit || 'item / package',category:p.category,quantity:1,instructions:''}])}><span><b>{p.name}</b><small>{p.category}{p.group ? ` · ${p.group}` : ''}{p.requiresPrescription ? ' · Prescription required' : ''}</small></span><b>₱{p.price.toLocaleString()} {selected.has(p.id) ? '✓' : '+'}</b></button>)}{!found.length && <p>No products match.</p>}</div>}
     {items.map(p => {
+      const quantityError=numberError(p.quantity,'Items / packages to dispense',1,1000,{integer:true});
       let supply, calculationError;
       try { if (p.dose) supply = calculateSupply(p.dose); } catch (e) { calculationError = e.message; }
       const quantity = supply?.quantity ?? p.quantity;
@@ -53,10 +55,10 @@ export default function PrescriptionBuilder({items, onChange, notes, onNotes, er
               max="1000"
               step="1"
               value={p.quantity}
-              className={!p.quantity || p.quantity < 1 ? "bad" : "ok"}
+              aria-invalid={!!quantityError} aria-describedby={`rx-${p.catalogId}-qty-error`} className={quantityError ? "bad" : "ok"}
               onChange={e => update(p.catalogId,{quantity:e.target.value === '' ? '' : Number(e.target.value)})}
             />
-            {(!p.quantity || p.quantity < 1) && <span className="err" style={{fontSize:11.5,marginTop:2,display:'block'}}>Quantity must be at least 1.</span>}
+            {quantityError && <span id={`rx-${p.catalogId}-qty-error`} className="err" aria-live="polite" style={{fontSize:11.5,marginTop:2,display:'block'}}>{quantityError}</span>}
           </label>
         </div>}
         <div className="row end"><b>Product total: ₱{(Number(quantity || 0) * p.price).toLocaleString()}</b><button className="btn sm ghost" type="button" onClick={() => onChange(items.filter(x => x.catalogId !== p.catalogId))}>Remove {p.name}</button></div>

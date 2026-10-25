@@ -37,3 +37,44 @@
 
 .admission-medicine-order { border-top:1px solid #dce5f2; margin-top:16px; padding-top:14px; }
 .admission-medicine-order h4 { margin:0 0 8px; }
+
+/* The same admission action is available inside SOAP without leaving its draft. */
+.consultation-admission { padding:18px; background:#f2f7ff; border:1px solid #ccdff6; border-radius:12px; margin:4px 0 16px; }
+.consultation-admission-heading,.admission-overview-heading,.admission-list-toolbar,.admission-list-meta { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+.consultation-admission h4 { margin:0; font-size:15px; }
+.consultation-admission p { margin:8px 0 12px; line-height:1.65; }
+.consultation-admission small { display:block; margin-top:12px; line-height:1.6; color:#475b79; }
+.admission-consultation-context { background:#f2f7ff; padding:16px; border:1px solid #dce5f2; border-radius:10px; margin:16px 0; }
+.admission-consultation-context h3 { font-size:13px; margin:14px 0 5px; }
+.admission-context-notes { white-space:pre-wrap; max-height:9em; overflow:auto; }
+.admission-status.ready { background:#e7f0ff; color:#214b91; }
+.admission-overview-heading { justify-content:flex-start; flex-wrap:nowrap; align-items:flex-start; }
+.admission-overview-heading h2 { margin:0 0 6px; }
+.admission-overview-heading p { margin:0; color:#52647e; }
+.admission-icon { flex:none; border-radius:12px; padding:12px; color:#244f9d; background:#edf3ff; }
+.admission-workflow { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); list-style:none; padding:0; margin:22px 0 0; gap:12px; }
+.admission-workflow li { display:flex; align-items:flex-start; gap:9px; padding:14px 12px; background:#f7f9fd; border-radius:10px; }
+.admission-workflow li>span { flex:none; display:grid; place-items:center; width:25px; height:25px; border-radius:50%; background:#e6edfc; color:#2851a2; font-size:12px; font-weight:700; }
+.admission-workflow b { display:block; font-size:12px; }
+.admission-workflow small { display:block; color:#52647e; font-size:11px; margin-top:5px; line-height:1.6; }
+.admission-filters { display:flex; flex-wrap:wrap; gap:8px; }
+.admission-list-meta { margin:20px 0 16px; font-size:13px; }
+.admission-list-meta small,.admission-card-meta { color:#52647e; }
+.admission-roster .admission-heading { margin-top:0; }
+.admission-card-owner { font-size:13px; margin:6px 0; }
+.admission-card-meta { font-size:12px; margin:6px 0 12px; }
+.admission-next-step { font-size:12px; padding:12px 0; border-top:1px solid #e1e8f2; }
+.admission-list article>.btn { width:100%; }
+.admission-empty { text-align:center; padding:38px 16px; color:#52647e; }
+.admission-empty h3 { color:#243f70; margin:12px 0 6px; }
+.admission-empty p { max-width:550px; margin:0 auto; }
+.admission-loading>div { height:150px; border:1px solid #e1e8f2; border-radius:12px; padding:20px; }
+.admission-loading span { display:block; height:12px; background:#eef2f8; margin:12px 0; border-radius:4px; }
+.admission-loading span:first-child { width:55%; height:18px; }
+@media (max-width:1000px) { .admission-workflow { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:600px) {
+  .admission-workflow { grid-template-columns:1fr; gap:8px; }
+  .admission-list-toolbar { align-items:stretch; }
+  .admission-filters .btn { flex:1 1 42%; }
+  .consultation-admission { padding:14px; }
+}

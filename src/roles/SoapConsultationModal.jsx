@@ -1,3 +1,5 @@
+import AdmissionForm from './AdmissionForm.jsx';
+import { useClinicRead } from '../useClinicRead.js';
 import ClinicDialog from "../components/ClinicDialog.jsx";
 import { useSoapDraft } from "../useSoapDraft.js";
 import { VaccineEstimate } from "../components/VaccineBooking.jsx";
@@ -98,6 +100,15 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const current=(db.appts || []).find(a=>a.id===expectedVisit?.id);
   const stale=!current || !sameIntakeVisit(current,expectedVisit) || current.petId!==pet.id || !db.pets.some(p=>p.id===pet.id) || ![me.id,me.vetId].filter(Boolean).includes(current.vetId) || current.status!=="In consultation";
 
+  const [admissionOpen,setAdmissionOpen] = useState(false);
+  const [savedAdmission,setSavedAdmission] = useState(null);
+  const eligibility = useClinicRead('/api/admissions/eligible',5000);
+  const eligibleVisit = eligibility.data?.visits.find(visit=>visit.id===expectedVisit.id);
+  const admissionStatus = current?.admissionStatus || savedAdmission?.status || null;
+  const admissionSaved = row => {
+    setSavedAdmission(row);setAdmissionOpen(false);eligibility.load();
+    setDb(previous=>({...previous,appts:previous.appts.map(visit=>visit.id===expectedVisit.id && sameIntakeVisit(visit,expectedVisit) ? {...visit,admissionStatus:row.status} : visit)}));
+  };
   const [closing, setClosing] = useState(false);
   const requestClose = () => { if (!inFlight.current) { if (draftState.dirty || draftState.error) setClosing(true); else onClose(); } };
   const [noteOptions, setNoteOptions] = useState({diagnosis:[], treatment:[]});
@@ -144,7 +155,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
 
   const [loading, setLoading] = useState(false);
 
-  const review = useSubmissionReview([f,prescriptionItems,performedServices,current,pet,stale,serviceCatalog,catalogError]);
+  const review = useSubmissionReview([f,prescriptionItems,performedServices,current,pet,stale,serviceCatalog,catalogError,admissionStatus]);
 
   const handleSubmit = async (ev) => {
     ev.preventDefault();
@@ -219,8 +230,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       ? `\nFollow-up requested for ${f.followUpDate}: ${f.followUpReason.trim()}. Reception to confirm scheduling.` : "";
     newRecord.treatment += followUpNote;
     const request={...newRecord,...(f.weight?{weight:Number(f.weight)}:{}),vaccination:newVacc,expectedVisit};
-    if (!await review.ask({title:"Review and finalize visit",confirmLabel:"Finalize visit",
-      description:"Check the clinical record before finalizing. This completes the consultation, saves the notes for the owner and sends the visit to reception for checkout. For admitted pets, final checkout waits for vet discharge approval in Admitted Pets.",
+    if (!await review.ask({title:"Review and finalize consultation",confirmLabel:"Finalize consultation",
+      description:admissionStatus === 'Admitted' ? "This saves the SOAP consultation. The pet remains admitted for ongoing care. Approve discharge in Admitted Pets before reception can finalize payment and release." : "This saves the clinical notes for the owner and completes the consultation. Reception handles checkout; any admitted stay still requires veterinarian discharge approval.",
       fields:[
         ["Patient / owner",`${pet.name} / ${owner.name}`],
         ["Veterinarian",me.name],
@@ -229,6 +240,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         ["Objective",newRecord.objective],
         ["Assessment",newRecord.diagnosis],
         ["Plan",newRecord.treatment],
+        ["Admission",admissionStatus || "No admission recorded for this visit"],
         ["Weight",f.weight ? `${f.weight} kg` : "Not recorded"],
         ["Prescription notes",newRecord.prescription],
         ["Prescribed products",selectedItems.map(p=>`${p.name} × ${p.quantity} — ${p.instructions}`).join("\n") || "None selected"],
@@ -252,7 +264,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     });
     draftState.clear();
     setLoading(false);
-    onSaved && onSaved(saved.record);
+    onSaved && onSaved(saved.record,{admissionStatus});
   };
 
   return (
@@ -260,6 +272,10 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       <div className="modal clinical-soap" style={{ width: "min(760px, 100%)", maxHeight: "94vh" }}>
         <HistoryControls auto />
         {review.card}
+        {admissionOpen && <AdmissionForm mode="create" me={me}
+          visits={[{...expectedVisit,petName:pet.name,ownerName:owner.name}]}
+          consultationContext={{petName:pet.name,ownerName:owner.name,diagnosis:f.diagnosis,treatment:f.treatment}}
+          onClose={()=>setAdmissionOpen(false)} onSaved={admissionSaved} />}
         {closing && <ClinicDialog labelledBy="soap-close-title" onClose={() => setClosing(false)}>
           <div className="modal" style={{width:'min(540px,100%)'}}>
             <h3 id="soap-close-title">Leave unfinished consultation?</h3>
@@ -506,6 +522,23 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                 <p className="soap-note-hint">Choose treatment independently for this patient. Custom notes stay with this visit. Clinic administrators maintain shared choices. Confirm billable services separately below.</p>
                 {errs.treatment && <span id="soap-treatment-error" className="err" role="alert">{errs.treatment}</span>}
               </div>
+              <section className="consultation-admission" aria-labelledby="soap-admission-title" style={{gridColumn:'1/-1'}}>
+                <div className="consultation-admission-heading"><div><h4 id="soap-admission-title">Admission · care at the clinic</h4>
+                  <p>If {pet.name} needs to stay for treatment or monitoring, record your admission decision here.</p></div>
+                  {admissionStatus && <span className="admission-status">{admissionStatus}</span>}
+                </div>
+                {admissionStatus ? <>
+                  <p role="status">{admissionStatus === 'Admitted' ? `${pet.name} is admitted. Finalize these SOAP notes when ready; daily care continues in Admitted Pets.` : `This visit has a saved stay: ${admissionStatus}. View its care history in Admitted Pets.`}</p>
+                  {savedAdmission && <p><b>Admission reason: </b>{savedAdmission.reason}</p>}
+                </> : <>
+                  <p>Enter a clinic-only reason and monitoring plan, then review the message the owner will see. This saves the admission while keeping these SOAP notes open.</p>
+                  {eligibility.error ? <p className="err" role="alert">Admission availability could not load. <button type="button" className="btn sm ghost" onClick={()=>eligibility.load()}>Retry admission check</button></p>
+                    : !eligibility.data ? <p role="status">Checking admission availability…</p>
+                    : !eligibleVisit && <p>This visit is unavailable for a new admission. The pet may already have an active stay, or the visit may be at checkout. Check Admitted Pets or refresh clinic records.</p>}
+                  <button type="button" className="btn gold" disabled={loading || stale || !!eligibility.error || !eligibleVisit} onClick={()=>setAdmissionOpen(true)}>Admit {pet.name}</button>
+                </>}
+                <small>Admission → daily care → vet discharge approval → payment → confirmed release.</small>
+              </section>
 
               <fieldset style={{gridColumn:"1/-1"}}><legend>Confirm services performed</legend>
                 <p>Select only services actually performed. Each selection is added to billing once at the fixed clinic price. Recorded vaccines below are included automatically.</p>
@@ -655,7 +688,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
             <div className="row end" style={{ marginTop: "20px", gap: "10px" }}>
               <button type="button" className="btn ghost" onClick={requestClose} disabled={loading}>Cancel</button>
               <button type="submit" className="btn gold" disabled={loading || stale || !serviceCatalog.length || !!catalogError} style={{ fontWeight: 700 }}>
-                {loading ? "Saving to EMR & Database..." : "Review and finalize visit"}
+                {loading ? "Saving to EMR & Database..." : "Review and finalize SOAP"}
               </button>
             </div>
             </fieldset>

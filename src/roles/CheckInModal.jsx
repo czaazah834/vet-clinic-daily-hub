@@ -1,3 +1,5 @@
+import { useFormValidation } from '../components/useFormValidation.jsx';
+import { intakeErrors } from '../formValidation.js';
 import { vaccineIdFromReason, vaccineReason } from '../vaccineBooking.js';
 import { VaccineEstimate, VaccinePicker } from "../components/VaccineBooking.jsx";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
@@ -88,9 +90,12 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
   const review = useSubmissionReview([weight,temp,triage,serviceReason,notes,fasted,currentVisit,pet,owner,stale,TODAY]);
 
+  const validation = useFormValidation(intakeErrors({weight,temp,reason:serviceReason,notes}));
+
   const submit = async (e) => {
     e.preventDefault();
     if (inFlight.current) return;
+    if (!validation.validate(e)) return;
     if (stale || !pet.id || !owner.id) {
       setValErr("This visit or patient record has changed. Close this form, refresh clinic records and reopen intake.");
       return;
@@ -245,7 +250,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
 
         {dateError && <p className="err" role="alert">{dateError}</p>}
 
-        <form onSubmit={submit}>
+        <form {...validation.formProps} onSubmit={submit}>
           {review.card}
           <div style={{ display: "grid", gap: "14px" }}>
             {/* 1. Automated Kilogram / Weight Section */}
@@ -268,7 +273,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       min="0.05"
                       max="120"
                       aria-label="Measured weight (kg)"
-                      value={weight}
+                      {...validation.field('weight')} value={weight}
                       className={weightErr ? "bad" : weight !== "" ? "ok" : ""}
                       onChange={e => { setWeight(e.target.value); setValErr(""); }}
                       style={{ fontSize: "18px", fontWeight: "700", padding: "8px 12px", width: "120px" }}
@@ -279,7 +284,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                     <button type="button" className="btn ghost sm" disabled={!Number.isFinite(parseFloat(weight))} onClick={() => handleStepWeight(+0.1)}>+0.1</button>
                     <button type="button" className="btn ghost sm" disabled={!Number.isFinite(parseFloat(weight))} onClick={() => handleStepWeight(+0.5)}>+0.5</button>
                   </div>
-                  {weightErr && <span className="err" style={{ fontSize: "11.5px", display: "block", marginTop: "4px" }}>{weightErr}</span>}
+                  {validation.feedback('weight')}
                 </div>
 
                 {weightAnalysis && (
@@ -388,7 +393,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       min="33"
                       max="45"
                       aria-label="Measured temperature (°C)"
-                      value={temp}
+                      {...validation.field('temp')} value={temp}
                       className={tempErr ? "bad" : temp !== "" ? "ok" : ""}
                       onChange={e => { setTemp(e.target.value); setValErr(""); }}
                       style={{ fontSize: "18px", fontWeight: "700", padding: "8px 12px", width: "120px" }}
@@ -406,7 +411,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                       Use measured normal ({speciesConfig.normalTempPreset}°C)
                     </button>
                   </div>
-                  {tempErr && <span className="err" style={{ fontSize: "11.5px", display: "block", marginTop: "4px" }}>{tempErr}</span>}
+                  {validation.feedback('temp')}
                 </div>
 
                 {tempAnalysis && (
@@ -507,11 +512,11 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
               <input
                 type="text"
                 readOnly={appt.service === "vaccination"}
-                value={serviceReason}
+                {...validation.field('reason')} aria-label="Visit reason" value={serviceReason}
                 onChange={e => setServiceReason(e.target.value)}
                 placeholder="Confirm or clarify what patient needs today..."
                 style={{ width: "100%", padding: "7px 10px", fontSize: "13px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
-              />
+              />{validation.feedback('reason')}
             </div>
 
             <VaccineEstimate appointment={{...appt,reason:serviceReason}} />
@@ -538,10 +543,10 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                 <label>Front Desk Intake Observations / Owner Notes</label>
                 <input
                   type="text"
-                  value={notes}
+                  {...validation.field('notes')} value={notes}
                   onChange={e => setNotes(e.target.value)}
                   placeholder="e.g. Owner reports vomiting since morning; active and drinking water..."
-                />
+                />{validation.feedback('notes')}
               </div>
             </div>
           </div>

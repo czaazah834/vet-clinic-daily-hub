@@ -1,3 +1,4 @@
+import LiveControl from '../components/LiveControl.jsx';
 import { PaginatedList } from "../components/Pagination.jsx";
 import {useEffect,useRef,useState} from 'react';
 import {Phone,X} from 'lucide-react';
@@ -62,14 +63,14 @@ export default function LogCallModal({target,db,onClose,onLogged,me,setDb,say}) 
         <p>{callTime(saved.createdAt)} · {saved.staffName}</p>
         {saved.notes&&<p style={{whiteSpace:'pre-wrap'}}>{saved.notes}</p>}
         <button className="btn gold" onClick={done}>Done</button>
-      </section> : <form onSubmit={submit} noValidate>
+      </section> : <form onSubmit={submit}>
         <div className="sf-field"><label htmlFor="reminder-call-outcome">Call outcome *</label>
-          <select id="reminder-call-outcome" value={outcome} disabled={saving||stale} onChange={e=>setOutcome(e.target.value)}>
+          <LiveControl as="select" required id="reminder-call-outcome" value={outcome} disabled={saving||stale} onChange={e=>setOutcome(e.target.value)}>
             <option value="">Choose what happened</option>{CALL_OUTCOMES.map(value=><option key={value} value={value}>{value}</option>)}
-          </select>
+          </LiveControl>
         </div>
         <div className="sf-field"><label htmlFor="reminder-call-notes">Call notes (optional, up to 2,000 characters)</label>
-          <textarea id="reminder-call-notes" rows={3} maxLength={2000} value={notes} disabled={saving||stale} onChange={e=>setNotes(e.target.value)} placeholder="Record the owner's response and agreed next step."/>
+          <LiveControl as="textarea" id="reminder-call-notes" rows={3} maxLength={2000} value={notes} disabled={saving||stale} onChange={e=>setNotes(e.target.value)} placeholder="Record the owner's response and agreed next step."/>
         </div>
         {error&&<p className="err" role="alert">{error}</p>}
         <div className="row end" style={{flexWrap:'wrap',gap:10}}>

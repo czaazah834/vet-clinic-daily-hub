@@ -125,6 +125,7 @@ function Dash({ db, setDb, me, go, say }) {
                           <span className={`sf-pill ${emergency ? "er" : "wa"}`}><AlertTriangle size={12} aria-hidden="true" />Triage: {iv.triageLevel}</span>
                         )}
                       </div>
+                      {a.admissionStatus && <span className="sf-pill wa">Hospital stay: {a.admissionStatus}</span>}
                       <div className="sf-reason"><b>Chief complaint:</b> {a.reason}</div><VaccineEstimate appointment={a} compact />
                       {(a.handoffs || []).map((h, i) => <p key={i} style={{whiteSpace: "pre-wrap"}}><b>Handoff: {h.from} → {h.to}</b> ({new Date(h.at).toLocaleString()})<br />{h.note}</p>)}
                       {iv ? (
@@ -165,8 +166,8 @@ function Dash({ db, setDb, me, go, say }) {
           setDb={setDb}
           me={me}
           onClose={() => setActiveSoap(null)}
-          onSaved={() => {
-            say(`SOAP consultation saved for ${activeSoap.pet.name}. Visit completed and sent to billing.`);
+          onSaved={(_record,care) => {
+            say(care?.admissionStatus === 'Admitted' ? `SOAP saved for ${activeSoap.pet.name}. The pet remains admitted; continue care in Admitted Pets.` : `SOAP consultation saved for ${activeSoap.pet.name}. Consultation completed; reception handles checkout.`);
             setActiveSoap(null);
           }}
         />

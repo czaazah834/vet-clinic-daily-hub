@@ -1,3 +1,4 @@
+import LiveControl from '../components/LiveControl.jsx';
 import { PaginatedTable } from "../components/Pagination.jsx";
 import ReminderStatus from "./ReminderStatus.jsx";
 import { currentVaccinationDue } from "../vaccinationDue.js";
@@ -646,27 +647,27 @@ function VaccineEntryModal({ pet, existing, db, me, onClose, onSave }) {
             {/* 1. Vaccine & Quick Preset */}
             <div className="fld">
               <label><b>Vaccine Type &amp; Disease Target</b><i> *</i></label>
-              <select value={vaccine} onChange={e => handleSelectPreset(e.target.value)} required>
+              <LiveControl as="select" value={vaccine} onChange={e => handleSelectPreset(e.target.value)} required>
                 {VACCINE_PRESETS.map(p => (
                   <option key={p.name} value={p.name}>{p.name}</option>
                 ))}
-              </select>
+              </LiveControl>
             </div>
 
             {/* 2. Doctor Order & Date */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div className="fld">
                 <label><b>Supervising Veterinarian</b><i> *</i></label>
-                <select value={vetId} onChange={e => setVetId(e.target.value)} required>
+                <LiveControl as="select" value={vetId} onChange={e => setVetId(e.target.value)} required>
                   {VETS.map(([id, name]) => (
                     <option key={id} value={id}>{name}</option>
                   ))}
-                </select>
+                </LiveControl>
               </div>
 
               <div className="fld">
                 <label><b>Date Administered</b><i> *</i></label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} max={TODAY} required />
+                <LiveControl as="input" type="date" value={date} onChange={e => setDate(e.target.value)} max={TODAY} required />
               </div>
             </div>
 
@@ -674,7 +675,7 @@ function VaccineEntryModal({ pet, existing, db, me, onClose, onSave }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div className="fld">
                 <label>Product Brand</label>
-                <input
+                <LiveControl as="input"
                   type="text"
                   value={brand}
                   onChange={e => setBrand(e.target.value)}
@@ -685,7 +686,7 @@ function VaccineEntryModal({ pet, existing, db, me, onClose, onSave }) {
 
               <div className="fld">
                 <label><b>Vial Batch / Lot #</b><i> *</i></label>
-                <input
+                <LiveControl as="input"
                   type="text"
                   value={batch}
                   onChange={e => setBatch(e.target.value)}
@@ -699,23 +700,23 @@ function VaccineEntryModal({ pet, existing, db, me, onClose, onSave }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.5fr", gap: "10px" }}>
               <div className="fld">
                 <label>Dose #</label>
-                <input type="number" min="1" max="10" value={doseNo} onChange={e => setDoseNo(e.target.value)} />
+                <LiveControl as="input" type="number" min="1" max="10" value={doseNo} onChange={e => setDoseNo(e.target.value)} />
               </div>
 
               <div className="fld">
                 <label>Total Doses</label>
-                <input type="number" min="1" max="10" value={doseOf} onChange={e => setDoseOf(e.target.value)} />
+                <LiveControl as="input" type="number" min="1" max="10" value={doseOf} onChange={e => setDoseOf(e.target.value)} />
               </div>
 
               <div className="fld">
                 <label><b>Next Booster Due Date</b><i> *</i></label>
-                <input type="date" value={nextDue} onChange={e => setNextDue(e.target.value)} required />
+                <LiveControl as="input" type="date" error={nextDue && nextDue<=date ? 'The booster date must follow the vaccination date.' : ''} value={nextDue} onChange={e => setNextDue(e.target.value)} required />
               </div>
             </div>
 
             {/* 5. Mark as Given / Administered */}
             <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "10px 12px", borderRadius: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
-              <input
+              <LiveControl as="input"
                 type="checkbox"
                 id="doneCheck"
                 checked={isDone}
@@ -730,7 +731,7 @@ function VaccineEntryModal({ pet, existing, db, me, onClose, onSave }) {
             {/* 6. Clinical / Assistant Notes */}
             <div className="fld">
               <label>Doctor Instructions &amp; Assistant Notes</label>
-              <textarea
+              <LiveControl as="textarea"
                 rows={2}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}

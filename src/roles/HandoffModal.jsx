@@ -59,18 +59,18 @@ export default function HandoffModal({ appt, db, me, setDb, onClose }) {
       {stale&&<p role="alert" className="err">This visit has changed. Refresh clinic records and reopen the handoff.</p>}
       <div className="sf-field">
         <label htmlFor="handoff-vet">Receiving veterinarian *</label>
-        <select id="handoff-vet" value={vetId} disabled={saving||stale} className={vetErr ? "bad" : vetId ? "ok" : ""} onChange={e=>{setVet(e.target.value);setError('');}} onBlur={()=>setTouched(t=>({...t,vet:true}))}>
+        <select id="handoff-vet" aria-invalid={!!vetErr} aria-describedby="handoff-vet-error" value={vetId} disabled={saving||stale} className={vetErr ? "bad" : vetId ? "ok" : ""} onChange={e=>{setTouched(t=>({...t,vet:true}));setVet(e.target.value);setError('');}} onBlur={()=>setTouched(t=>({...t,vet:true}))}>
           <option value="">Choose veterinarian</option>
           {recipients.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
         </select>
-        {vetErr && <span className="err" style={{fontSize:12,display:'block',marginTop:2}}>{vetErr}</span>}
+        {vetErr && <span id="handoff-vet-error" className="err" aria-live="polite" style={{fontSize:12,display:'block',marginTop:2}}>{vetErr}</span>}
       </div>
       {!recipients.length&&<p>No other active veterinarian is available in the directory.</p>}
       <div className="sf-field">
         <label htmlFor="handoff-note">Handoff instructions *</label>
-        <textarea id="handoff-note" rows={4} maxLength={3000} value={note} disabled={saving||stale} className={noteErr ? "bad" : note.trim() ? "ok" : ""} onChange={e=>{setNote(e.target.value);setError('');}} onBlur={()=>setTouched(t=>({...t,note:true}))} placeholder="Enter findings, symptoms, current vital signs, and next examination steps..."/>
+        <textarea id="handoff-note" aria-invalid={!!noteErr} aria-describedby="handoff-note-error" rows={4} maxLength={3000} value={note} disabled={saving||stale} className={noteErr ? "bad" : note.trim() ? "ok" : ""} onChange={e=>{setTouched(t=>({...t,note:true}));setNote(e.target.value);setError('');}} onBlur={()=>setTouched(t=>({...t,note:true}))} placeholder="Enter findings, symptoms, current vital signs, and next examination steps..."/>
         <div style={{display:'flex',justifyContent:'space-between',fontSize:11.5,color:'#64748b',marginTop:2}}>
-          <span>{noteErr ? <span className="err">{noteErr}</span> : "Saved intake and clinical notes are forwarded with this patient"}</span>
+          <span id="handoff-note-error" aria-live="polite">{noteErr ? <span className="err">{noteErr}</span> : "Saved intake and clinical notes are forwarded with this patient"}</span>
           <span>{note.length} / 3000</span>
         </div>
       </div>

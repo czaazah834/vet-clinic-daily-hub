@@ -999,9 +999,15 @@ in the same transaction, so concurrent changes cannot silently overwrite one ano
 
 ### Basic admission and owner updates
 
-Veterinarians open **Admitted Pets** from the Clinical Queue to admit an assigned
-patient after starting consultation (or from a finalized visit). They record the
-reason, care/monitoring instructions and an initial message for the owner. A pet
+During SOAP consultation, veterinarians use **Admit [patient]** under **Plan**.
+The admission dialog is locked to the current patient and visit, shows the current
+assessment/plan for reference, and allows explicit reuse of the consultation plan.
+The vet enters the admission reason, monitoring instructions and a separate owner
+message. Saving the admission leaves SOAP open; finalizing SOAP keeps the pet
+admitted until the separate discharge workflow is completed. Unfinished SOAP
+retains the existing browser draft protection. **Admitted Pets** also offers a
+fallback that requires explicitly choosing an eligible consultation or finalized
+visit. A pet
 has at most one active admission; a visit has at most one admission. The admission
 follows the visit's veterinarian assignment when active care is handed over.
 Staff deactivation is blocked while a veterinarian still has an admitted patient,
@@ -1107,3 +1113,23 @@ The workflow regression follows owner booking, reception approval and measured
 check-in, assigned-vet consultation, reception checkout and payment, then owner
 record visibility and isolation. It also checks catalog authorization, concurrent
 edits, audit rollback, and preservation of medical notes after retiring choices.
+
+### Live form validation
+
+New and updated data-entry forms should give field feedback while users type,
+without requiring blur or a failed save. Keep untouched empty fields quiet;
+recalculate related constraints when values change. Keep entered values when a
+save fails. Validation messages must be linked to controls with
+`aria-describedby` and `aria-invalid`.
+
+- Use `useFormValidation` with a pure field-error map for domain rules. Spread
+  `formProps` on the form, `field(key)` on each control, render `feedback(key)`,
+  and call `validate(event)` before reviewing or sending data. Its capture
+  handler marks edits; keep value updates in each control's `onChange`.
+- Use `LiveControl` for forms governed by native required, range, length and
+  format constraints. It retains native submit blocking and reacts to changed
+  bounds. Existing `useLive` forms already recalculate their domain rules on
+  each change.
+- Keep server checks for permissions, saved revisions, availability, remaining
+  medicine authorization and all record writes. Inline feedback does not prove
+  a record was saved or replace a veterinarian's clinical judgment.
