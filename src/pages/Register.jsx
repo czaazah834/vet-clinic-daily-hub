@@ -1,5 +1,5 @@
-﻿import { useState, useEffect, useRef } from "react";
-import { Logo, I } from "../lib.jsx";
+import { useState, useEffect, useRef, useId } from "react";
+import AuthShell, { AuthBrand } from "./AuthShell.jsx";
 import { tc, TCF, pn, pwOk, emOk } from "../validate.js";
 import { api } from "../api.js";
 import "./auth.css";
@@ -36,27 +36,36 @@ function Pw({ id, value, onChange, onBlur, auto }) {
 }
 
 function Combo({ label, text, setText, load, pick, disabled, ph, err, ok, bad, onTouch }) {
-  const [it, setIt] = useState([]), [open, setOpen] = useState(false), [k, setK] = useState(-1), seq = useRef(0), tm = useRef();
+  const id = useId();
+  const [it, setIt] = useState([]), [open, setOpen] = useState(false), [k, setK] = useState(-1), seq = useRef(0), tm = useRef(), chosen = useRef(null);
   const run = async (q) => {
     if (disabled) return;
     const m = ++seq.current, r = await load(q);
     if (m === seq.current) { setIt(Array.isArray(r) ? r : []); setK(-1); setOpen(true); }
   };
-  const choose = (o) => { setText(o.n || o.t); setOpen(false); pick(o); };
+  const choose = (o) => { chosen.current = o.v ?? o.n ?? o.t; setText(o.n || o.t); setOpen(false); pick(o); };
   return (
     <div className="fld">
-      <label>{label}<i> *</i>
+      <label htmlFor={id}>{label}<i> *</i></label>
         <div className="combo">
           <input
+            id={id}
             value={text}
             placeholder={ph}
             disabled={disabled}
             autoComplete="off"
             role="combobox"
+            aria-expanded={open}
+            aria-controls={`${id}-options`}
+            aria-autocomplete="list"
+            aria-activedescendant={open && k >= 0 ? `${id}-option-${k}` : undefined}
+            aria-invalid={!!bad}
+            aria-describedby={`${id}-error`}
             className={bad ? "bad" : ok ? "ok" : ""}
             onFocus={() => run(text)}
             onClick={() => { if (!open) run(text); }}
             onChange={(ev) => {
+              chosen.current = null;
               setText(ev.target.value);
               pick(null, ev.target.value);
               clearTimeout(tm.current);
@@ -75,16 +84,19 @@ function Combo({ label, text, setText, load, pick, disabled, ph, err, ok, bad, o
             onBlur={() => setTimeout(() => {
               setOpen(false);
               const m = it.find((o) => fold(o.n || o.t) === fold(text));
-              if (m && text) choose(m);
+              if (m && text && chosen.current !== (m.v ?? m.n ?? m.t)) choose(m);
               onTouch && onTouch();
             }, 140)}
           />
           {open && (
-            <ul className="cbl">
+            <ul className="cbl" id={`${id}-options`} role="listbox">
               {it.length ? (
                 it.map((o, i) => (
                   <li
                     key={i}
+                    id={`${id}-option-${i}`}
+                    role="option"
+                    aria-selected={i === k}
                     className={i === k ? "on" : ""}
                     onMouseDown={(ev) => {
                       ev.preventDefault();
@@ -100,8 +112,7 @@ function Combo({ label, text, setText, load, pick, disabled, ph, err, ok, bad, o
             </ul>
           )}
         </div>
-      </label>
-      <span className="err">{err}</span>
+      <span className="err" id={`${id}-error`} aria-live="polite">{err}</span>
     </div>
   );
 }
@@ -367,7 +378,7 @@ export default function Register({ onDone, onBack, go, limited }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(sug);
-      setCopied("Copied ✓");
+      setCopied("Copied");
     } catch {
       setCopied("Select & copy");
     }
@@ -605,7 +616,7 @@ export default function Register({ onDone, onBack, go, limited }) {
             {l}{n !== "middle_initial" && <i> *</i>}
             <input
               type={n === "email" ? "email" : "text"}
-              autoComplete="off"
+              autoComplete={({ first_name: "given-name", last_name: "family-name", middle_initial: "additional-name", house_street: "street-address", email: "email", zip_code: "postal-code" })[n] || "off"}
               value={f[n]}
               className={cls(n) + (TCF.includes(n) ? " tc" : "")}
               placeholder={n === "birthday" ? "MM/DD/YYYY" : ""}
@@ -630,22 +641,15 @@ export default function Register({ onDone, onBack, go, limited }) {
   };
 
   return (
-    <div className="lg auth cardl reg">
-      <aside className="lgl photo">
-        <div className="brandrow"><Logo size={30} /><span>PawCare</span></div>
-        <div className="cap">
-          <h1>Join <em>PawCare</em> today</h1>
-          <p>Create your pet owner account with verified contact details to view medical records and book appointments.</p>
-          <div className="pills" aria-hidden="true"><span>Appointments</span><span>Vaccine cards</span><span>Consultations</span></div>
-        </div>
-      </aside>
-      <form className="lgr" onSubmit={submit} noValidate>
+    <AuthShell signup title={<>A happier, healthier life. <em>Together.</em></>} description="Create your account to keep your pet’s visits, vaccination records and care updates in one place.">
+      <form className="login-card signup-card" onSubmit={submit} noValidate aria-labelledby="register-title">
+        <div className="login-card-top"><AuthBrand />
         <button type="button" className="lnk" onClick={onBack}>
-          ← Back to home
-        </button>
-        <h2>Create your Pet Owner Account</h2>
+          ← Home
+        </button></div>
+        <div className="login-heading"><span className="public-eyebrow">START YOUR PET’S CARE JOURNEY</span><h1 id="register-title">Create your account</h1><p>All fields marked * are required. You can add your pets after verification.</p></div>
         <p className="auth-note">
-          Sign up as a <b>Pet Owner</b> to view your pets' vaccination records and schedule clinic visits. Staff accounts (Veterinarians and Vet Assistants) are strictly provisioned by Clinic Administrator invitation.
+          Use your own email and mobile number. We’ll help you verify both to keep your account secure.
         </p>
 
         <div className="auth-grid">{FIELDS.map(renderField)}</div>
@@ -687,7 +691,7 @@ export default function Register({ onDone, onBack, go, limited }) {
           </button>
         </div>
       </form>
-    </div>
+    </AuthShell>
   );
 }
 

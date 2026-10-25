@@ -16,9 +16,10 @@ import {
 } from "lucide-react";
 import { auth, OFFLINE_MSG } from "../authApi.js";
 import { pn, tc, pwOk, PW_RULES, pwStrength } from "../validate.js";
-import { Logo } from "../lib.jsx";
+import AuthShell, { AuthBrand } from "./AuthShell.jsx";
 import "./auth.css";
 import "./brand.css";
+import "./auth-flow.css";
 
 export default function StaffSetup({ token, onDone, onCancel }) {
   const [loading, setLoading] = useState(true);
@@ -182,11 +183,12 @@ export default function StaffSetup({ token, onDone, onCancel }) {
   const roleName = isVet ? "Veterinarian" : "Vet Assistant";
 
   return (
-    <div className="auth-bg" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 16px" }}>
-      <div className="auth-card" style={{ maxWidth: "620px", width: "100%", background: "#ffffff", borderRadius: "24px", boxShadow: "0 25px 60px -15px rgba(15,23,42,0.18), 0 0 1px 1px rgba(15,23,42,0.08)", padding: "36px 32px", position: "relative" }}>
+    <AuthShell title={<>Welcome to your <em>clinic workspace.</em></>} description="Complete your invited account and verify your mobile number to connect with your clinic team.">
+      <div className="login-card staff-card">
+        <AuthBrand />
         
         {/* Top Stepper Indicator */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginBottom: "24px" }}>
+        <div className="staff-steps" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginBottom: "24px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "#eff6ff", color: "#1d4ed8", padding: "4px 12px", borderRadius: "99px", fontSize: "12px", fontWeight: 700 }}>
             <span>1</span>
             <span>Staff Registration</span>
@@ -205,9 +207,6 @@ export default function StaffSetup({ token, onDone, onCancel }) {
 
         {/* Header */}
         <div style={{ textAlign: "center", marginBottom: "22px" }}>
-          <div style={{ display: "inline-flex", marginBottom: "8px" }}>
-            <Logo size={48} />
-          </div>
           <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "var(--navy, #0f172a)", fontWeight: 800 }}>
             PawCare Staff Activation
           </h2>
@@ -303,7 +302,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
               </span>
 
               {/* Name Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px", gap: "10px", marginBottom: "12px" }}>
+              <div className="staff-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px", gap: "10px", marginBottom: "12px" }}>
                 <div className="fld" style={{ margin: 0 }}>
                   <label htmlFor="staff-fn">First Name<i> *</i></label>
                   <input
@@ -405,7 +404,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                 {getFieldError("houseStreet") && <span className="err" style={{ fontSize: "11px" }}>{getFieldError("houseStreet")}</span>}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: "10px" }}>
+              <div className="staff-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: "10px" }}>
                 <div className="fld" style={{ margin: 0 }}>
                   <label htmlFor="staff-city">City / Municipality<i> *</i></label>
                   <input
@@ -512,7 +511,6 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                       cursor: "pointer",
                       color: "#94a3b8"
                     }}
-                    tabIndex={-1}
                     aria-label={showPw ? "Hide password" : "Show password"}
                   >
                     {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -528,7 +526,7 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                 </div>
                 
                 {/* Rules Checklist */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 8px", marginTop: "8px", fontSize: "11px", color: "#64748b" }}>
+                <div className="staff-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 8px", marginTop: "8px", fontSize: "11px", color: "#64748b" }}>
                   {PW_RULES.map(([testFn, label], idx) => {
                     const ok = testFn(formData.password);
                     return (
@@ -569,7 +567,6 @@ export default function StaffSetup({ token, onDone, onCancel }) {
                       cursor: "pointer",
                       color: "#94a3b8"
                     }}
-                    tabIndex={-1}
                     aria-label={showConfirmPw ? "Hide password" : "Show password"}
                   >
                     {showConfirmPw ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -612,6 +609,6 @@ export default function StaffSetup({ token, onDone, onCancel }) {
           </form>
         )}
       </div>
-    </div>
+    </AuthShell>
   );
 }
