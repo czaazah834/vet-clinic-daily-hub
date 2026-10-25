@@ -1,3 +1,5 @@
+import { vaccineIdFromReason, vaccineReason } from '../vaccineBooking.js';
+import { VaccineEstimate, VaccinePicker } from "../components/VaccineBooking.jsx";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -468,7 +470,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                 )}
               </div>
 
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
+              {appt.service === "vaccination" && <VaccinePicker id="intake-vaccine" species={pet.species} value={vaccineIdFromReason(serviceReason)} onChange={id=>setServiceReason(vaccineReason(id))} />}
+              {appt.service !== "vaccination" && <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
                 {[
                   "Routine Consultation & Exam",
                   normSpecies === "Feline" ? "Vaccination: FVRCP (4-in-1)" : "Vaccination: DHPP (5-in-1)",
@@ -499,10 +502,11 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                     {preset}
                   </button>
                 ))}
-              </div>
+              </div>}
 
               <input
                 type="text"
+                readOnly={appt.service === "vaccination"}
                 value={serviceReason}
                 onChange={e => setServiceReason(e.target.value)}
                 placeholder="Confirm or clarify what patient needs today..."
@@ -510,6 +514,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
               />
             </div>
 
+            <VaccineEstimate appointment={{...appt,reason:serviceReason}} />
             {/* 3. Triage Level & Quick Intake Notes */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
               <div className="fld">

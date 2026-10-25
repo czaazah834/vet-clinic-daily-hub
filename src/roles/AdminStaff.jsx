@@ -1,3 +1,5 @@
+import AuditActivity from "../components/AuditActivity.jsx";
+import { AUDIT_TYPES, auditActivity } from "../auditActivity.js";
 import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
 import { useRef, useState } from 'react';
 import { useClinicRead } from '../useClinicRead.js';
@@ -497,234 +499,19 @@ export default function AdminStaff({ onInvite }) {
 }
 
 export function AdminAudit() {
-  const [search, setSearch] = useState('');
-  const [query, setQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState('all');
-  const { data, error, loading, load } = useClinicRead('/api/admin/audit?search=');
-
-  const loadHistory = (cursor = null, term = query) => load(
-    `/api/admin/audit?search=${encodeURIComponent(term)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
-    (old, result) => ({
-      ...result,
-      entries: cursor ? [...(old?.entries || []), ...result.entries] : result.entries,
-      searchTerm: term
-    })
-  );
-
-  const filteredEntries = (data?.entries || []).filter(l => {
-    if (roleFilter === 'all') return true;
-    const r = (l.role || l.user_role || '').toLowerCase();
-    return r === roleFilter.toLowerCase();
-  });
-
-  const getRoleBadge = (role) => {
-    const r = (role || '').toLowerCase();
-    if (r === 'admin') return { label: 'Admin', bg: '#f3e8ff', color: '#7e22ce', border: '#d8b4fe' };
-    if (r === 'vet') return { label: 'Veterinarian', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' };
-    if (r === 'assistant') return { label: 'Vet Assistant', bg: '#fffbeb', color: '#b45309', border: '#fde68a' };
-    if (r === 'owner') return { label: 'Pet Owner', bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' };
-    return { label: role || 'System', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
-  };
-
-  return (
-    <section className="card" style={{ padding: "26px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <div style={{
-            width: "44px",
-            height: "44px",
-            borderRadius: "12px",
-            background: "linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)",
-            color: "#334155",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0
-          }}>
-            <FileText size={24} />
-          </div>
-          <div>
-            <h2 style={{ margin: 0, fontSize: "20px", color: "var(--navy, #0f172a)", fontWeight: 800 }}>
-              System Compliance &amp; Security Audit Trail
-            </h2>
-            <p style={{ margin: "3px 0 0", fontSize: "13px", color: "#64748b" }}>
-              Tamper-evident chronological log of all administrative authorizations, clinical queues, and account actions.
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className="btn ghost sm"
-          disabled={loading}
-          onClick={() => loadHistory()}
-          style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
-        >
-          <RefreshCw size={13} className={loading ? "spin" : ""} />
-          <span>{loading ? "Syncing..." : "Refresh Trail"}</span>
-        </button>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div style={{ background: "#f8fafc", padding: "14px 18px", borderRadius: "14px", border: "1px solid #e2e8f0", marginBottom: "18px" }}>
-        <form
-          onSubmit={e => {
-            e.preventDefault();
-            if (loading) return;
-            setQuery(search);
-            loadHistory(null, search);
-          }}
-          style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "10px" }}
-        >
-          <div style={{ position: "relative", flex: "1 1 280px" }}>
-            <Search size={15} color="#94a3b8" style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)" }} />
-            <input
-              type="search"
-              aria-label="Search audit history"
-              maxLength={100}
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search action keyword, actor name, or doctor ID..."
-              style={{ width: "100%", paddingLeft: "34px", fontSize: "13px" }}
-            />
-          </div>
-          <button className="btn gold" disabled={loading} style={{ whiteSpace: "nowrap", fontWeight: 600 }}>
-            Search History
-          </button>
-          {query && (
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => { setSearch(''); setQuery(''); loadHistory(null, ''); }}
-              style={{ whiteSpace: "nowrap" }}
-            >
-              Clear
-            </button>
-          )}
-        </form>
-
-        {/* Quick Role Filters */}
-        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", fontSize: "12px" }}>
-          <span style={{ color: "#64748b", fontWeight: 600 }}>Actor Filter:</span>
-          {[
-            ['all', 'All Actors'],
-            ['admin', 'Administrators'],
-            ['vet', 'Veterinarians'],
-            ['assistant', 'Vet Assistants'],
-            ['owner', 'Pet Owners']
-          ].map(([val, label]) => (
-            <button
-              key={val}
-              type="button"
-              className={`btn sm ${roleFilter === val ? 'gold' : 'ghost'}`}
-              onClick={() => setRoleFilter(val)}
-              style={{ fontSize: "11.5px", padding: "3px 10px", borderRadius: "99px" }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {error && (
-        <div role="alert" style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: "10px", padding: "10px 14px", fontSize: "13px", marginBottom: "14px" }}>
-          {error} {data && '(Showing cached entries)'}
-        </div>
-      )}
-
-      {/* Audit Entries List */}
-      <div style={{ border: "1px solid #e2e8f0", borderRadius: "14px", overflow: "hidden" }}>
-        {data && !filteredEntries.length ? (
-          <div className="empty sm" style={{ padding: "32px 16px" }}>
-            <p style={{ margin: 0, color: "#64748b", fontWeight: 600 }}>
-              {query || roleFilter !== 'all' ? "No audit trail entries match your search criteria." : "No audit trail records saved yet."}
-            </p>
-          </div>
-        ) : (
-          <PaginatedList label="Audit trail" resetKey={[query,roleFilter]} style={{ display: "grid" }}>
-            {filteredEntries.map((l, idx) => {
-              const roleMeta = getRoleBadge(l.role || l.user_role);
-              const dateStr = l.at || l.created_at;
-              const formattedDate = dateStr
-                ? new Date(dateStr).toLocaleDateString("en-PH", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit"
-                  })
-                : "—";
-
-              return (
-                <div
-                  key={l.id || idx}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "14px 18px",
-                    borderBottom: idx < filteredEntries.length - 1 ? "1px solid #f1f5f9" : "none",
-                    background: idx % 2 === 0 ? "#ffffff" : "#fbfcfd",
-                    flexWrap: "wrap",
-                    gap: "10px"
-                  }}
-                >
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontWeight: 600, color: "#0f172a", fontSize: "13.5px" }}>
-                      {l.action || l.msg}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", flexWrap: "wrap" }}>
-                      <span style={{ fontSize: "12px", color: "#475569", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                        <User size={12} color="#64748b" />
-                        <span><b>{l.actor || l.user_name || "System"}</b></span>
-                      </span>
-                      <span style={{
-                        fontSize: "10.5px",
-                        fontWeight: 700,
-                        padding: "1px 6px",
-                        borderRadius: "4px",
-                        background: roleMeta.bg,
-                        color: roleMeta.color,
-                        border: `1px solid ${roleMeta.border}`
-                      }}>
-                        {roleMeta.label}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#64748b", fontSize: "12px", whiteSpace: "nowrap" }}>
-                    <Clock size={12} />
-                    <span>{formattedDate}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </PaginatedList>
-        )}
-      </div>
-
-      {loading && (
-        <div style={{ textAlign: "center", padding: "16px", color: "#64748b", fontSize: "13px" }}>
-          <span className="clinic-spinner" style={{ display: "inline-block", marginRight: "8px", verticalAlign: "middle" }} />
-          Loading audit trail records...
-        </div>
-      )}
-
-      {data?.nextCursor && query === (data.searchTerm || '') && (
-        <div style={{ textAlign: "center", marginTop: "16px" }}>
-          <button
-            type="button"
-            className="btn ghost sm"
-            disabled={loading}
-            onClick={() => loadHistory(data.nextCursor)}
-            style={{ fontWeight: 600 }}
-          >
-            Load Older Audit Trail Entries
-          </button>
-        </div>
-      )}
-    </section>
-  );
+  const [search,setSearch]=useState(''),[query,setQuery]=useState(''),[roleFilter,setRoleFilter]=useState('all'),[typeFilter,setTypeFilter]=useState('all');
+  const {data,error,loading,load}=useClinicRead('/api/admin/audit?search=');
+  const loadHistory=(cursor=null,term=query)=>load(`/api/admin/audit?search=${encodeURIComponent(term)}${cursor?'&cursor='+encodeURIComponent(cursor):''}`,(old,result)=>({...result,entries:cursor?[...(old?.entries||[]),...result.entries]:result.entries,searchTerm:term}));
+  const entries=data?.entries||[];
+  const filtered=entries.filter(entry=>{const a=auditActivity(entry);return (roleFilter==='all'||a.role===roleFilter)&&(typeFilter==='all'||a.type===typeFilter);});
+  const types=new Set(entries.map(e=>auditActivity(e).type));
+  return <section className="card admin-audit" aria-labelledby="audit-title">
+    <header className="admin-page-intro"><div><span className="admin-eyebrow">Activity & accountability</span><h2 id="audit-title">System audit trail</h2><p>See who performed an action, what they did and when it was saved.</p></div><button type="button" className="btn ghost" disabled={loading} onClick={()=>loadHistory()}><RefreshCw size={16} aria-hidden="true" />{loading?'Refreshing…':'Refresh activity'}</button></header>
+    <div className="admin-audit-metrics"><div><b>{entries.length}</b><span>Loaded entries</span></div><div><b>{types.size}</b><span>Activity types loaded</span></div><div><b>{filtered.length}</b><span>Matching loaded entries</span></div></div>
+    <form className="admin-audit-search" onSubmit={e=>{e.preventDefault();if(loading)return;setQuery(search);loadHistory(null,search);}}><label htmlFor="audit-search">Search saved history<span className="admin-search-input"><Search size={17} aria-hidden="true" /><input id="audit-search" type="search" maxLength={100} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Person, action, patient or record reference" /></span></label><button className="btn" disabled={loading}>Search history</button>{query&&<button type="button" className="btn ghost" onClick={()=>{setSearch('');setQuery('');loadHistory(null,'');}}>Clear search</button>}</form>
+    <div className="admin-audit-filters"><label>Performed by<select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)}><option value="all">All roles</option><option value="admin">Administrators</option><option value="vet">Veterinarians</option><option value="assistant">Vet assistants</option><option value="owner">Pet owners</option></select></label><label>Activity type<select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}><option value="all">All activity types</option>{AUDIT_TYPES.map(t=><option key={t}>{t}</option>)}</select></label><p>Role and type filters apply to loaded entries. Search checks saved history; load older entries to see more.</p></div>
+    {error&&<p role="alert" className="admin-audit-error">{error}{data?' Your previously loaded entries are still shown.':''}<button type="button" className="btn sm ghost" onClick={()=>loadHistory()}>Retry</button></p>}
+    {filtered.length?<PaginatedList label="Audit trail" resetKey={[data?.searchTerm,roleFilter,typeFilter]} className="audit-entry-list">{filtered.map((entry,index)=><AuditActivity key={entry.id||index} entry={entry}/>)}</PaginatedList>:<div className="empty sm">{loading?'Loading saved activity…':data?'No loaded activity matches these filters.':'No activity is available yet.'}</div>}
+    <footer className="admin-audit-footer"><span>Saved actions are read only. Times use Asia/Manila.</span>{loading&&<span role="status">Loading activity…</span>}{data?.nextCursor&&query===(data.searchTerm||'')&&<button type="button" className="btn ghost" disabled={loading} onClick={()=>loadHistory(data.nextCursor)}>Load older activity</button>}</footer>
+  </section>;
 }

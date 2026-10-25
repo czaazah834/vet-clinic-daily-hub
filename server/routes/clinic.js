@@ -1,3 +1,5 @@
+import { requestedVaccineReason } from '../vaccineBooking.js';
+import { vaccineIdFromReason } from '../../src/vaccineBooking.js';
 import {stateReadPlan,historyPage} from '../stateReadPlan.js';
 import { assessWeight, assessTemp } from '../../src/roles/vitals.js';
 import { sendClinicState } from "../stateResponse.js";
@@ -1476,6 +1478,12 @@ async function saveBooking(req, res, editing = false) {
           if (!(await client.query("SELECT id FROM pets WHERE id = $1 AND owner_id = $2", [id, req.user.ownerId])).rows.length) throw bookingError("Pet not found.", 404);
         }
       }
+      if (b.vaccineId !== undefined || (v.service === 'vaccination' && vaccineIdFromReason(v.reason))) {
+        const pet = (await client.query("SELECT species FROM pets WHERE id = $1", [v.petId])).rows[0];
+        if (!pet) throw bookingError("Pet not found.", 404);
+        v.reason = requestedVaccineReason({...v, vaccineId:b.vaccineId, species:pet.species});
+        if(v.reason.length > 300) throw bookingError("Keep the requested vaccine purpose under 300 characters.");
+      }
       const followUpId = b.followUpId ?? previous?.follow_up_id ?? null;
       if (previous?.follow_up_id && followUpId !== previous.follow_up_id) throw bookingError("Keep the linked follow-up when rescheduling.");
       if (followUpId) {
@@ -1494,7 +1502,7 @@ async function saveBooking(req, res, editing = false) {
       } else {
         duration = await assertAvailable(client, v, previous?.id);
       }
-      const changedSlot = previous && (v.petId !== previous.pet_id || v.vetId !== previous.vet_id || v.date !== previous.date || v.time !== previous.time || v.service !== previous.service);
+      const changedSlot = previous && (v.petId !== previous.pet_id || v.vetId !== previous.vet_id || v.date !== previous.date || v.time !== previous.time || v.service !== previous.service || (v.service === "vaccination" && v.reason !== previous.reason));
       const values = [editing ? previous.id : b.id || `a_${crypto.randomUUID()}`, v.petId, v.vetId, v.date, v.time, v.reason.trim(), req.user.role === "owner" ? previous?.amount ?? 600 : Number(b.amount) || previous?.amount || 600, v.service, duration, walkIn ? "walk-in" : "reservation", v.notes];
       const sql = editing ? `UPDATE appointments SET pet_id=$2,vet_id=$3,date=$4,time=$5,reason=$6,amount=$7,status=$12,service=$8,duration_minutes=$9,booking_kind=$10,notes=$11 WHERE id=$1 RETURNING *` : `INSERT INTO appointments (id,pet_id,vet_id,date,time,reason,amount,service,duration_minutes,booking_kind,notes,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Scheduled') RETURNING *`;
       if (editing) values.push(changedSlot ? "Scheduled" : previous.status);
@@ -1504,7 +1512,7 @@ async function saveBooking(req, res, editing = false) {
         await client.query("UPDATE appointments SET follow_up_id=$1 WHERE id=$2", [followUpId, values[0]]);
         saved.rows[0].follow_up_id = followUpId;
       }
-      await client.query("INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)", [req.user.name,req.user.role,`${editing ? "Updated" : "Booked"} appointment ${values[0]} on ${v.date} ${v.time}`]);
+      await client.query("INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)", [req.user.name,req.user.role,`${editing ? "Updated" : "Booked"} appointment ${values[0]} on ${v.date} ${v.time}: ${v.reason.trim()}`]);
       return saved.rows[0];
     });
     res.json({ success: true, appointment: { followUpId: row.follow_up_id || null, id: row.id, petId: row.pet_id, vetId: row.vet_id, date: toDateStr(row.date), time: row.time, reason: row.reason, notes: row.notes, service: row.service, durationMinutes: row.duration_minutes, bookingKind: row.booking_kind, status: row.status, billingStatus: row.billing_status, amount: Number(row.amount) } });
@@ -1559,6 +1567,10 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
       }
       if (reason !== undefined) {
         q += `, reason = $${pIdx++}`;
+        if (inferBookingService(reason) === 'vaccination' && vaccineIdFromReason(reason)) {
+          const pet=(await client.query("SELECT species FROM pets WHERE id = $1",[current.pet_id])).rows[0];
+          requestedVaccineReason({service:'vaccination',reason,species:pet?.species});
+        }
         params.push(reason.trim());
       }
 
@@ -1692,6 +1704,8 @@ clinicRouter.post("/walk-in", async (req, res) => {
   try {
     const registration = validateWalkInRegistration(req.body);
     const patient = registration.patient;
+    const requestedReason = requestedVaccineReason({service:serviceCategory, vaccineId:req.body.vaccineId,
+      reason:reason || (serviceCategory === 'vaccination' ? `Vaccination: ${specificVaccine || 'Vaccine consultation'}` : ''), species:patient.species});
     await ensureSchedulingSchema();
     await ensurePetRegistrationSchema();
     const result = await withTransaction(async (client) => {
@@ -1977,7 +1991,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
         const apptId = "a_walk_" + Math.random().toString(36).slice(2, 8);
         const timeNow = clinicClock().time;
         
-        let visitReason = (reason || "").trim();
+        let visitReason = (requestedReason || "").trim();
         if (!visitReason) {
           if (serviceCategory === "vaccination") {
             visitReason = `Vaccination: ${specificVaccine || "Core Vaccine Booster"}`;
@@ -1997,8 +2011,8 @@ clinicRouter.post("/walk-in", async (req, res) => {
         const triageLvl = serviceCategory === "emergency" ? "Emergency" : "Routine";
 
         const insAppt = await client.query(
-          `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount, intake_vitals, booking_kind)
-           VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', 'Unbilled', 600, $7, 'walk-in')
+          `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount, intake_vitals, booking_kind, service)
+           VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', 'Unbilled', 600, $7, 'walk-in', $8)
            RETURNING *`,
           [
             apptId,
@@ -2007,7 +2021,8 @@ clinicRouter.post("/walk-in", async (req, res) => {
             today,
             timeNow,
             visitReason,
-            null
+            null,
+            ["vaccination","deworming","grooming"].includes(serviceCategory) ? serviceCategory : "checkup"
           ]
         );
         const aRow = insAppt.rows[0];
@@ -2018,6 +2033,8 @@ clinicRouter.post("/walk-in", async (req, res) => {
           date: toDateStr(aRow.date),
           time: aRow.time,
           reason: aRow.reason,
+          service: aRow.service,
+          bookingKind: aRow.booking_kind,
           status: aRow.status,
           billingStatus: aRow.billing_status,
           amount: parseFloat(aRow.amount),
@@ -2025,7 +2042,7 @@ clinicRouter.post("/walk-in", async (req, res) => {
         };
       }
 
-      await registrationAudit(client, req.user, `Registered walk-in owner ${effectiveOwner.name} & pet ${pet.name} (Issued Card #${cardId})`);
+      await registrationAudit(client, req.user, `Registered walk-in owner ${effectiveOwner.name} & pet ${pet.name} (Issued Card #${cardId})${appt ? `; arrival requested: ${appt.reason}` : ""}`);
       return {
         owner: effectiveOwner,
         pet: {

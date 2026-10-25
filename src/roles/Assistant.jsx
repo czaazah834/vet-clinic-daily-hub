@@ -1,3 +1,4 @@
+import { VaccineEstimate } from "../components/VaccineBooking.jsx";
 import { PaginatedList } from "../components/Pagination.jsx";
 import FrontDeskApprovals from "./FrontDeskApprovals.jsx";
 import ExistingPatientCheckInModal from "./ExistingPatientCheckInModal.jsx";
@@ -155,7 +156,7 @@ function Dash({ db, setDb, me, go, say }) {
                             <span className={`sf-pill ${iv.triageLevel === "Emergency" ? "er" : "wa"}`}><AlertTriangle size={12} aria-hidden="true" />{iv.triageLevel}</span>
                           )}
                         </div>
-                        <div className="sf-reason">{a.reason}</div>
+                        <div className="sf-reason">{a.reason}</div><VaccineEstimate appointment={a} compact />
                         {iv && (
                           <div className="sf-chips">
                             <span className={`sf-chip ${tempTone(iv.tempAnalysis?.status)}`}><Thermometer size={12} aria-hidden="true" />{iv.temp}&deg;C, {iv.tempAnalysis?.label || "Assessment not recorded"}</span>

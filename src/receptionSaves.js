@@ -5,6 +5,7 @@ export function confirmedBooking(response, expected) {
   const visit = response?.appointment;
   if (response?.success !== true || !visit || visit.status !== (expected.status || 'Scheduled')
       || ['id', 'petId', 'vetId', 'date', 'time', 'service'].some(key => visit[key] !== expected[key])
+      || (expected.vaccineId !== undefined && visit.reason !== expected.reason)
       || (visit.followUpId || null) !== (expected.followUpId || null)) {
     throw Error('The server did not confirm this booking. Refresh the calendar to check whether it was saved before retrying.');
   }

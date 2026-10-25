@@ -1,3 +1,4 @@
+import { VaccineEstimate } from "../components/VaccineBooking.jsx";
 import { PaginatedList } from "../components/Pagination.jsx";
 import {HistoryControls} from "../ClinicHistory.jsx";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
@@ -231,6 +232,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
           <button type="button" className="btn ghost sm" aria-label="Close consultation" disabled={loading} onClick={()=>{if(!inFlight.current)onClose();}}><X size={16} /></button>
         </div>
 
+        <p className="ow-note"><b>Requested visit:</b> {appt.reason}</p><VaccineEstimate appointment={appt} />
         {/* Allergy Alert Banner if any */}
         {(pet.allergies && pet.allergies.length > 0) ? (
           <div style={{ background: "#fef2f2", border: "1px solid #fecaca", padding: "10px 14px", borderRadius: "10px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "10px" }}>

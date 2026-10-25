@@ -1,3 +1,5 @@
+import { VaccinePicker, useBookingCatalog } from '../components/VaccineBooking.jsx';
+import { vaccineChoiceError, vaccineReason, vaccinePriceLabel } from '../vaccineBooking.js';
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { useRef, useState } from "react";
 import { UserCheck, X, ArrowRight } from "lucide-react";
@@ -13,6 +15,9 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
   const [saveError, setSaveError] = useState("");
   const [search, setSearch] = useState("");
   const [selectedPetId, setSelectedPetId] = useState(initialPetId);
+  const [service,setService]=useState("checkup");
+  const [vaccineId,setVaccineId]=useState("");
+  const catalog=useBookingCatalog()?.data?.catalog || [];
   const [reason, setReason] = useState("Walk-in consultation and routine exam");
   const doctors = (db.vets || []).map(v => [v.id, v.name]);
   const [vetId, setVetId] = useState(doctors[0]?.[0] || "");
@@ -31,7 +36,7 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
   const activeVisits = (db.appts || []).filter(a => a.petId === selectedPetId && a.date === TODAY && !["Cancelled", "Completed", "No-show"].includes(a.status));
   const alreadyToday = activeVisits.length > 0;
 
-  const review = useSubmissionReview([selectedPet,selectedOwner,vetId,reason,activeVisits,doctors]);
+  const review = useSubmissionReview([selectedPet,selectedOwner,vetId,reason,service,vaccineId,activeVisits,doctors]);
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -40,26 +45,31 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
     if (!selectedPet || !selectedOwner) { setSaveError("Choose a patient with a saved owner record."); return; }
     if (alreadyToday) { setSaveError("Open today's existing visit below to continue intake."); return; }
     if (!doctors.some(([id]) => id === vetId)) { setSaveError("Choose an available veterinarian."); return; }
-    if (reason.trim().length < 3 || reason.length > 300) { setSaveError("Enter a visit reason between 3 and 300 characters."); return; }
+    const vaccineError=service === 'vaccination' ? vaccineChoiceError(vaccineId,selectedPet.species) : '';
+    if(vaccineError){setSaveError(vaccineError);return;}
+    const visitReason=service === 'vaccination' ? vaccineReason(vaccineId) : reason.trim();
+    if (visitReason.length < 3 || visitReason.length > 300) { setSaveError("Enter a visit reason between 3 and 300 characters."); return; }
     if (!await review.ask({title:"Review walk-in arrival",confirmLabel:"Save arrival",description:"Confirm the patient and assigned veterinarian. You will record measured intake next before the patient joins the doctor queue.",fields:[
         ["Patient",selectedPet.name],
         ["Owner",selectedOwner.name],
         ["Veterinarian",doctors.find(([id])=>id===vetId)?.[1]],
         ["Date",today()],
-        ["Reason",reason.trim()]]}))return;
+        ["Reason",visitReason],
+        ...(service === "vaccination" ? [["Estimated vaccine price",vaccinePriceLabel(vaccineId,catalog)]] : [])]}))return;
     inFlight.current = true;
     setBusy(true);
     const payload = {
       petId: selectedPetId, vetId, date: today(), bookingKind: "walk-in",
       time: nowHM(),
-      reason: reason.trim() || "Walk-in consultation",
+      reason: visitReason, service,
+      ...(service === "vaccination" ? {vaccineId} : {}),
       status: "Scheduled", billingStatus: "Unbilled", amount: 600,
       actorName: me?.name || "Assistant", actorRole: me?.role || "assistant",
     };
     let newAppt;
     try {
       const res = await api.post("/api/appointments", payload);
-      if (res?.success !== true || !res?.appointment?.id || res.appointment.petId !== selectedPetId || res.appointment.vetId !== vetId || res.appointment.status !== "Scheduled") throw new Error("The server did not confirm this patient’s visit. Refresh clinic records before continuing.");
+      if (res?.success !== true || !res?.appointment?.id || res.appointment.petId !== selectedPetId || res.appointment.vetId !== vetId || res.appointment.status !== "Scheduled" || (service === "vaccination" && res.appointment.reason !== visitReason)) throw new Error("The server did not confirm this patient’s visit. Refresh clinic records before continuing.");
       newAppt = res.appointment;
     } catch (error) {
       inFlight.current = false;
@@ -98,7 +108,7 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
 
           <div className="sf-field">
             <label htmlFor="exw-pet">Patient *</label>
-            <select id="exw-pet" value={selectedPetId} onChange={e => { setSelectedPetId(e.target.value); setSaveError(""); }} disabled={busy} required>
+            <select id="exw-pet" value={selectedPetId} onChange={e => { setSelectedPetId(e.target.value); setVaccineId(""); setSaveError(""); }} disabled={busy} required>
               <option value="">{filteredPets.length ? "Choose a patient" : "No matching patients"}</option>
               {filteredPets.map(p => {
                 const o = (db.owners || []).find(x => sameOwner(x, p.ownerId)) || {};
@@ -134,10 +144,12 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
 
           {!alreadyToday && <>
 
-          <div className="sf-field">
+          <div className="sf-field"><label htmlFor="exw-service">Purpose of visit *</label><select id="exw-service" value={service} disabled={busy} onChange={e=>{setService(e.target.value);setVaccineId('');setReason({checkup:'Walk-in consultation and routine exam',deworming:'Routine deworming',grooming:'Grooming and sanitary care'}[e.target.value] || 'Vaccination consultation');}}><option value="checkup">Consultation</option><option value="vaccination">Vaccination</option><option value="deworming">Deworming</option><option value="grooming">Grooming</option></select></div>
+          {service === 'vaccination' && <VaccinePicker id="exw-vaccine" value={vaccineId} onChange={setVaccineId} species={selectedPet?.species} petSelected={!!selectedPet} disabled={busy} />}
+          {service !== 'vaccination' && <div className="sf-field">
             <label htmlFor="exw-reason">Reason for visit *</label>
-            <input id="exw-reason" type="text" required minLength={3} maxLength={300} disabled={busy} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Vaccination, cough, routine check-up" />
-          </div>
+            <input id="exw-reason" type="text" required minLength={3} maxLength={300} disabled={busy} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Cough, routine check-up" />
+          </div>}
 
           <div className="sf-field">
             <label htmlFor="exw-vet">Veterinarian *</label>

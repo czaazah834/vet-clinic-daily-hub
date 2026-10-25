@@ -1,3 +1,5 @@
+import AuditActivity from "../components/AuditActivity.jsx";
+import { auditActivity } from "../auditActivity.js";
 import { PaginatedList } from "../components/Pagination.jsx";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import AdminStaff, { useAdminStaff, AdminAudit } from "./AdminStaff.jsx";
@@ -314,7 +316,7 @@ function Dash({ db, setDb, me, go, say }) {
 
   const logs = (db.log || []).filter(l => {
     const text = (l.msg || l.action || "").toLowerCase();
-    const actor = (l.by || (l.user ? l.user.name : "") || "").toLowerCase();
+    const actor = auditActivity(l).actor.toLowerCase();
     const role = (l.role || (l.user ? l.user.role : "") || "").toLowerCase();
     const q = (logSearch || "").trim().toLowerCase();
     return !q || text.includes(q) || actor.includes(q) || role.includes(q);
@@ -612,7 +614,7 @@ function Dash({ db, setDb, me, go, say }) {
       <section className="card" style={{ marginTop: "16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
           <div>
-            <h3 style={{ margin: "0 0 4px" }}>Recent clinic activity</h3>
+            <h3 style={{ margin: "0 0 4px" }}>Recent clinic activity</h3><button type="button" className="btn sm ghost" onClick={()=>go("audit")}>Open full audit trail</button>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
               Latest 100 saved entries. Open System Audit Trail to search older activity.
             </p>
@@ -627,38 +629,7 @@ function Dash({ db, setDb, me, go, say }) {
         </div>
 
         {logs.length ? (
-          <PaginatedList label="Recent activity" resetKey={logSearch} style={{ maxHeight: "320px", overflowY: "auto", display: "grid", gap: "8px" }}>
-            {logs.map(l => (
-              <div
-                key={l.id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "9px 14px",
-                  borderRadius: "8px",
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                  fontSize: "13px",
-                }}
-              >
-                <div>
-                  <span style={{ fontWeight: "600", color: "#1e293b" }}>{l.msg || l.action}</span>
-                  <small style={{ display: "flex", alignItems: "center", gap: "6px", color: "#64748b", marginTop: "3px" }}>
-                    <span>Actor: <b>{l.by || (l.user ? l.user.name : "System")}</b></span>
-                    {(l.role || l.user?.role) && (
-                      <span style={{ background: "#e2e8f0", color: "#334155", padding: "1px 6px", borderRadius: "4px", fontSize: "11px", fontWeight: 600 }}>
-                        {l.role || l.user?.role}
-                      </span>
-                    )}
-                  </small>
-                </div>
-                <span style={{ fontSize: "12px", color: "#64748b", whiteSpace: "nowrap" }}>
-                  {l.at || l.ts || ""}
-                </span>
-              </div>
-            ))}
-          </PaginatedList>
+          <PaginatedList label="Recent activity" resetKey={logSearch} className="audit-entry-list">{logs.map(l=><AuditActivity key={l.id} entry={l}/>)}</PaginatedList>
         ) : (
           <div className="empty sm">No activity matching your search.</div>
         )}
