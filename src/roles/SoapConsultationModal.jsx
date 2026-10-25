@@ -17,23 +17,31 @@ import { intakeVisitSnapshot, sameIntakeVisit } from "../intakeVisit.js";
 import { confirmedConsultation, applyConsultationSave } from "../consultationSave.js";
 
 function NoteShortcuts({ field, label, options, value, onChange }) {
+  const [search, setSearch] = useState("");
   const [choice, setChoice] = useState("");
   const [added, setAdded] = useState(false);
-  const included = !!choice && value.split(/\r?\n/).some(line => line.trim() === choice);
+  const matching = options.filter(option => option.toLowerCase().includes(search.trim().toLowerCase()));
+  const included = !!choice && value.split(/\r?\n/).some(line => line.trim().toLowerCase() === choice.toLowerCase());
   const next = value + (value && !value.endsWith("\n") ? "\n" : "") + choice;
   const tooLong = !!choice && next.length > 10000;
   const hintId = `soap-${field}-shortcut-hint`;
   return <div className="soap-note-shortcuts">
+    <label className="soap-shortcut-search" htmlFor={`soap-${field}-search`}>Search {field} choices
+      <input id={`soap-${field}-search`} type="search" value={search} aria-describedby={hintId}
+        placeholder={`Search clinic ${field} choices`}
+        onChange={e => { setSearch(e.target.value); setChoice(""); setAdded(false); }}
+        onKeyDown={e => { if (e.key === "Enter") e.preventDefault(); }} />
+    </label>
     <div className="soap-shortcut-controls">
       <label htmlFor={`soap-${field}-shortcut`}>{label} (optional)
-        <select id={`soap-${field}-shortcut`} value={choice} aria-describedby={hintId} onChange={e => { setChoice(e.target.value); setAdded(false); }}>
-          <option value="">Choose an entry to add</option>
-          {options.map(option => <option key={option} value={option}>{option}</option>)}
+        <select id={`soap-${field}-shortcut`} value={choice} aria-describedby={hintId} disabled={!matching.length} onChange={e => { setChoice(e.target.value); setAdded(false); }}>
+          <option value="">{matching.length ? "Choose an entry to add" : options.length ? "No matching clinic choices" : "No clinic choices available"}</option>
+          {matching.map(option => <option key={option} value={option}>{option}</option>)}
         </select>
       </label>
-      <button type="button" className="btn sm ghost" aria-label={`Add ${field === "diagnosis" ? "diagnosis" : "plan"} to notes`} disabled={!choice || included || tooLong} onClick={() => { onChange(next); setAdded(true); }}>Add to notes</button>
+      <button type="button" className="btn sm ghost" aria-label={`Add ${field} to notes`} disabled={!choice || included || tooLong} onClick={() => { onChange(next); setAdded(true); }}>Add to notes</button>
     </div>
-    <p id={hintId} role="status">{included ? (added ? "Added to notes. You can edit the text below." : "This entry is already in your notes.") : tooLong ? "This entry would exceed 10,000 characters. Shorten your notes before adding it." : "Choose an entry and select Add to notes, or type your own notes below."}</p>
+    <p id={hintId} role="status">{included ? (added ? "Added to notes. You can edit the text below or add another entry." : "This entry is already in your notes.") : tooLong ? "This entry would exceed 10,000 characters. Shorten your notes before adding it." : !options.length ? "No clinic choices available. Type your own notes below." : !matching.length ? "No matching clinic choices. Type your own notes below, or change your search." : `${matching.length} clinic ${matching.length === 1 ? "choice" : "choices"}. Select an entry and Add to notes, or type your own notes below.`}</p>
   </div>;
 }
 
@@ -464,8 +472,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
                 <label htmlFor="soap-diagnosis"><b>A - Assessment (Diagnosis)</b><i> *</i></label>
                 {optionsError && <p role="alert">Choices could not load. You can still type your notes. <button type="button" onClick={() => retryOptions(n => n + 1)}>Retry choices</button></p>}
-                <NoteShortcuts field="diagnosis" label="Common diagnosis" options={noteOptions.diagnosis} value={f.diagnosis} onChange={value => set("diagnosis", value)} />
-                <p id="soap-diagnosis-hint" className="soap-note-label">Diagnosis and patient-specific details</p>
+                <NoteShortcuts field="diagnosis" label="Clinic diagnosis choices" options={noteOptions.diagnosis} value={f.diagnosis} onChange={value => set("diagnosis", value)} />
+                <p id="soap-diagnosis-hint" className="soap-note-label">Enter your diagnosis and patient-specific details here. All added text is editable; you can include multiple diagnoses.</p>
                   <textarea
                     id="soap-diagnosis"
                     rows={2}
@@ -482,8 +490,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
                 <label htmlFor="soap-treatment"><b>P - Plan (Treatment &amp; In-Clinic Procedures)</b><i> *</i></label>
-                <NoteShortcuts field="treatment" label="Common plan entry" options={noteOptions.treatment} value={f.treatment} onChange={value => set("treatment", value)} />
-                <p id="soap-treatment-hint" className="soap-note-label">Treatment and patient-specific instructions</p>
+                <NoteShortcuts field="treatment" label="Clinic treatment choices" options={noteOptions.treatment} value={f.treatment} onChange={value => set("treatment", value)} />
+                <p id="soap-treatment-hint" className="soap-note-label">Enter your treatment plan and patient-specific instructions here. Review and edit any added text for this patient.</p>
                   <textarea
                     id="soap-treatment"
                     rows={2}
@@ -495,7 +503,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     placeholder="Procedures performed, fluids administered, wound treatment, instructions..."
                     className={errs.treatment ? "bad" : f.treatment.trim() ? "ok" : ""}
                   />
-                <p className="soap-note-hint">Text shortcuts add to your notes only. Confirm billable services separately below.</p>
+                <p className="soap-note-hint">Choose treatment independently for this patient. Custom notes stay with this visit. Clinic administrators maintain shared choices. Confirm billable services separately below.</p>
                 {errs.treatment && <span id="soap-treatment-error" className="err" role="alert">{errs.treatment}</span>}
               </div>
 

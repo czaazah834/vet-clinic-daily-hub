@@ -32,6 +32,7 @@ export default function NoteOptionsPage() {
   return <section className="card">
     {review.card}<h2>Diagnosis &amp; treatment choices</h2>
     <p>Enter one choice per line, up to 100 choices in each list. Remove a line to retire a choice. Veterinarians can always enter their own notes. These text entries do not add billing charges.</p>
+    <p>Use entries approved by the clinic's veterinarians. Vets choose diagnosis and treatment independently and can edit either. Custom visit notes join the shared lists only when an administrator adds and saves them here.</p>
     {loading ? <p role="status">Loading clinic choices…</p> : <form onSubmit={submit}>
       <fieldset disabled={saving || !config} style={{border:0,padding:0}}>
         <label>Diagnosis choices<textarea rows={9} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} /></label>

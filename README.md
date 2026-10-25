@@ -980,6 +980,16 @@ own notes, including if choices are unavailable. Entries append text only; bille
 services still require separate confirmation. Retiring an entry does not alter
 existing clinical records.
 
+Each SOAP list has a search field and an explicit **Add to notes** action.
+Veterinarians can add multiple entries, edit the resulting text, or type their
+own diagnosis and treatment directly into the notes. Searches filter clinic
+choices only; selecting a diagnosis leaves treatment selection to the vet.
+Custom notes stay with the visit and are not automatically added to the shared
+lists. Administrators maintain veterinarian-approved entries separately in
+**Clinical Note Choices**. Final review shows the actual edited assessment and
+plan before the veterinarian confirms the visit. Medication directions and
+supply still require explicit entry or confirmation in the prescription builder.
+
 Deploy `server/database/note-options.sql` with the migration role for existing
 databases. `npm run db:init` includes it for new installations. The endpoint can
 initialize it when the runtime role has DDL permission. The initial seed preserves
