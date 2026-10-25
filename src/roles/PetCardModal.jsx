@@ -1,3 +1,4 @@
+import PetPortrait from "./PetPortrait.jsx";
 import {HistoryControls,useHistoryComplete} from "../ClinicHistory.jsx";
 import { today as bookingToday } from "../booking.js";
 import ExistingPatientCheckInModal from "./ExistingPatientCheckInModal.jsx";
@@ -5,7 +6,7 @@ import { canBookAppointments } from "../appointmentPermissions.js";
 import { useState, useRef } from "react";
 import { PawPrint, Printer, RotateCw, Calendar, CheckCircle2, Clock, CreditCard, Receipt, ArrowRight, X } from "lucide-react";
 import { Badge, TODAY, ICON, I, moveAppt } from "../lib.jsx";
-import { Avatar, Icon, toSquare } from "./owner/ui.jsx";
+import { toSquare } from "./owner/ui.jsx";
 import { formatSpeciesLabel, computeAgeDetails } from "../preventiveSchedule.js";
 import { auth, OFFLINE_MSG } from "../authApi.js";
 
@@ -101,13 +102,13 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
 
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1000, display: "grid", placeItems: "center", padding: "16px" }}>
-      <div className="modal" style={{ width: "min(880px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "20px 24px" }}>
+      <div className="modal staff-pet-card" style={{ width: "min(880px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "20px 24px" }}>
         <HistoryControls auto />
         
         {actionError && <p className="err" role="alert">{actionError}</p>}
         {/* Top Control Bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "16px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div className="staff-pet-controls" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <PawPrint size={22} color="var(--navy)" />
             <h3 style={{ margin: 0, color: "var(--navy)", fontSize: "1.25rem" }}>
               {p.name}&rsquo;s Health Passport &amp; Digital Vaccination Card
@@ -117,7 +118,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
             </span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div className="staff-pet-controls" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <button
               type="button"
               className="btn sm gold"
@@ -125,7 +126,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}
             >
               <RotateCw size={14} />
-              <span>{isFlipped ? "Flip to Page 1 (Bio)" : "Flip to Page 2 (Immunization Log)"}</span>
+              <span>{isFlipped ? "View pet profile" : "View immunization log"}</span>
             </button>
             <button
               type="button"
@@ -296,7 +297,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
             <span style={{ fontSize: "12.5px", color: "#64748b" }}>
               Patient has no active appointment on record today.
             </span>
-            <div style={{ display: "flex", gap: "8px" }}>
+            <div className="staff-pet-controls" style={{ display: "flex", gap: "8px" }}>
               <button
                 type="button"
                 className="btn sm ghost"
@@ -344,7 +345,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
             }}>
               {/* Header Banner */}
               <div style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)", color: "#fff", padding: "14px 22px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div className="staff-pet-banner" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <span style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "#93c5fd" }}>
                       Republic of the Philippines &bull; Department of Agriculture (BAI)
@@ -366,58 +367,17 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               </div>
 
               {/* Bio Layout */}
-              <div style={{ padding: "20px 24px", display: "grid", gridTemplateColumns: "110px 1fr", gap: "22px", alignItems: "start" }}>
+              <div className="staff-pet-bio" style={{ padding: "20px 24px", display: "grid", gridTemplateColumns: "110px 1fr", gap: "22px", alignItems: "start" }}>
                 {/* Photo with Click-to-upload */}
                 <div style={{ textAlign: "center" }}>
-                  <div
-                    style={{
-                      position: "relative",
-                      width: 104,
-                      height: 104,
-                      margin: "0 auto",
-                      borderRadius: "16px",
-                      overflow: "hidden",
-                      border: "3px solid #3b82f6",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
-                      cursor: "pointer"
-                    }}
-                    onClick={() => fileInputRef.current?.click()}
-                    title="Click to upload or update pet picture"
-                  >
-                    <Avatar src={p.photo} fallback={<Icon n="paw" size={48} />} size={104} />
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={handlePhotoFileChange}
-                      hidden
-                    />
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                      style={{ position: "absolute", bottom: 4, right: 4, background: "#1e3a8a", color: "#fff", border: "none", borderRadius: "50%", width: 26, height: 26, display: "grid", placeItems: "center", cursor: "pointer" }}
-                      title="Update photo"
-                    >
-                      <Icon n="camera" size={13} />
-                    </button>
-                    {p.photo && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); savePhoto(""); }}
-                        style={{ position: "absolute", top: 4, right: 4, background: "rgba(220, 38, 38, 0.9)", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, display: "grid", placeItems: "center", cursor: "pointer", fontSize: "11px", fontWeight: "bold" }}
-                        title="Remove photo" aria-label="Remove photo"
-                      >
-                        <X size={12} aria-hidden="true" />
-                      </button>
-                    )}
-                  </div>
+                  <PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />
                   <div style={{ marginTop: 6, fontSize: "10.5px", color: "#059669", fontWeight: 800, textTransform: "uppercase" }}>
                     Patient Verified
                   </div>
                 </div>
 
                 {/* Patient Master Info */}
-                <div>
+                <div style={{minWidth:0}}>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "8px" }}>
                     <h2 style={{ margin: 0, fontSize: "1.6rem", color: "var(--navy)", fontWeight: 800 }}>{p.name}</h2>
                     <span style={{ background: "#dbeafe", color: "#1e40af", padding: "2px 8px", borderRadius: "6px", fontSize: "12px", fontWeight: 700 }}>
@@ -444,7 +404,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
 
               {/* Status Metrics Footer */}
               <div style={{ background: "#f8fafc", padding: "12px 24px", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-                <div style={{ display: "flex", gap: "18px", fontSize: "12px" }}>
+                <div className="staff-pet-metrics" style={{ display: "flex", gap: "18px", fontSize: "12px" }}>
                   <div><span style={{ color: "#64748b" }}>{historyComplete?"TOTAL PROTOCOLS:":"LOADED PROTOCOLS:"}</span> <b style={{ color: "var(--navy)" }}>{vaccs.length}</b></div>
                   <div><span style={{ color: "#64748b" }}>ON TRACK:</span> <b style={{ color: "#059669" }}>{count("On track")}</b></div>
                   <div><span style={{ color: "#64748b" }}>DUE SOON:</span> <b style={{ color: "#d97706" }}>{count("Due soon")}</b></div>
@@ -457,7 +417,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                   onClick={() => setIsFlipped(true)}
                   style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700 }}
                 >
-                  <span>Turn to Page 2 (Immunization Log)</span>
+                  <span>View immunization log</span>
                   <ArrowRight size={15} />
                 </button>
               </div>
@@ -472,7 +432,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               borderRadius: "18px",
               overflow: "hidden"
             }}>
-              <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "#fff", padding: "14px 22px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "#fff", padding: "14px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap:12 }}>
                 <div>
                   <h3 style={{ margin: 0, color: "#fff", fontSize: "1.2rem", fontWeight: 800 }}>
                     {p.name}&rsquo;s Immunization &amp; Preventive Log
@@ -487,7 +447,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                   onClick={() => setIsFlipped(false)}
                   style={{ background: "#334155", color: "#fff", border: "none" }}
                 >
-                  ⬅ Back to Page 1
+                  Back to pet profile
                 </button>
               </div>
 
@@ -557,7 +517,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
         </div>
 
         {/* Action row */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>
+        <div className="staff-pet-controls" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>
           {onBook && canBookAppointments(me?.role) && (
             <button className="btn gold sm" onClick={() => { onClose(); onBook(p.id); }}>
               + Book Visit for {p.name}

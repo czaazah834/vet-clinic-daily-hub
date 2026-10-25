@@ -1,3 +1,4 @@
+import FrontDeskApprovals from "./FrontDeskApprovals.jsx";
 import ExistingPatientCheckInModal from "./ExistingPatientCheckInModal.jsx";
 import { assistantQueue, dailyCollections, pendingCheckout, money } from "../assistantWorkflow.js";
 import CareFollowUps from "./CareFollowUps.jsx";
@@ -54,13 +55,25 @@ function Dash({ db, setDb, me, go, say }) {
   const openCard = (petId, appt = null) => { setCardPetId(petId); setCardAppt(appt); };
   const closeCard = () => { setCardPetId(null); setCardAppt(null); };
 
+  const confirmVisit = async a => {
+    if (confirmingRef.current.has(a.id)) return;
+    confirmingRef.current.add(a.id);
+    setActionError(""); setConfirming(p => ({...p,[a.id]:true}));
+    try {
+      const saved = await moveAppt(setDb, a.id, "Confirmed", me, setActionError, a);
+      if (saved) say("Appointment confirmed.");
+    } finally {
+      confirmingRef.current.delete(a.id);
+      setConfirming(p => ({...p,[a.id]:false}));
+    }
+  };
+
   return (
     <>
-      {actionError && <p className="err" role="alert">{actionError}</p>}
       <CareFollowUps db={db} go={go}  />
       <Hero
         title="Front Desk and Clinic Operations"
-        text="Register walk-in owners and patients, check patients in, manage appointments and take payments."
+        text="Review visit requests, welcome patients and keep every step of their care moving."
         icons={["bell", "cat"]}
       >
         <div className="sf-actions">
@@ -72,6 +85,8 @@ function Dash({ db, setDb, me, go, say }) {
           )}
         </div>
       </Hero>
+
+      <FrontDeskApprovals db={db} onReviewPet={setReviewReq} onOpenCard={openCard} onCalendar={() => go("cal")} onConfirm={confirmVisit} confirming={confirming} error={actionError} />
 
       <Stats
         items={[
@@ -104,41 +119,6 @@ function Dash({ db, setDb, me, go, say }) {
         </div>
         <button className="btn ghost sm" onClick={() => go("sales")}>Open daily sales<ArrowRight size={15} aria-hidden="true" /></button>
       </div>
-
-      {pendingReqs.length > 0 && (
-        <section className="card sf-pending">
-          <div className="sf-section-hd">
-            <div>
-              <h3>Pending online pet registrations ({pendingReqs.length})</h3>
-              <p>Approving a request issues the digital vaccination card and calculates the booster schedule.</p>
-            </div>
-            <button className="btn gold sm" onClick={() => setReviewReq(pendingReqs[0])}>Review first request</button>
-          </div>
-          <div className="sf-grid">
-            {pendingReqs.map(r => {
-              const o = db.owners.find(x => x.id === r.ownerId) || {};
-              return (
-                <div key={r.id} className="sf-pending-row">
-                  <div className="sf-row-main">
-                    <span className="sf-species"><I e={r.species || "paw"} size={22} /></span>
-                    <div className="sf-body">
-                      <div className="sf-name">
-                        <span>{r.name}</span>
-                        <span className="meta">{r.species}, {r.breed || "Mixed"}, {r.sex}{r.weight ? `, ${r.weight} kg` : ""}</span>
-                      </div>
-                      <div className="sf-sub">
-                        Owner: <b>{o.name || "Owner"}</b> ({o.phone || o.email || "no contact"}), requested {r.requestedAt || TODAY}
-                        {r.notes ? `, note: "${r.notes}"` : ""}
-                      </div>
-                    </div>
-                  </div>
-                  <button className="btn sm gold" onClick={() => setReviewReq(r)} title="Review details and issue the vaccination card">Review and issue card</button>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
 
       <div className="two" style={{ marginTop: 16 }}>
         <section className="card">
@@ -189,15 +169,7 @@ function Dash({ db, setDb, me, go, say }) {
                       <Badge v={a.status} />
                       <button className="btn sm ghost" onClick={() => openCard(pet.id || a.petId, a)}>Digital card</button>
                       {a.status === "Scheduled" && (
-                        <button className="btn sm" disabled={!!confirming[a.id]} onClick={async () => {
-                          if (confirmingRef.current.has(a.id)) return;
-                          confirmingRef.current.add(a.id);
-                          setActionError(""); setConfirming(p => ({...p,[a.id]:true}));
-                          const saved = await moveAppt(setDb, a.id, "Confirmed", me, setActionError, a);
-                          confirmingRef.current.delete(a.id);
-                          setConfirming(p => ({...p,[a.id]:false}));
-                          if (saved) say("Appointment confirmed.");
-                        }}>{confirming[a.id] ? "Confirming…" : "Confirm"}</button>
+                        <button className="btn sm" disabled={!!confirming[a.id]} onClick={() => confirmVisit(a)}>{confirming[a.id] ? "Confirming…" : "Confirm"}</button>
                       )}
                       {["Scheduled", "Confirmed"].includes(a.status) && (
                         <button className="btn sm gold" title="Arrival check-in and vitals intake" onClick={() => setCheckInAppt(a)}>Check in</button>
@@ -340,7 +312,7 @@ export const assistant = {
   portal: "Front Desk & Operations",
   Dash,
   menu: [
-    { k: "home", l: "Front Desk", i: "bell", dash: 1, sub: "Today’s arrival queue, walk-in registration, and reminders." },
+    { k: "home", l: "Front Desk", i: "bell", dash: 1, sub: "Visit approvals, pet registrations, arrivals and clinic operations." },
     { k: "sales", l: "Daily Sales & Billing", i: "receipt", Page: DailySalesPage, sub: "Daily collections register, cashier receipts, and sales breakdown." },
     { k: "pet-requests", l: "Online Pet Requests", i: "paw", Page: PetRequestsPage, sub: "Review and approve online pet registrations with automated vaccination cards." },
     { k: "cal", l: "Appointments & Calendar", i: "calendar", Page: ClinicCalendar, sub: "Unified calendar schedules, slot booking, and appointments management." },

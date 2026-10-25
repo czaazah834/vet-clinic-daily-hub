@@ -62,3 +62,9 @@ export function assistantQueue(appointments, date = today()) {
     missed:byStatus(['No-show'])
   };
 }
+
+// Keep future requests visible independently of today's arrival/triage queue.
+export function pendingVisitApprovals(appointments, date = today()) {
+  return appointments.filter(a => a.status === 'Scheduled' && a.date >= date)
+    .sort((a,b) => a.date.localeCompare(b.date) || String(a.time || '').localeCompare(String(b.time || '')) || a.id.localeCompare(b.id));
+}

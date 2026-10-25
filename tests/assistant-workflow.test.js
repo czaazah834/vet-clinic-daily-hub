@@ -70,3 +70,15 @@ test('unfinished arrivals survive midnight while daily statistics stay on their 
   assert.deepEqual(result.completed,[todayDone]);assert.deepEqual(result.arrivals,[]);
   assert.deepEqual(result.visits,[todayDone,emergency]);
 });
+
+test('approval inbox includes today and future Scheduled visits independently of the daily queue', async () => {
+  const { pendingVisitApprovals } = await import('../src/assistantWorkflow.js');
+  const visit = {id:'today',date,time:'11:00',status:'Scheduled'};
+  const future = {...visit,id:'future',date:'2026-11-05',time:'08:00'};
+  const early = {...visit,id:'early',time:'08:00'};
+  const all = [future, visit, {...visit,id:'past',date:'2026-10-24'}, {...future,id:'confirmed',status:'Confirmed'}, {...future,id:'cancelled',status:'Cancelled'}, early];
+  assert.deepEqual(pendingVisitApprovals(all,date).map(a => a.id), ['early','today','future']);
+  assert.deepEqual(assistantQueue(all,date).arrivals.map(a => a.id), ['early','today']);
+  assert.equal(all[0], future, 'does not reorder the clinic store');
+  assert.equal(pendingVisitApprovals(all.map(a => a.id === 'future' ? {...a,status:'Confirmed'} : a),date).some(a => a.id === 'future'),false);
+});

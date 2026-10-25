@@ -168,12 +168,12 @@ BREEDS_BY_SPECIES.Bird = BREEDS_BY_SPECIES["Avian (Bird)"];
 BREEDS_BY_SPECIES.Other = BREEDS_BY_SPECIES["Other / Exotic"];
 
 export const GUIDANCE_BY_SPECIES = {
-  "Canine (Dog)": "🐶 Canine Protocol (VCMS v2.0): Bi-weekly deworming starts at Day 14, switching to monthly at Day 90. Core DHPP starts at 6 weeks (Day 42), with Rabies at 12+ weeks (Day 84). Flea/tick/heartworm starts at 8 weeks. Strict heartworm antigen testing required for dogs >= 7 months with safety gaps.",
-  "Feline (Cat)": "🐱 Feline Protocol (VCMS v2.0): Bi-weekly deworming starts at Day 14 (transitions to quarterly at 6 months). FVRCP 4-in-1 core immunization starts at 6 weeks, with Rabies at 12+ weeks. Strict toxicology block: Never use Permethrin formulas on felines.",
-  "Lagomorph (Rabbit)": "🐰 Lagomorph Protocol (VCMS v2.0): Annual RHDV1/RHDV2 vaccination starts at Day 35. High-fiber timothy hay (80%+) and semi-annual dental checks are vital. Strict toxicology block: Fipronil (Frontline) is strictly prohibited due to fatal neurotoxicity.",
-  "Rodent (Hamster / Guinea Pig / etc.)": "🐹 Rodent Protocol (VCMS v2.0): Continuous elodont dentition requires semi-annual molar and incisor occlusion surveillance. Monitor for incisor overgrowth, molar spurs, and wet chin / drooling.",
-  "Avian (Bird)": "🦜 Avian Protocol (VCMS v2.0): Annual fecal float screening at 6 months. Home Hazard Warning: Inhaled PTFE/Teflon cookware fumes and aerosol sprays cause fatal hemorrhagic respiratory failure.",
-  "Other / Exotic": "🐾 Exotic Species Protocol: Specialized husbandry, temperature regulation, and regular preventative veterinary evaluations."
+  "Canine (Dog)": "Canine Protocol (VCMS v2.0): Bi-weekly deworming starts at Day 14, switching to monthly at Day 90. Core DHPP starts at 6 weeks (Day 42), with Rabies at 12+ weeks (Day 84). Flea/tick/heartworm starts at 8 weeks. Strict heartworm antigen testing required for dogs >= 7 months with safety gaps.",
+  "Feline (Cat)": "Feline Protocol (VCMS v2.0): Bi-weekly deworming starts at Day 14 (transitions to quarterly at 6 months). FVRCP 4-in-1 core immunization starts at 6 weeks, with Rabies at 12+ weeks. Strict toxicology block: Never use Permethrin formulas on felines.",
+  "Lagomorph (Rabbit)": "Lagomorph Protocol (VCMS v2.0): Annual RHDV1/RHDV2 vaccination starts at Day 35. High-fiber timothy hay (80%+) and semi-annual dental checks are vital. Strict toxicology block: Fipronil (Frontline) is strictly prohibited due to fatal neurotoxicity.",
+  "Rodent (Hamster / Guinea Pig / etc.)": "Rodent Protocol (VCMS v2.0): Continuous elodont dentition requires semi-annual molar and incisor occlusion surveillance. Monitor for incisor overgrowth, molar spurs, and wet chin / drooling.",
+  "Avian (Bird)": "Avian Protocol (VCMS v2.0): Annual fecal float screening at 6 months. Home Hazard Warning: Inhaled PTFE/Teflon cookware fumes and aerosol sprays cause fatal hemorrhagic respiratory failure.",
+  "Other / Exotic": "Exotic Species Protocol: Specialized husbandry, temperature regulation, and regular preventative veterinary evaluations."
 };
 
 const getYesterday = () => {
@@ -470,7 +470,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
             <Field id="pd" label="Birth date (yesterday or earlier)" req type="date" min={OLDEST} maxDate={YESTERDAY} value={v.birth} onChange={x => f.set("birth", x)} onBlur={() => f.blur("birth")} error={f.show("birth")} valid={f.ok("birth")} hint="Birth date cannot be today or in the future" />
             {petCalculatedAge && (
               <div style={{ marginTop: -8, marginBottom: 10, fontSize: "0.83rem", color: "#0b3a5b", fontWeight: 700 }}>
-                🐾 Age: {petCalculatedAge}
+                Age: {petCalculatedAge}
               </div>
             )}
           </div>
@@ -481,7 +481,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
             <Field id="pt" label="Spayed or neutered?" req type="select" value={v.neutered} onChange={x => f.set("neutered", x)} onBlur={() => f.blur("neutered")} options={NEUTERED.map(s => [s, s])} error={f.show("neutered")} valid={f.ok("neutered")} />
             {isOlderThanSixMonths && v.neutered === "No" && (
               <div style={{ marginTop: -8, marginBottom: 10, fontSize: "0.8rem", color: "#b45309", lineHeight: 1.3 }}>
-                💡 Tip: At {petCalculatedAge}, spaying/neutering is strongly recommended for reproductive health and behavior.
+                Tip: At {petCalculatedAge}, spaying/neutering is strongly recommended for reproductive health and behavior.
               </div>
             )}
           </div>
@@ -535,7 +535,7 @@ export function RequestList({ db, setDb, me, say, onEdit }) {
               {r.dentalOcclusion && (
                 <div style={{ marginTop: "3px" }}>
                   <span style={{ background: "#e0e7ff", color: "#3730a3", fontSize: "0.72rem", padding: "1px 6px", borderRadius: "6px", fontWeight: 600 }}>
-                    🦷 Dental: {r.dentalOcclusion}
+                    Dental: {r.dentalOcclusion}
                   </span>
                 </div>
               )}

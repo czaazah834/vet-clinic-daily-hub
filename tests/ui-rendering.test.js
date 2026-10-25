@@ -133,3 +133,17 @@ test('owner dashboard explains a booked vaccine with no booster due date', () =>
   assert.match(html, /Visit: 2099-01-05/);
   assert.match(html, /Booster date not recorded/);
 });
+
+test('front desk surfaces a future booking before its arrival date', () => {
+  const db = populated();
+  db.appts = [{id:'future-approval',petId:'p1',vetId:'v1',date:'2099-01-05',time:'10:00',status:'Scheduled',reason:'Future vaccination request',notes:'Please call before the visit.'}];
+  const html = render(ui.assistant.Dash, props('assistant', db));
+  assert.match(html, /Needs clinic approval/);
+  assert.match(html, /Visit requests \(1\)/);
+  assert.match(html, /Future vaccination request/);
+  assert.match(html, /2099-01-05/);
+  assert.match(html, /10:00 AM/);
+  assert.match(html, /Sample Vet/);
+  assert.match(html, /Please call before the visit/);
+  assert.match(html, /Approve visit/);
+});
