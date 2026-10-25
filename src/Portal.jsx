@@ -71,6 +71,7 @@ function PortalBody({ cfg, me, db, setDb, onLogout, dataLoading = false, dataErr
           {cfg.menu.filter(m => !m.hide).map(m => <button key={m.k} className={m.k === page ? "on" : ""} aria-current={m.k === page ? "page" : undefined} onClick={() => go(m.k)}><I e={m.i} size={21} /><span>{m.s || m.l}</span></button>)}
         </nav>
       )}
+      {!dataLoading && cfg.Onboarding && <cfg.Onboarding db={db} setDb={setDb} me={me} say={say} go={go} onLogout={onLogout} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );

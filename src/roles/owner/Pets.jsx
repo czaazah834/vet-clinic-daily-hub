@@ -1,3 +1,6 @@
+import ClinicDialog from '../../components/ClinicDialog.jsx';
+import { isVerifiedPet, registrationPatient } from '../../ownerOnboarding.js';
+import { reviewedRequest } from '../../registrationReview.js';
 import { PaginatedList } from "../../components/Pagination.jsx";
 import {HistoryControls,useHistoryComplete} from "../../ClinicHistory.jsx";
 import { useSubmissionReview } from "../../components/SubmissionReview.jsx";
@@ -252,7 +255,7 @@ export function validatePet(v, taken = []) {
 export const myRequests = (db, me) => (db.petRequests || []).filter(r => (r.ownerId === me.ownerId || r.ownerId === me.id) && r.status !== "Approved");
 
 export const addBlock = (db, me) => {
-  const have = scope(db, me, "pets").length, reqs = myRequests(db, me);
+  const have = scope(db, me, "pets").filter(isVerifiedPet).length, reqs = myRequests(db, me);
   if (have + reqs.length >= MAX_PETS) return `One account can hold up to ${MAX_PETS} pets`;
   if (reqs.filter(r => r.status === "Pending").length >= MAX_PENDING) return `${MAX_PENDING} requests are already waiting for the clinic. Wait for a reply before adding more`;
   return "";
@@ -261,9 +264,9 @@ export const addBlock = (db, me) => {
 const kind = p => (p.species && p.species.includes("Other") && p.speciesOther) ? p.speciesOther : formatSpeciesLabel(p.species);
 
 /* ---------- Add / edit a pet request ---------- */
-export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
+export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSetup = false, onLogout }) {
   const e0 = editing || {};
-  const taken = [...scope(db, me, "pets"), ...myRequests(db, me).filter(r => !editing || r.id !== editing.id)].map(p => p.name.trim().toLowerCase());
+  const taken = [...scope(db, me, "pets").filter(isVerifiedPet), ...myRequests(db, me).filter(r => !editing || r.id !== editing.id)].map(p => p.name.trim().toLowerCase());
   
   // Normalize initial species
   const initialSpecies = e0.species ? formatSpeciesLabel(e0.species) : "";
@@ -287,6 +290,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
   const [saving,setSaving] = useState(false);
   const [uploading,setUploading] = useState(false);
   const savingRef = useRef(false);
+  const submissionId = useRef(crypto.randomUUID());
 
   const initialSpeciesBreeds = BREEDS_BY_SPECIES[v.species] || BREEDS_BY_SPECIES[e0.species] || [];
   const isCustomInitial = e0.breed && !initialSpeciesBreeds.includes(e0.breed);
@@ -367,7 +371,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
     };
 
     if (!await review.ask({title:"Review pet registration request",confirmLabel:editing ? "Resubmit to clinic" : "Submit to clinic",
-      description:"Check your pet’s details. Reception will review this request before activating the patient and issuing a card.",
+      description:"Check your pet’s details. Your pet will appear as Pending verification. You can request an appointment while the clinic reviews the registration.",
       fields:[
         ["Patient",data.name],
         ["Species",`${data.speciesLabel}${data.speciesOther ? ` (${data.speciesOther})` : ""}`],
@@ -385,25 +389,20 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
     try {
       const res = editing
         ? await api.put(`/api/pet-requests/${editing.id}`, { ...data, revision:editing.revision ?? 0 })
-        : await api.post("/api/pet-requests", data);
-      if (res && res.request) {
-        const reqObj = {
-          id: res.request.id,
-          ownerId: me.ownerId,
-          requestedAt: TODAY,
-          status: "Pending",
-          declineReason: "",
-          revision:res.request.revision,
-          ...data
-        };
+        : await api.post("/api/pet-requests", {...data,requestId:submissionId.current});
+      if (res?.success && res.request?.id && res.pet?.id && res.request.pet_id===res.pet.id && res.pet.owner_id===me.ownerId) {
+        const reqObj = reviewedRequest(res.request);
+        const patient = registrationPatient(res.pet);
         setDb(p => ({
           ...p,
+          pets:[...p.pets.filter(pet=>pet.id!==patient.id),patient],
+          owners:p.owners.map(owner=>owner.id===me.ownerId ? {...owner,firstPetRegisteredAt:owner.firstPetRegisteredAt || new Date().toISOString()} : owner),
           petRequests: editing
             ? (p.petRequests || []).map(r => r.id === editing.id ? reqObj : r)
             : [...(p.petRequests || []).filter(r => r.id !== reqObj.id), reqObj],
           log: addLog(p, me, `Submitted online registration request for ${data.name} (${canonicalSpecies}) - Pending Vet Assistant Review`)
         }));
-        say(`${data.name}'s registration was submitted to the clinic! The front desk will review and issue their vaccination card.`);
+        say(`${data.name} is saved. You can request an appointment while registration is pending verification.`);
         onClose();
         return;
       }
@@ -423,10 +422,10 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
   const normSpecies = normalizeSpecies(v.species);
 
   return (
-    <Modal title={editing ? "Edit pet request" : "Add my pet"} onClose={() => {if (!savingRef.current) onClose();}}>
+    <ClinicDialog label={requiredSetup ? "Register your first pet" : editing ? "Edit pet request" : "Add my pet"} onClose={() => {if (!requiredSetup && !savingRef.current) onClose();}}><section className="modal owner-pet-setup"><h3>{requiredSetup ? "Register your first pet" : editing ? "Edit pet request" : "Add my pet"}</h3>
       <form onSubmit={submit} noValidate aria-busy={saving}>
         {review.card}
-        <p className="ow-note info">The clinic front desk reviews each patient registration before activating it in the clinical system.</p>
+        <p className="ow-note info">Save your pet’s details to get started. Your pet will appear as Pending verification, and you can request an appointment immediately.</p>
 
         {v.species && GUIDANCE_BY_SPECIES[v.species] && (
           <div className="ow-note" style={{ background: "#eff6ff", borderColor: "#93c5fd", color: "#1e3a8a", fontSize: "0.83rem", lineHeight: 1.45, marginBottom: 14 }}>
@@ -499,14 +498,14 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose }) {
         </fieldset>
         {top && <p className="err" role="alert">{top}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
-        <div className="row end"><button type="button" className="btn ghost" onClick={onClose} disabled={saving}>Close</button><button className="btn" disabled={saving || uploading}>{saving ? "Sending…" : uploading ? "Preparing picture…" : editing ? "Review and resend" : "Review request"}</button></div>
+        <div className="row end"><button type="button" className="btn ghost" onClick={requiredSetup ? onLogout : onClose} disabled={saving}>{requiredSetup ? "Log out" : "Close"}</button><button className="btn" disabled={saving || uploading}>{saving ? "Sending…" : uploading ? "Preparing picture…" : editing ? "Review and resend" : "Review request"}</button></div>
       </form>
-    </Modal>
+    </section></ClinicDialog>
   );
 }
 
 /* ---------- Requests waiting for (or declined by) the clinic ---------- */
-export function RequestList({ db, setDb, me, say, onEdit }) {
+export function RequestList({ db, setDb, me, say, onEdit, onBook }) {
   const [ask, setAsk] = useState("");
   const list = myRequests(db, me);
   if (!list.length) return null;
@@ -518,6 +517,7 @@ export function RequestList({ db, setDb, me, say, onEdit }) {
     setDb(p => ({
       ...p,
       petRequests: (p.petRequests || []).filter(x => x.id !== r.id),
+      pets:p.pets.filter(pet=>pet.id!==r.petId),
       log: addLog(p, me, `Owner withdrew the pet request for ${r.name}`)
     }));
     setAsk("");
@@ -525,7 +525,7 @@ export function RequestList({ db, setDb, me, say, onEdit }) {
   };
   return (
     <section className="op-reqs" aria-label="Pet requests">
-      <h3>Pet requests</h3>
+      <h3>Pets pending verification</h3>
       <PaginatedList label="Pet registration requests" resetKey={null}>{list.map(r => {
         const no = r.status === "Declined";
         return (
@@ -540,13 +540,14 @@ export function RequestList({ db, setDb, me, say, onEdit }) {
                   </span>
                 </div>
               )}
-              <span className={`op-chip ${no ? "no" : "wait"}`}>{no ? "Declined by the clinic" : "Waiting for the clinic to review"}</span>
+              <span className={`op-chip ${no ? "no" : "wait"}`}>{no ? "Declined by the clinic" : "Pending verification"}</span>
               {no && r.declineReason && <small className="op-why">Reason: {r.declineReason}</small>}
               {no && <small className="op-why">Fix the details and send it again, or remove it.</small>}
             </div>
             <div className="op-acts">
+              {!no && onBook && r.petId && <button className="btn sm" onClick={()=>onBook(r.petId)}>Request appointment</button>}
               <button className="btn ghost sm" onClick={() => onEdit(r)}><Icon n="edit" size={14} /> {no ? "Fix and resend" : "Edit"}</button>
-              <button className="btn danger sm" onClick={() => withdraw(r)} onBlur={() => setAsk("")}>{ask === r.id ? "Confirm remove" : "Remove"}</button>
+              <button className="btn danger sm" disabled={db.appts.some(a=>a.petId===r.petId)} title={db.appts.some(a=>a.petId===r.petId) ? "This pet has appointment records; keep its registration for clinic review." : undefined} onClick={() => withdraw(r)} onBlur={() => setAsk("")}>{ask === r.id ? "Confirm remove" : "Remove"}</button>
             </div>
           </div>
         );

@@ -24,12 +24,12 @@ const NOTE_IDEAS = ["My pet is nervous around other animals.", "Please call me b
 const CANCEL_WHY = ["Schedule conflict", "My pet is feeling better", "Booked by mistake", "Need a different date", "Other"];
 const STATUS_NOTE = { Scheduled: "Waiting for the clinic to confirm", Confirmed: "Confirmed. Please arrive 10 minutes early", "Checked-in": "You’re checked in. The vet will call you in", "In consultation": "The vet is seeing your pet now", Completed: "Done. See Visit History for notes", Cancelled: "This visit was cancelled", "No-show": "Marked as missed" };
 const mkRules = (db, me, editing) => v => validateOwnerBooking(v, {
-  pets: scope(db, me, "pets"), vets: db.vets || [], appointments: db.appts, records: db.records, editing
+  pets: scope(db, me, "pets").filter(p=>p.registrationStatus!=="Declined"), vets: db.vets || [], appointments: db.appts, records: db.records, editing
 });
 
 function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
   const TODAY = bookingToday(), LAST = lastDay();
-  const pets = scope(db, me, "pets"), owner = db.owners.find(o => o.id === me.ownerId) || {};
+  const pets = scope(db, me, "pets").filter(p=>p.registrationStatus!=="Declined"), owner = db.owners.find(o => o.id === me.ownerId) || {};
   const prev = editing ? serviceOf(editing) : "", svc0 = editing ? prev : start?.service || (start?.reason ? inferService(start.reason) : "");
   const catalog = useBookingCatalog()?.data?.catalog || [];
   const initialReason = editing?.reason || start?.reason || start?.vaccineName || "";
@@ -115,6 +115,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
     <Modal title={editing ? "Edit appointment" : "Book a visit"} onClose={() => { if (!bookingFlight.current) onClose(); }}>
       <form className="ow-book-form" onSubmit={submit} noValidate>
         {review.card}
+        {pets.find(p=>p.id===v.petId)?.registrationStatus==='Pending' && <p className="ow-note info">Your pet is pending verification. This sends an appointment request; the clinic will review registration before confirming the visit.</p>}
         <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
         {start && (start.fromVaccineCard || start.vaccineName) && (
           <div className="ow-banner ok" style={{ marginBottom: 12 }}>
@@ -123,7 +124,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
             </span>
           </div>
         )}
-        {!pets.length && <p className="ow-note">You have no pets on your account yet. Please ask the clinic front desk to register your pet first.</p>}
+        {!pets.length && <p className="ow-note">You have no pets on your account yet. Add your pet from My Pets, then request an appointment immediately.</p>}
         {moved && <p className="ow-note">Changing the service, date, time or veterinarian sends this visit back to “Scheduled” so the clinic can re-confirm it.</p>}
         {!changingDate && !f.show("date") ? <section className="ow-book-date" aria-label="Selected visit date">
           <CalendarDays size={24} aria-hidden="true" />
@@ -134,7 +135,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
         {conflict && <section className="ow-book-conflict" role="alert"><b>A visit is already on this pet’s calendar</b><p>{conflict.date} · {conflict.time ? fmt12(conflict.time) : "Time not recorded"} · {conflict.status}</p><p>{conflict.reason}</p><button type="button" className="btn ghost sm" onClick={() => onExisting(conflict)}>View existing visit</button></section>}
         <ServicePicker value={v.service} onChange={x => { if (x === v.service) return; f.set("service", x); f.quiet({ time: "", vaccineId: "" }); }} error={f.show("service")} />
         <div className="ow-book-patient">
-        <Field id="petId" label="Pet" req type="select" disabled={!!editing?.followUpId} value={v.petId} onChange={x => f.patch({petId:x, followUpId:"", vaccineId:""})} onBlur={() => f.blur("petId")} options={pets.map(p => [p.id, `${p.name} (${p.species})`])} error={f.show("petId")} valid={f.ok("petId")} hint="Which pet is coming in?" />
+        <Field id="petId" label="Pet" req type="select" disabled={!!editing?.followUpId} value={v.petId} onChange={x => f.patch({petId:x, followUpId:"", vaccineId:""})} onBlur={() => f.blur("petId")} options={pets.map(p => [p.id, `${p.name} (${p.species})${p.registrationStatus==='Pending' ? ' · Pending verification' : ''}`])} error={f.show("petId")} valid={f.ok("petId")} hint="Which pet is coming in?" />
         <Field id="vetId" label="Veterinarian" req type="select" value={v.vetId} onChange={x => f.patch({ vetId: x, time: "" })} onBlur={() => f.blur("vetId")} options={liveDoctors(db)} error={f.show("vetId")} valid={f.ok("vetId")} hint="Times below update for the vet you pick" />
         </div>
 
@@ -250,7 +251,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
   const TODAY = bookingToday();
   const [modal, setModal] = useState(() => prefill.data ? { book: true, start: prefill.data } : null), [q, setQ] = useState(""), [view, setView] = useState("upcoming"), [pet, setPet] = useState(""), [svc, setSvc] = useState(""), [day, setDay] = useState("");
   useEffect(() => { prefill.data = null; }, []);
-  const pets = scope(db, me, "pets");
+  const pets = scope(db, me, "pets").filter(p=>p.registrationStatus!=="Declined");
   const selectedVisit = scope(db, me, "appts").find(a => a.id === (modal?.view?.id || modal?.cancel?.id));
   let list = scope(db, me, "appts").slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   const live = a => OPEN.includes(a.status) || ["Checked-in", "In consultation"].includes(a.status);

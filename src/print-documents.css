@@ -36,3 +36,9 @@
   .audit-entry-content{display:block!important}.audit-entry-content>*{margin:4px 0!important}.audit-action{white-space:pre-wrap!important;overflow:visible!important;text-overflow:clip!important}.audit-event-icon,.audit-detail-toggle{display:none!important}
   body #root .pagination-hidden-row{display:table-row!important}body #root .pagination-hidden-item{display:revert!important}
 }
+@media print {
+  body #root .discharge-document { font-size:10pt; line-height:1.4; }
+  .discharge-document :is(h2,h3,h4) { break-after:avoid; margin:4mm 0 2mm; }
+  .discharge-document p { margin:0 0 3mm; }
+  .discharge-document .ow-bill-details { break-inside:avoid; }
+}

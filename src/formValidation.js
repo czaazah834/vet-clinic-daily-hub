@@ -1,3 +1,4 @@
+import { consentErrors } from './admissionCare.js';
 const text = (value,label,max,required=false) => !String(value ?? '').trim() && required ? `${label} is required.` : String(value ?? '').length > max ? `Use at most ${max.toLocaleString()} characters.` : '';
 export const numberError = (value,label,min,max,{required=true,integer=false}={}) => {
   if (String(value ?? '').trim()==='') return required ? `Enter ${label.toLowerCase()}.` : '';
@@ -7,6 +8,9 @@ export const numberError = (value,label,min,max,{required=true,integer=false}={}
 export function admissionErrors(form,{mode,vet,visits=[]}) {
   const create=mode==='create', discharge=mode==='discharge', release=mode==='release';
   return {
+    ...(vet && !discharge && !release ? consentErrors(form,create) : {}),
+    nextObservationAt:vet && !discharge && !release && (create || form.nextObservationAt || form.observationInstructions) ? !Number.isFinite(medicineEventTime(form.nextObservationAt)) ? 'Enter the next observation date and time (Manila).' : medicineEventTime(form.nextObservationAt)<=Date.now() ? 'Choose a future observation time.' : '' : '',
+    observationInstructions:vet && !discharge && !release ? text(form.observationInstructions,'Observation instructions',1000,create || !!form.nextObservationAt) : '',
     apptId:create && !visits.some(v=>v.id===form.apptId) ? 'Choose an assigned consultation.' : '',
     clinicalNote:text(form.clinicalNote,'Clinic note',3000,true),
     carePlan:vet && !discharge && !release ? text(form.carePlan,'Care plan',3000,create) : '',

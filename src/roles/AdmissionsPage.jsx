@@ -1,3 +1,4 @@
+import AdmissionDischargeSummary from './AdmissionDischargeSummary.jsx';
 import AdmissionForm from './AdmissionForm.jsx';
 import { Hospital } from 'lucide-react';
 import { useState } from 'react';
@@ -32,6 +33,7 @@ function NewAdmission({me,onSaved}) {
 }
 
 function AdmissionDetail({id,me,go,onBack,onChanged}) {
+  const [print,setPrint] = useState(false);
   const [pages,setPages] = useState([null]), [mode,setMode] = useState(null), [medicine,setMedicine] = useState(null);
   const cursor = pages.at(-1);
   const read = useClinicRead(`/api/admissions/${id}${cursor ? `?before=${encodeURIComponent(cursor)}` : ''}`,3000);
@@ -45,15 +47,21 @@ function AdmissionDetail({id,me,go,onBack,onChanged}) {
       <header className="admission-heading"><div><h2>{admission.petName}</h2><p>{admission.vetName}{!owner && ` · Owner: ${admission.ownerName}`}</p></div><Status admission={admission} /></header>
       <p>Admitted: {time(admission.admittedAt)}{admission.dischargeApprovedAt && ` · Discharge approved: ${time(admission.dischargeApprovedAt)}`}{admission.dischargedAt && ` · Discharged: ${time(admission.dischargedAt)}`}</p>
       {owner ? <p>These are saved updates shared by the clinic. Checked at {time(read.data.checkedAt)}. Times are shown in Manila time.</p> : <>
-        <section className="admission-plan"><h3>Reason for admission</h3><p>{admission.reason}</p><h3>Veterinarian care plan</h3><p>{admission.carePlan}</p></section>
+        <section className="admission-plan"><h3>Reason for admission</h3><p>{admission.reason}</p><h3>Veterinarian care plan</h3><p>{admission.carePlan}</p><h3>Next observation · Manila time</h3>
+          {admission.nextObservationAt ? <><p><b>{admission.observationCompletedAt ? 'Completed' : admission.status!=='Admitted' ? 'Care closed' : Date.parse(admission.nextObservationAt)<Date.parse(read.data.checkedAt) ? 'Overdue — notify the veterinarian' : 'Scheduled'}: {time(admission.nextObservationAt)}</b></p><p>{admission.observationInstructions}</p>{admission.observationCompletedAt && <p>Completion recorded: {time(admission.observationCompletedAt)}. The veterinarian sets the next check.</p>}</> : <p>No observation time recorded. Ask the veterinarian to set the next check.</p>}
+          <p>Assistants follow the saved plan, record findings and actual medicine events, and contact the veterinarian if the pet’s condition changes. Only the veterinarian changes the plan or approves discharge.</p></section>
         {admission.status === 'Admitted' && ['vet','assistant'].includes(me.role) && <div className="admission-actions"><button className="btn gold" onClick={() => setMode('update')}>{me.role === 'vet' ? 'Add veterinarian update' : 'Record care observation'}</button>
           {me.role === 'vet' && <button className="btn" disabled={admission.visitStatus !== 'Completed'} onClick={() => setMode('discharge')}>Approve discharge</button>}
           {me.role === 'vet' && admission.visitStatus !== 'Completed' && <p>Finalize the consultation SOAP notes in the Clinical Queue before discharge.</p>}
         </div>}
       </>}
+      <section className="admission-plan" aria-label="Admission consent and emergency contact"><h3>Owner consent and emergency contact</h3>
+        {admission.consent ? <><p>Consent received from {admission.consent.name} · {admission.consent.method}</p><p>Recorded by {admission.consent.recordedBy} · {time(admission.consent.recordedAt)} (staff confirmation)</p><p>Emergency contact: {admission.consent.emergencyName} · {admission.consent.emergencyPhone} · {admission.consent.emergencyRelationship}</p>{owner && <p>Contact the clinic if these details need correction.</p>}</> : <p>Not recorded for this stay. {owner ? 'Contact the clinic to confirm consent and emergency contact details.' : 'The veterinarian can record confirmation and contact details in a veterinarian update.'}</p>}
+      </section>
       <section className="admission-plan" aria-label="Discharge and checkout progress"><h3>Discharge and checkout</h3>
         <p>{admission.status === 'Admitted' ? 'Care is ongoing. Final checkout waits for veterinarian discharge approval.' : admission.status === 'Ready for discharge' ? admission.billingStatus === 'Paid' ? 'Payment saved. Reception can now confirm release to the owner.' : 'Discharge approved. Reception must finalize the bill and record payment before release.' : 'This stay is closed. Its care history and discharge instructions are retained.'}</p>
         <p>Payment: {admission.billingStatus || 'Unbilled'}</p>
+        {admission.status!=='Admitted' && <button className="btn" onClick={()=>setPrint(true)}>View / print discharge summary</button>}
         {admission.status === 'Ready for discharge' && me.role === 'assistant' && <div className="admission-actions">{admission.billingStatus !== 'Paid' && go && <button className="btn" onClick={()=>go('home')}>Open Front Desk checkout inbox</button>}<button className="btn gold" disabled={admission.billingStatus !== 'Paid'} onClick={()=>setMode('release')}>Confirm release to owner</button></div>}
       </section>
       {!owner && <section className="admission-plan" aria-label="Medicine orders"><h3>Veterinarian medicine orders</h3>
@@ -69,7 +77,10 @@ function AdmissionDetail({id,me,go,onBack,onChanged}) {
       {!read.data.updates.length && <p>{owner ? 'The clinic has not shared an update on this page yet.' : 'No updates on this page.'}</p>}
       <ol className="admission-timeline">{read.data.updates.map(update => <li key={update.id}>
         <h4>{update.kind} <small>{time(update.at)}</small></h4><p className="admission-by">{update.by} · {update.role === 'vet' ? 'Veterinarian' : 'Veterinary assistant'}</p>
-        {!owner && <><p>{update.clinicalNote}</p>{update.medication?.medicine && <p><b>{update.medication.medicine}</b>{update.medication.dose && ` · ${update.medication.dose} · ${update.medication.route}`}{update.medication.result && ` · ${update.medication.result} · ${time(update.medication.occurredAt)}`}{update.medication.billableQuantity > 0 && ` · Clinic supplies used: ${update.medication.billableQuantity} whole items/packages`}</p>}{update.voided && <p><b>Entered in error — original entry retained; excluded from charges.</b></p>}{update.medication?.voids && <p>Corrects medicine entry: {update.medication.voids}</p>}{admission.status === 'Admitted' && me.role === 'vet' && update.kind === 'Medicine administration' && !update.voided && <button className="btn sm ghost" onClick={()=>setMedicine({action:'correct-medication',event:update})}>Mark as entered in error</button>}{update.carePlan && <p><b>Care plan:</b> {update.carePlan}</p>}
+        {!owner && <><p>{update.clinicalNote}</p>{update.medication?.medicine && <p><b>{update.medication.medicine}</b>{update.medication.dose && ` · ${update.medication.dose} · ${update.medication.route}`}{update.medication.result && ` · ${update.medication.result} · ${time(update.medication.occurredAt)}`}{update.medication.billableQuantity > 0 && ` · Clinic supplies used: ${update.medication.billableQuantity} whole items/packages`}</p>}{update.voided && <p><b>Entered in error — original entry retained; excluded from charges.</b></p>}{update.medication?.voids && <p>Corrects medicine entry: {update.medication.voids}</p>}{admission.status === 'Admitted' && me.role === 'vet' && update.kind === 'Medicine administration' && !update.voided && <button className="btn sm ghost" onClick={()=>setMedicine({action:'correct-medication',event:update})}>Mark as entered in error</button>}{update.careDetails?.nextObservationAt && <p><b>Observation scheduled:</b> {time(update.careDetails.nextObservationAt)} · {update.careDetails.observationInstructions}</p>}
+          {update.careDetails?.completedObservation && <p><b>Observation completed:</b> {time(update.careDetails.completedObservation.completedAt)} · Scheduled for {time(update.careDetails.completedObservation.dueAt)} · {update.careDetails.completedObservation.instructions}</p>}
+          {update.careDetails?.consent && <p><b>Consent recorded:</b> {update.careDetails.consent.name} · {update.careDetails.consent.method} · Emergency: {update.careDetails.consent.emergencyName}, {update.careDetails.consent.emergencyPhone}, {update.careDetails.consent.emergencyRelationship}</p>}
+          {update.carePlan && <p><b>Care plan:</b> {update.carePlan}</p>}
           {Object.keys(update.measurements || {}).length > 0 && <p>Measured: {Object.entries(update.measurements).map(([key,value]) => `${key === 'temp' ? 'Temperature' : 'Weight'} ${value} ${key === 'temp' ? '°C' : 'kg'}`).join(' · ')}</p>}</>}
         {update.ownerUpdate && <div className="admission-owner-update">{!owner && <b>Shared with owner</b>}<p>{update.ownerUpdate}</p></div>}
         {!owner && !update.ownerUpdate && <small>Clinic-only update</small>}
@@ -77,6 +88,7 @@ function AdmissionDetail({id,me,go,onBack,onChanged}) {
       <div className="admission-actions"><button className="btn sm ghost" disabled={pages.length === 1} onClick={() => setPages(previous => previous.slice(0,-1))}>Newer updates</button><button className="btn sm ghost" disabled={!read.data.nextCursor} onClick={() => setPages(previous => [...previous,read.data.nextCursor])}>Older updates</button></div>
       <p className="admission-footnote">Care history is retained after discharge. Vet approval → final payment → confirmed release. Prescribed, administered and take-home medicines remain separate records.</p>
     </>}
+    {print && <AdmissionDischargeSummary id={id} onClose={()=>setPrint(false)} />}
     {medicine && admission && <AdmissionMedicineForm {...medicine} admission={admission} onClose={()=>setMedicine(null)} onSaved={saved} />}
     {mode && admission && <AdmissionForm mode={mode} admission={admission} me={me} onClose={() => setMode(null)} onSaved={saved} />}
   </section>;
@@ -121,7 +133,7 @@ export default function AdmissionsPage({me,go,say = () => {}}) {
           <p className="admission-card-meta">{row.vetName}<br />Admitted {time(row.admittedAt)}</p>
           {!owner && <p className="admission-preview"><b>Reason: </b>{row.reason}</p>}
           {row.latestUpdate ? <div className="admission-owner-update"><small>{owner ? 'Latest clinic update' : 'Latest shared owner update'}</small><p className="admission-preview">{row.latestUpdate}</p></div> : <p className="admission-footnote">No owner update shared yet.</p>}
-          <p className="admission-next-step"><b>Next: </b>{row.status === 'Admitted' ? owner ? 'Ongoing care and clinic updates.' : 'Continue care; vet approval is required for discharge.' : row.status === 'Ready for discharge' ? row.billingStatus === 'Paid' ? 'Reception confirms release to the owner.' : 'Reception records final payment before release.' : 'View the retained care history and home instructions.'}</p>
+          <p className="admission-next-step"><b>Next: </b>{!owner && row.status==='Admitted' && row.nextObservationAt && !row.observationCompletedAt ? `Observation ${Date.parse(row.nextObservationAt)<Date.parse(data.checkedAt) ? 'overdue' : 'due'} ${time(row.nextObservationAt)}. ` : ''}{row.status === 'Admitted' ? owner ? 'Ongoing care and clinic updates.' : 'Continue care; vet approval is required for discharge.' : row.status === 'Ready for discharge' ? row.billingStatus === 'Paid' ? 'Reception confirms release to the owner.' : 'Reception records final payment before release.' : 'View the retained care history and home instructions.'}</p>
           <button className="btn" onClick={() => setSelected(row.id)}>{owner ? 'View pet updates' : 'Open care record'}</button>
         </article>)}</div>
         {data.total>50 && <div className="admission-actions"><button className="btn sm ghost" disabled={!offset} onClick={() => setOffset(previous => Math.max(0,previous-50))}>Previous stays</button><button className="btn sm ghost" disabled={offset+50 >= data.total} onClick={() => setOffset(previous => previous+50)}>More stays</button></div>}

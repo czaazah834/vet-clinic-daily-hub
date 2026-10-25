@@ -1,3 +1,4 @@
+import { isVerifiedPet, needsFirstPetSetup } from '../ownerOnboarding.js';
 import { PaginatedList } from "../components/Pagination.jsx";
 import AdmissionsPage, { AdmissionsSummary } from './AdmissionsPage.jsx';
 import OwnerBills from "./owner/Bills.jsx";
@@ -20,7 +21,7 @@ const LIVE = ["Scheduled", "Confirmed", "Checked-in", "In consultation"];
 function Dash({ db, setDb, me, go, say }) {
   const TODAY = bookingToday();
   const [modal, setModal] = useState(null);   // { form, editing } or { profile }
-  const pets = scope(db, me, "pets"), A = scope(db, me, "appts"), V = scope(db, me, "vacc"), reqs = myRequests(db, me);
+  const registered = scope(db, me, "pets"), pets = registered.filter(isVerifiedPet), A = scope(db, me, "appts"), V = scope(db, me, "vacc"), reqs = myRequests(db, me);
   const blocked = addBlock(db, me);
   const book = (petId, reason) => { setPrefill(petId ? { petId, reason } : null); go("appts"); };
   const recalls = currentVaccinationDue(V);
@@ -30,8 +31,8 @@ function Dash({ db, setDb, me, go, say }) {
   const first = me.name.split(" ")[0];
   const steps = [
     ["plus", "Add your pet", "Name, species, birth date and weight.", () => setModal({ form: true })],
-    ["clock", "The clinic reviews it", "The front desk checks the details."],
-    ["calendar", "Book and track", "Visits, vaccine cards and history unlock."],
+    ["calendar", "Request a visit", "Book while registration is pending verification.", () => book()],
+    ["clock", "The clinic reviews it", "Track registration and appointment updates here."],
   ];
 
   return (<>
@@ -45,7 +46,7 @@ function Dash({ db, setDb, me, go, say }) {
         <div className="ow-hero-acts">
           <button className="btn glass" onClick={() => go("bills")}>Bills & payments</button>
           <button className="btn glass" onClick={() => go("prices")}>View services & prices</button>
-          {pets.length > 0 && <button className="btn gold" onClick={() => book()}><Icon n="calendar" size={16} /> Book a visit</button>}
+          {registered.some(p=>p.registrationStatus!=="Declined") && <button className="btn gold" onClick={() => book()}><Icon n="calendar" size={16} /> Book a visit</button>}
           <button className={pets.length ? "btn glass" : "btn gold"} disabled={!!blocked} title={blocked} onClick={() => setModal({ form: true })}><Icon n="plus" size={16} /> Add my pet</button>
         </div>
       </div>
@@ -77,7 +78,7 @@ function Dash({ db, setDb, me, go, say }) {
     {over.length > 0 && <div className="ow-banner"><Icon n="alert" size={20} /><span><b>Vaccine overdue:</b> {over.map(v => `${petName(db, v.petId)} (${v.vaccine})`).join(", ")}</span><button className="btn sm" onClick={() => go("vacc")}>View records</button></div>}
     <CareFollowUps db={db} go={go} owner />
     <AdmissionsSummary me={me} go={go} />
-    <RequestList db={db} setDb={setDb} me={me} say={say} onEdit={r => setModal({ form: true, editing: r })} />
+    <RequestList db={db} setDb={setDb} me={me} say={say} onEdit={r => setModal({ form: true, editing: r })} onBook={book} />
     {pets.length ? <PaginatedList label="My pets" resetKey={null} className="petgrid">{pets.map(p => {
       const { recall: nv, appointment: nvAppt, matched } = nextVaccination(p.id, V, A, TODAY);
       const na = A.filter(a => a.petId === p.id && LIVE.includes(a.status) && a.date >= TODAY).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
@@ -100,13 +101,17 @@ function Dash({ db, setDb, me, go, say }) {
         <div className="kv"><span>Next visit</span><b>{na ? <>{na.date} {fmt12(na.time)} <Badge v={na.status} /></> : "None booked"}</b></div>
         <small className="pc-more">View details <Icon n="chevron" size={14} /></small></article>;
     })}</PaginatedList> : null}
-    {!pets.length && reqs.length > 0 && <div className="empty sm">Your pet will appear here once the clinic approves the request.</div>}
+    {!pets.length && reqs.length > 0 && <div className="empty sm">Your saved pets are listed above. You can request an appointment while verification is pending.</div>}
     {modal && modal.form && <PetFormModal db={db} setDb={setDb} me={me} say={say} editing={modal.editing} onClose={() => setModal(null)} />}
     {modal && modal.profile && <PetProfileModal pet={modal.profile} db={db} me={me} onClose={() => setModal(null)} onVacc={() => { pick.petId = modal.profile.id; go("vacc"); }} onBook={(pid, rsn) => book(pid || modal.profile.id, rsn)} />}
   </>);
 }
 const P = (k, l, i, sub, Page, s) => ({ k, l, i, sub, Page, s });
-export const owner = { portal: "Pet Owner Portal", Dash, Header: OwnerHeader, menu: [
+export function FirstPetSetup({db,setDb,me,say,go,onLogout}) {
+  if(!needsFirstPetSetup(db,me)) return null;
+  return <PetFormModal requiredSetup db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} onClose={()=>go('home')} />;
+}
+export const owner = { Onboarding:FirstPetSetup, portal: "Pet Owner Portal", Dash, Header: OwnerHeader, menu: [
   { k: "home", l: "My Pets", s: "Pets", i: "paw", dash: 1, sub: "Your pets, their profiles, next vaccines and visits." },
   P("appts", "My Appointments", "calendar", "Book, change or cancel a visit. Switch between the list and the calendar.", OwnerAppts, "Visits"),
   P('admissions', 'Pet Admission Updates', 'hospital', 'Clinic-shared updates during your pet’s stay and discharge instructions.', AdmissionsPage, 'Updates'),

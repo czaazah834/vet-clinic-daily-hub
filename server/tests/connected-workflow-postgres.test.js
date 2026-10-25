@@ -57,10 +57,10 @@ test('booking → approval → check-in → consultation → billing → owner r
   await patch('assistant',{status:'Confirmed'}); assert.equal(visit.status,'Confirmed');
   await patch('assistant',{status:'Checked-in',intakeVitals:{weight:10.5,temp:38.5,triageLevel:'Routine',notes:'Synthetic intake'}}); assert.equal(visit.intakeVitals.weight,10.5);
   await patch('vet',{status:'In consultation'});
-  const admissionRequest = {requestId:crypto.randomUUID(),apptId:visit.id,expectedVisit:intakeVisitSnapshot(visit),clinicalNote:'Private observation reason',carePlan:'Vet-approved observation plan',ownerUpdate:'Your pet is staying for observation.'};
+  const admissionRequest = {requestId:crypto.randomUUID(),apptId:visit.id,expectedVisit:intakeVisitSnapshot(visit),clinicalNote:'Private observation reason',carePlan:'Vet-approved observation plan',ownerUpdate:'Your pet is staying for observation.',nextObservationAt:new Date(Date.now()+3600000).toISOString(),observationInstructions:'Private scheduled check',consentConfirmed:true,consentName:'Synthetic owner',consentMethod:'In person',emergencyName:'Synthetic contact',emergencyPhone:'+639170000001',emergencyRelationship:'Owner'};
   const admitted = await call('vet','POST','/admissions',admissionRequest); assert.equal(admitted.status,200,JSON.stringify(admitted));
   const admissionId = admitted.data.admission.id;
-  const observation = await call('assistant','POST',`/admissions/${admissionId}/update`,{requestId:crypto.randomUUID(),revision:0,clinicalNote:'Private measured observation',ownerUpdate:'Your pet has been checked by clinic staff.',measurements:{temp:38.6}}); assert.equal(observation.status,200,JSON.stringify(observation));
+  const observation = await call('assistant','POST',`/admissions/${admissionId}/update`,{requestId:crypto.randomUUID(),revision:0,completeObservation:true,clinicalNote:'Private measured observation',ownerUpdate:'Your pet has been checked by clinic staff.',measurements:{temp:38.6}}); assert.equal(observation.status,200,JSON.stringify(observation));
   const note = {id:'connected-note',petId:visit.petId,apptId:visit.id,date:'2026-10-26',symptoms:'Synthetic concern',objective:'Synthetic examination',diagnosis:configured.options.diagnosis[0],treatment:configured.options.treatment[0],prescription:'Synthetic home instructions',performedServices:['srv_consult'],prescriptionItems:[{catalogId:'product_multivitamin',quantity:1,instructions:'Synthetic directions'},{catalogId:'srv_nexgard',quantity:1,instructions:'Synthetic home prescription'}],expectedVisit:intakeVisitSnapshot(visit),weight:10.5,careStatus:'Routine care'};
   const saved = await call('vet','POST','/consultations',note); assert.equal(saved.status,200,JSON.stringify(saved)); assert.equal(saved.data.appointment.status,'Completed');
   const orderId=crypto.randomUUID();
@@ -91,6 +91,9 @@ test('booking → approval → check-in → consultation → billing → owner r
   const paidVisit=records.appts.find(row=>row.id===visit.id);assert.equal(paidVisit.amount,1850);assert.equal(paidVisit.invoiceItems.find(line=>line.source==='admission').catalogId,'srv_nexgard');
   assert.equal((await query("SELECT count(*)::int n FROM admission_updates WHERE admission_id=$1 AND kind='Medicine administration'",[admissionId])).rows[0].n,1,'payment and release do not add medicine events');
   const record = records.consults.find(row => row.id === note.id); assert.equal(record.apptId,visit.id); assert.equal(record.diagnosis,note.diagnosis); assert.equal(record.treatment,note.treatment); assert.equal(record.prescriptionItems[0].catalogId,'product_multivitamin');
+  const document=await call('owner','GET',`/admissions/${admissionId}/discharge-summary`);assert.equal(document.status,200,JSON.stringify(document));
+  assert.equal(document.data.admission.status,'Discharged');assert.equal(document.data.appointment.amount,paidVisit.amount);assert.deepEqual(document.data.appointment.invoiceItems,paidVisit.invoiceItems);assert.equal(document.data.consultation.prescription,record.prescription);assert.equal(document.data.consultation.prescriptionItems[0].name,record.prescriptionItems[0].name);
+  assert.ok(!JSON.stringify(document.data).includes('Private'));
   const foreign = (await call('other-owner','GET','/state')).data.data;
   assert.ok(!foreign.appts.some(row => row.id === visit.id)); assert.ok(!foreign.consults.some(row => row.id === note.id));
   assert.equal((await query('SELECT status FROM checkout_tasks WHERE appointment_id=$1',[visit.id])).rows[0].status,'completed');

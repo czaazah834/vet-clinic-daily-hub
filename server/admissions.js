@@ -1,13 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { query } from './db.js';
+import { consentErrors } from '../src/admissionCare.js';
 
 let ready;
 export function ensureAdmissionsSchema() {
   return ready ||= (async () => {
     await query(readFileSync(new URL('./database/admissions.sql', import.meta.url), 'utf8'));
     const exists = (await query("SELECT to_regclass(format('%I.pawcare_schema_migrations', current_schema())) AS migrations")).rows[0]?.migrations;
-    if (exists && (await query("SELECT version FROM pawcare_schema_migrations WHERE version='admission-workflow-v1'")).rows.length) return;
-    await query(readFileSync(new URL('./database/admission-workflow.sql', import.meta.url), 'utf8'));
+    if (!exists || !(await query("SELECT version FROM pawcare_schema_migrations WHERE version='admission-workflow-v1'")).rows.length)
+      await query(readFileSync(new URL('./database/admission-workflow.sql', import.meta.url), 'utf8'));
+    if (!(await query("SELECT version FROM pawcare_schema_migrations WHERE version='admission-care-v1'")).rows.length)
+      await query(readFileSync(new URL('./database/admission-care.sql', import.meta.url), 'utf8'));
   })().catch(error => { ready = undefined; throw error; });
 }
 export const admissionError = (message, status = 400) => Object.assign(new Error(message), {status});
@@ -28,6 +31,24 @@ export function admissionInput(body, action, role) {
     data.apptId = body.apptId;
     data.carePlan = text(body.carePlan,'Care plan',3000,true);
   } else if (role === 'vet' && action === 'update') data.carePlan = text(body.carePlan,'Care plan',3000);
+  const careFields = ['nextObservationAt','observationInstructions','consentConfirmed','consentName','consentMethod','emergencyName','emergencyPhone','emergencyRelationship'];
+  if (careFields.some(key => body[key] !== undefined) && (role !== 'vet' || !['create','update'].includes(action))) throw admissionError('Only a veterinarian can set observation tasks or record admission consent.',403);
+  if (action === 'create' || body.nextObservationAt !== undefined || body.observationInstructions !== undefined) {
+    if (typeof body.nextObservationAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(body.nextObservationAt) || !Number.isFinite(Date.parse(body.nextObservationAt)) || new Date(`${body.nextObservationAt.slice(0,10)}T00:00:00Z`).toISOString().slice(0,10)!==body.nextObservationAt.slice(0,10)) throw admissionError('Set the next observation date and time with a timezone.');
+    data.nextObservationAt = new Date(body.nextObservationAt).toISOString();
+    data.observationInstructions = text(body.observationInstructions,'Observation instructions',1000,true);
+  }
+  if (action === 'create' || careFields.slice(2).some(key => body[key] !== undefined)) {
+    const error = Object.values(consentErrors(body)).find(Boolean);
+    if (error) throw admissionError(error);
+    data.consent = {name:body.consentName.trim(),method:body.consentMethod,emergencyName:body.emergencyName.trim(),emergencyPhone:body.emergencyPhone.trim(),emergencyRelationship:body.emergencyRelationship.trim()};
+  }
+  if (body.completeObservation !== undefined) {
+    if (action !== 'update' || !['vet','assistant'].includes(role)) throw admissionError('Only care staff can complete an observation.',403);
+    if (typeof body.completeObservation !== 'boolean') throw admissionError('Confirm whether the observation was performed.');
+    if (body.completeObservation && data.nextObservationAt) throw admissionError('Record the completed observation before scheduling the next one.');
+    if (body.completeObservation) data.completeObservation = true;
+  }
   if (action === 'discharge') data.dischargeInstructions = text(body.dischargeInstructions,'Discharge and home-care instructions',3000,true);
   if (body.measurements !== undefined) {
     if (!body.measurements || typeof body.measurements !== 'object' || Array.isArray(body.measurements) || Object.keys(body.measurements).some(key => !['temp','weight'].includes(key))) throw admissionError('Record only measured temperature and weight.');
@@ -70,10 +91,10 @@ export function admissionInput(body, action, role) {
 export function admissionView(row, owner = false) {
   const publicFields = {id:row.id,petId:row.pet_id,petName:row.pet_name,apptId:row.appt_id,vetName:row.vet_name,
     status:row.status,admittedAt:row.admitted_at,dischargeApprovedAt:row.discharge_approved_at,dischargedAt:row.discharged_at,billingStatus:row.billing_status,
-    dischargeInstructions:row.discharge_instructions,latestUpdate:row.latest_update || '',latestUpdateAt:row.latest_update_at || null};
-  return owner ? publicFields : {...publicFields,ownerName:row.owner_name,vetId:row.vet_id,revision:row.revision,reason:row.reason,carePlan:row.care_plan,visitStatus:row.visit_status};
+    dischargeInstructions:row.discharge_instructions,consent:row.consent || null,latestUpdate:row.latest_update || '',latestUpdateAt:row.latest_update_at || null};
+  return owner ? publicFields : {...publicFields,ownerName:row.owner_name,vetId:row.vet_id,revision:row.revision,reason:row.reason,carePlan:row.care_plan,visitStatus:row.visit_status,nextObservationAt:row.next_observation_at,observationInstructions:row.observation_instructions,observationCompletedAt:row.observation_completed_at};
 }
 export function admissionUpdateView(row, owner = false) {
   const publicFields = {id:row.id,kind:row.kind,at:row.created_at,by:row.actor_name,role:row.actor_role,ownerUpdate:row.owner_update};
-  return owner ? publicFields : {...publicFields,clinicalNote:row.clinical_note,carePlan:row.care_plan,measurements:row.measurements,medication:row.medication,voided:Boolean(row.voided)};
+  return owner ? publicFields : {...publicFields,clinicalNote:row.clinical_note,carePlan:row.care_plan,measurements:row.measurements,medication:row.medication,careDetails:row.care_details,voided:Boolean(row.voided)};
 }

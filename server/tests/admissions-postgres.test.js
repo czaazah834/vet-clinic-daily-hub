@@ -34,7 +34,7 @@ const fixture = async (status='In consultation', petId=crypto.randomUUID()) => {
   await query("INSERT INTO pets(id,owner_id,name,species,birth,weight) VALUES($1,'owner','Synthetic patient','Dog','2020-01-01',10) ON CONFLICT DO NOTHING",[petId]);
   const visit = (await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status,intake_vitals) VALUES($1,$2,'vet','2026-10-25','09:00','Synthetic visit',$3,'{\"temp\":38.5,\"weight\":10}') RETURNING *",[crypto.randomUUID(),petId,status])).rows[0];
   if (status==='Completed') await query("INSERT INTO consultations(id,pet_id,vet_id,appt_id,date,symptoms,objective,diagnosis,treatment) VALUES($1,$2,'vet',$3,'2026-10-25','Recorded history','Recorded exam','Vet diagnosis','Vet treatment')",[crypto.randomUUID(),petId,visit.id]);
-  return {visit,body:{requestId:crypto.randomUUID(),apptId:visit.id,expectedVisit:intakeVisitSnapshot(visit),clinicalNote:'Private admission reason',carePlan:'Private veterinarian care plan',ownerUpdate:'Your pet is staying for observation.'}};
+  return {visit,body:{requestId:crypto.randomUUID(),apptId:visit.id,expectedVisit:intakeVisitSnapshot(visit),clinicalNote:'Private admission reason',carePlan:'Private veterinarian care plan',ownerUpdate:'Your pet is staying for observation.',nextObservationAt:new Date(Date.now()+3600000).toISOString(),observationInstructions:'Private scheduled check',consentConfirmed:true,consentName:'Synthetic owner',consentMethod:'In person',emergencyName:'Synthetic contact',emergencyPhone:'+639170000001',emergencyRelationship:'Owner'}};
 };
 const admit = async status => {
   const f = await fixture(status); const response = await call('vet','POST','',f.body);
@@ -234,9 +234,58 @@ test('workflow migration preserves legacy discharges and can be applied repeated
   const id=crypto.randomUUID();
   await client.query("INSERT INTO admissions(id,pet_id,appt_id,reason,care_plan,status,discharged_at,discharge_instructions) VALUES($1,$2,$3,'Original reason','Original plan','Discharged','2026-10-24T10:00:00Z','Original instructions')",[id,f.visit.pet_id,f.visit.id]);
   const before=(await client.query('SELECT * FROM admissions WHERE id=$1',[id])).rows[0];
-  for(let i=0;i<2;i++)await client.query(readFileSync(new URL('../database/admission-workflow.sql',import.meta.url),'utf8'));
+  for(let i=0;i<2;i++) {
+    await client.query(readFileSync(new URL('../database/admission-workflow.sql',import.meta.url),'utf8'));
+    await client.query(readFileSync(new URL('../database/admission-care.sql',import.meta.url),'utf8'));
+  }
   const after=(await client.query('SELECT * FROM admissions WHERE id=$1',[id])).rows[0];
   for(const key of Object.keys(before))assert.deepEqual(after[key],before[key],key);
   assert.equal(after.discharge_approved_at,null,'no fabricated historic approval time');
+  assert.equal(after.consent,null);assert.equal(after.next_observation_at,null);assert.equal(after.observation_completed_at,null);
  }finally{await client.query('ROLLBACK');client.release();}
+});
+
+test('consent and timed observation tasks are vet-set, versioned, completed once and owner-isolated',async()=>{
+  const f=await fixture();
+  for(const extra of [{consentConfirmed:false},{consentName:42},{nextObservationAt:'2099-02-30T12:00:00Z'},{emergencyPhone:'123'},{nextObservationAt:'2000-01-01T12:00:00Z'},{observationInstructions:''}])assert.equal((await call('vet','POST','',{...f.body,...extra})).status,400);
+  const created=await call('vet','POST','',f.body);assert.equal(created.status,200,JSON.stringify(created));
+  const id=f.body.requestId,path=`/${id}`;
+  assert.equal(created.data.admission.consent.name,'Synthetic owner');assert.ok(created.data.admission.consent.recordedAt);
+  assert.equal(created.data.admission.nextObservationAt,f.body.nextObservationAt);
+  for(const extra of [{nextObservationAt:new Date(Date.now()+7200000).toISOString(),observationInstructions:'Unauthorized'},{consentConfirmed:true},{observationInstructions:'Unauthorized'}])assert.equal((await call('assistant','POST',`${path}/update`,update(0,extra))).status,403);
+  const done=update(0,{completeObservation:true,ownerUpdate:''});
+  const completed=await call('assistant','POST',`${path}/update`,done);assert.equal(completed.status,200,JSON.stringify(completed));assert.ok(completed.data.admission.observationCompletedAt);
+  assert.equal((await call('assistant','POST',`${path}/update`,done)).status,200);
+  assert.equal((await call('assistant','POST',`${path}/update`,update(1,{completeObservation:true}))).status,409);
+  const schedule=update(1,{nextObservationAt:new Date(Date.now()+7200000).toISOString(),observationInstructions:'Private recheck instruction'});
+  const rescheduled=await call('vet','POST',`${path}/update`,schedule);assert.equal(rescheduled.status,200,JSON.stringify(rescheduled));assert.equal(rescheduled.data.admission.observationCompletedAt,null);
+  assert.equal((await call('assistant','POST',`${path}/update`,update(1,{completeObservation:true}))).status,409,'stale completion cannot complete replacement task');
+  const record=(await call('vet','GET',path)).data;
+  assert.equal(record.updates.find(e=>e.id===done.requestId).careDetails.completedObservation.instructions,f.body.observationInstructions);
+  assert.equal(record.updates.find(e=>e.id===schedule.requestId).careDetails.observationInstructions,schedule.observationInstructions);
+  const owner=(await call('owner','GET',path)).data;
+  assert.equal(owner.admission.consent.emergencyPhone,f.body.emergencyPhone);
+  for(const secret of ['observationInstructions','nextObservationAt','careDetails','Private']) assert.ok(!JSON.stringify(owner).includes(secret),secret);
+  assert.equal((await call('other-owner','GET',path)).status,404);
+  // No fabricated completion or consent when a transaction's audit fails.
+  await query("CREATE FUNCTION reject_care_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Updated admission%' THEN RAISE EXCEPTION 'Synthetic care audit failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_care_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_care_audit()");
+  try { assert.equal((await call('assistant','POST',`${path}/update`,update(2,{completeObservation:true}))).status,500); }
+  finally { await query('DROP TRIGGER reject_care_audit ON audit_logs'); }
+  assert.equal((await call('vet','GET',path)).data.admission.observationCompletedAt,null);
+});
+
+test('discharge document scopes saved prescriptions and payment without private inpatient records',async()=>{
+  const f=await admit('Completed'),path=`/${f.admission.id}`;
+  assert.equal((await call('owner','GET',`${path}/discharge-summary`)).status,409);
+  await query("UPDATE consultations SET prescription='Saved home directions' WHERE appt_id=$1",[f.visit.id]);
+  const approved=await call('vet','POST',`${path}/discharge`,update(0,{dischargeInstructions:'Saved discharge instructions'}));assert.equal(approved.status,200);
+  const unpaid=await call('owner','GET',`${path}/discharge-summary`);assert.equal(unpaid.status,200,JSON.stringify(unpaid));assert.notEqual(unpaid.data.appointment.billingStatus,'Paid');assert.equal(unpaid.data.admission.status,'Ready for discharge');
+  await query(`UPDATE appointments SET billing_status='Paid',amount=123.45,paid_at=NOW(),payment_method='Cash',invoice_items='[{"name":"Saved clinic supply","qty":1,"price":125.45,"source":"admission"}]',payment_details='{"discount":2,"cashTendered":150,"changeAmount":26.55}' WHERE id=$1`,[f.visit.id]);
+  for(const role of ['vet','assistant','admin','owner']) {
+    const result=await call(role,'GET',`${path}/discharge-summary`);assert.equal(result.status,200,JSON.stringify(result));
+    assert.equal(result.data.consultation.prescription,'Saved home directions');assert.equal(result.data.admission.dischargeInstructions,'Saved discharge instructions');assert.equal(result.data.appointment.amount,123.45);assert.equal(result.data.appointment.invoiceItems[0].price,125.45);assert.equal(result.data.appointment.discount,2);
+    for(const secret of ['Private','clinicalNote','carePlan','measurements','careDetails','request_payload','revision','medicationOrders']) assert.ok(!JSON.stringify(result.data).includes(secret),secret);
+  }
+  for(const role of ['other-owner','other-vet'])assert.equal((await call(role,'GET',`${path}/discharge-summary`)).status,404);
+  assert.equal((await call(null,'GET',`${path}/discharge-summary`)).status,401);
 });
