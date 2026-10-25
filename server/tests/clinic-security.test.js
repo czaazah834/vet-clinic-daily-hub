@@ -41,7 +41,7 @@ const fakeQuery = async (sql, params = []) => {
     if (sql.includes('FROM pets WHERE id = $1')) return rows(db.pets.filter(p => p.id === params[0] && (!sql.includes('AND owner_id') || p.owner_id === params[1])));
     if (sql.includes('FROM pet_requests WHERE id = $1')) return rows(db.requests.filter(r => r.id === params[0] || sql.includes('OR pet_id') && r.pet_id === params[0]));
     if (sql.includes('FROM appointments WHERE id = $1')) return rows(db.appts.filter(a => a.id === params[0]));
-    if (sql.includes('FROM appointments WHERE date = $1')) return rows(db.appts.filter(a => a.date === params[0] && (a.vet_id === params[1] || a.pet_id === params[2])));
+    if (sql.includes('FROM appointments WHERE date = $1')) return rows(db.appts.filter(a => a.date === params[0] && ((Array.isArray(params[1]) ? params[1].includes(a.vet_id) : a.vet_id === params[1]) || a.pet_id === params[2])));
     if (sql.includes('FROM appointments WHERE pet_id = $1')) return rows(db.appts.filter(a => a.pet_id === params[0] && params[1].includes(a.vet_id) && ['Checked-in', 'In consultation'].includes(a.status)));
     if (sql.includes('FROM checkout_tasks WHERE appointment_id')) return rows(db.tasks.filter(t=>t.appointment_id===params[0]));
     if (sql.includes('FROM consultations WHERE appt_id')) return rows(db.consults.filter(c => c.appt_id === params[0]));
@@ -75,6 +75,9 @@ const fakeQuery = async (sql, params = []) => {
     }
     if (sql.startsWith('UPDATE appointments SET approved_at=NULL')) {
       const row=db.appts.find(a=>a.id===params[0]);Object.assign(row,{approved_at:null,approved_by:null,approved_by_user_id:null});return rows([row]);
+    }
+    if (sql.startsWith('UPDATE appointments SET date=$2,time=$3')) {
+      const row=db.appts.find(a=>a.id===params[0]);Object.assign(row,{date:params[1],time:params[2],status:'Pending Approval',approved_at:null,approved_by:null,approved_by_user_id:null});return rows([row]);
     }
     if (sql.startsWith('UPDATE appointments SET pet_id=$2')) {
       const row=db.appts.find(a=>a.id===params[0]);
@@ -356,14 +359,18 @@ test('state tags never bypass session checks or current role scope', async () =>
 });
 
 
-test('reception reassigns an upcoming visit to a live doctor, retaining ID and owner notes', async () => {
-  const date=futureDate();Object.assign(db.appts[0],{vet_id:'inactive-doctor',date,status:'Scheduled',service:'checkup',notes:'Call owner before visit'});
-  const result=await request('assistant','PUT','/appointments/a1',{petId:'p1',vetId:'v1',date,time:'11:00',service:'checkup',reason:'Annual exam',notes:db.appts[0].notes});
+test('reception reschedules date/time while retaining the assigned doctor and original request', async () => {
+  const date=futureDate();Object.assign(db.appts[0],{vet_id:'v1',date,status:'Scheduled',service:'checkup',duration_minutes:60,notes:'Call owner before visit'});
+  const before=structuredClone(db.appts[0]);
+  const reassignment=await request('assistant','PUT','/appointments/a1',{petId:'p1',vetId:'u_vet',date,time:'11:00',service:'grooming',reason:'Changed reason',notes:before.notes});
+  assert.equal(reassignment.status,400);assert.deepEqual(db.appts[0],before);
+  const result=await request('assistant','PUT','/appointments/a1',{date,time:'11:00'});
   assert.equal(result.status,200);assert.equal(result.data.appointment.id,'a1');assert.equal(result.data.appointment.vetId,'v1');
+  assert.equal(result.data.appointment.reason,before.reason);assert.equal(result.data.appointment.service,'checkup');
   assert.equal(result.data.appointment.status,'Pending Approval');assert.equal(result.data.appointment.notes,'Call owner before visit');
   const owner=await request('owner','GET','/state');assert.equal(owner.data.data.appts.find(a=>a.id==='a1').vetId,'v1');
   db.appts[0].status='Checked-in';
-  assert.equal((await request('assistant','PUT','/appointments/a1',{vetId:'v1'})).status,409);
+  assert.equal((await request('assistant','PUT','/appointments/a1',{time:'12:00'})).status,409);
 });
 
 test('one visit connects owner booking, reception intake, assigned vet care, checkout and admin audit', async (t) => {

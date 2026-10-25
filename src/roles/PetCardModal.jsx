@@ -248,8 +248,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
           </div>
         )}
 
-        <PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />
-        <DigitalVetCard key={p.id} petId={p.id} refreshKey={`${activeAppt?.billingStatus || ''}-${activeAppt?.status || ''}`} />
+        <DigitalVetCard key={p.id} petId={p.id} portrait={<PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />} refreshKey={`${activeAppt?.billingStatus || ''}-${activeAppt?.status || ''}`} />
 
         <VitalsHistory petId={p.id} me={me} refreshKey={activeAppt?.intakeVitals} />
 

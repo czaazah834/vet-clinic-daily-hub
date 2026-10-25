@@ -578,3 +578,55 @@ test('legacy status migration preserves meaning and is repeatable',async()=>{
    {id:'approved',status:'Scheduled',billing_status:'Unpaid'},{id:'paid',status:'Completed',billing_status:'Paid'},{id:'request',status:'Pending Approval',billing_status:'Unbilled'}]);
  } finally {await c.query('ROLLBACK');c.release();}
 });
+
+test('assistant rescheduling changes date/time only, preserves legacy duration and retries without duplicate audit',async()=>{
+ let day=shiftDate(date,40);while(holidayName(day))day=shiftDate(day,1);
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,notes,service,duration_minutes,amount,status,approved_at,approved_by,approved_by_user_id) VALUES('reschedule-fixed','p7','u_vet',$1,'09:00','Original legacy symptoms','Saved owner notes',NULL,30,875,'Scheduled',NOW(),'Test assistant','u_assistant')",[day]);
+ const before=(await query("SELECT * FROM appointments WHERE id='reschedule-fixed'")).rows[0];
+ const expectedVisit={id:before.id,petId:before.pet_id,vetId:before.vet_id,date:before.date,time:before.time,reason:before.reason,status:before.status,intakeVitals:before.intake_vitals || null};
+ for(const patch of [{petId:'p6'},{vetId:'missing'},{service:'grooming'},{reason:'Different reason'},{notes:'Different note'},{amount:20},{durationMinutes:120},{bookingKind:'walk-in'},{followUpId:'changed'},{vaccineId:'vet-review'},{reasonChoice:'Other',otherReason:'New symptom'}]){
+   const response=await req('assistant','PUT','/appointments/reschedule-fixed',{date:day,time:'10:00',expectedVisit,...patch});
+   assert.equal(response.status,400,JSON.stringify({patch,response}));
+   assert.deepEqual((await query("SELECT * FROM appointments WHERE id='reschedule-fixed'")).rows[0],before);
+ }
+ const open=await req('assistant','GET',`/appointments/availability?vetId=u_vet&date=${day}&service=grooming&excludeId=reschedule-fixed`);
+ assert.equal(open.status,200);assert.ok(open.data.slots.includes('16:30'),'persisted 30-minute duration fits');
+ await query("CREATE FUNCTION fail_reschedule_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Rescheduled appointment reschedule-fixed %' THEN RAISE EXCEPTION 'synthetic audit rejection'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_reschedule_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION fail_reschedule_audit()");
+ assert.equal((await req('assistant','PUT','/appointments/reschedule-fixed',{date:day,time:'14:00',expectedVisit})).status,500);
+ assert.deepEqual((await query("SELECT * FROM appointments WHERE id='reschedule-fixed'")).rows[0],before,'failed audit rolls back schedule and approval metadata');
+ await query('DROP TRIGGER fail_reschedule_audit ON audit_logs; DROP FUNCTION fail_reschedule_audit()');
+ const results=await Promise.all([req('assistant','PUT','/appointments/reschedule-fixed',{date:day,time:'16:30',expectedVisit}),req('assistant','PUT','/appointments/reschedule-fixed',{date:day,time:'16:30',expectedVisit})]);
+ assert.deepEqual(results.map(r=>r.status),[200,200]);
+ const saved=(await query("SELECT * FROM appointments WHERE id='reschedule-fixed'")).rows[0];
+ for(const key of Object.keys(before).filter(k=>!['time','status','approved_at','approved_by','approved_by_user_id'].includes(k)))assert.deepEqual(saved[key],before[key],key);
+ assert.equal(saved.status,'Pending Approval');assert.equal(saved.approved_at,null);
+ assert.equal((await query("SELECT COUNT(*)::int n FROM audit_logs WHERE action LIKE 'Rescheduled appointment reschedule-fixed %'")).rows[0].n,1);
+ assert.equal((await req('assistant','PUT','/appointments/reschedule-fixed',{date:day,time:'15:00',expectedVisit})).status,409);
+ await query("UPDATE appointments SET status='Scheduled',approved_by='Reapproved',approved_at=NOW() WHERE id='reschedule-fixed'");
+ const retry=await req('assistant','PUT','/appointments/reschedule-fixed',{date:day,time:'16:30',expectedVisit});
+ assert.equal(retry.status,200);assert.equal(retry.data.appointment.status,'Scheduled');assert.equal(retry.data.appointment.approvedBy,'Reapproved');
+ // Canonical IDs must see existing reservations stored under the veterinarian account ID.
+ assert.equal((await req('owner','POST','/appointments',booking({id:'alias-overlap',date:day,petId:'p6',time:'16:00',service:'checkup'}))).status,409);
+});
+
+test('reschedule validation rejects invalid dates, pet/day conflicts and duration overlap atomically',async()=>{
+ let day=shiftDate(date,45);while(holidayName(day))day=shiftDate(day,1);
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,service,duration_minutes,status) VALUES('reschedule-validation','p6','v1',$1,'09:00','Saved long visit','surgery',120,'Scheduled'),('reschedule-busy','p5','v1',$1,'13:00','Existing visit','checkup',60,'Scheduled')",[day]);
+ const before=(await query("SELECT * FROM appointments WHERE id='reschedule-validation'")).rows[0];
+ for(const patch of [{date:'2026-02-30',time:'09:00'},{date:shiftDate(clinicClock().date,-1),time:'09:00'},{date:shiftDate(clinicClock().date,91),time:'09:00'},{date:day,time:'16:00'},{date:day,time:'12:00'}]){
+  const response=await req('assistant','PUT','/appointments/reschedule-validation',patch);assert.ok([400,409].includes(response.status),JSON.stringify(response));
+  assert.deepEqual((await query("SELECT * FROM appointments WHERE id='reschedule-validation'")).rows[0],before);
+ }
+ const next=shiftDate(day,1);
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status,duration_minutes) VALUES('reschedule-pet-day','p6','v1',$1,'08:00','Other visit','Scheduled',30)",[next]);
+ assert.equal((await req('assistant','PUT','/appointments/reschedule-validation',{date:next,time:'11:00'})).status,409);
+});
+
+test('structured booking reasons reject invalid choices and blank/numeric Other and preserve valid symptoms',async()=>{
+ let day=shiftDate(date,50);while(holidayName(day))day=shiftDate(day,1);
+ for(const patch of [{service:'invalid-service',reasonChoice:'Other',otherReason:'Skin concern'},{reasonChoice:'bogus'},{reasonChoice:'Other',otherReason:{}},{reasonChoice:'Other',otherReason:''},{reasonChoice:'Other',otherReason:'123'},{reasonChoice:'Other',otherReason:'x'.repeat(201)}]){
+  const response=await req('owner','POST','/appointments',booking({petId:'p7',date:day,service:'checkup',...patch}));assert.equal(response.status,400,JSON.stringify(response));
+ }
+ const saved=await req('owner','POST','/appointments',booking({petId:'p7',date:day,service:'checkup',reason:'ignored untrusted text',reasonChoice:'Other',otherReason:'  Makati ang balat  '}));
+ assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.appointment.reason,'Makati ang balat');
+});

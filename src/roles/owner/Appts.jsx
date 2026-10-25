@@ -1,3 +1,6 @@
+import {chronologicalAppointments,upcomingAppointments} from '../../appointmentOrder.js';
+import BookingReason from '../../components/BookingReason.jsx';
+import {bookingReasonErrors,bookingReason} from '../../bookingReason.js';
 import { VaccinePicker, VaccineEstimate, useBookingCatalog } from '../../components/VaccineBooking.jsx';
 import { vaccineIdFromReason, vaccineReason, vaccinePriceLabel } from '../../vaccineBooking.js';
 import { PaginatedTable } from "../../components/Pagination.jsx";
@@ -15,7 +18,7 @@ import { useState, useEffect, useRef } from "react";
 import { Badge, I, ICON, scope, petName, uid, addLog } from "../../lib.jsx";
 import ApptDetails from "./ApptDetails.jsx";
 import { useLive, Field, Suggest, Modal, addNote, prefill, fmt12, ymdLocal } from "./ui.jsx";
-import { SERVICES, MAX_DAYS, ServicePicker, SlotPicker, inferService, serviceOf, holidayName, durOf, durText, addMin, makeReason, splitReason } from "./services.jsx";
+import { SERVICES, MAX_DAYS, ServicePicker, SlotPicker, inferService, serviceOf, holidayName, durOf, durText, addMin, splitReason } from "./services.jsx";
 
 const liveDoctors = db => (db.vets || []).map(v => [v.id, v.name]);
 const isTouch = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
@@ -23,9 +26,9 @@ const OPEN = ["Pending Approval", "Scheduled"], BUSY = ["Cancelled", "Rejected",
 const NOTE_IDEAS = ["My pet is nervous around other animals.", "Please call me before the visit.", "My pet hasn’t eaten today.", "My pet is on medication.", "Bringing vaccine card."];
 const CANCEL_WHY = ["Schedule conflict", "My pet is feeling better", "Booked by mistake", "Need a different date", "Other"];
 const STATUS_NOTE = { 'Pending Approval': "Waiting for the clinic to confirm", Scheduled: "Approved. Please arrive 10 minutes early", "Checked-in": "You’re checked in. The vet will call you in", "In consultation": "The vet is seeing your pet now", Completed: "Done. See Visit History for notes", Cancelled: "This visit was cancelled", "No-show": "Marked as missed", Rejected: "The clinic declined this request. Open it to read the reason" };
-const mkRules = (db, me, editing) => v => validateOwnerBooking(v, {
+const mkRules = (db, me, editing) => v => ({...bookingReasonErrors(v.service,v.reasonChoice,v.otherReason),...validateOwnerBooking(v, {
   pets: scope(db, me, "pets").filter(p=>p.registrationStatus!=="Declined"), vets: db.vets || [], appointments: db.appts, records: db.records, editing
-});
+})});
 
 function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
   const TODAY = bookingToday(), LAST = lastDay();
@@ -33,7 +36,8 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
   const prev = editing ? serviceOf(editing) : "", svc0 = editing ? prev : start?.service || (start?.reason ? inferService(start.reason) : "");
   const catalog = useBookingCatalog()?.data?.catalog || [];
   const initialReason = editing?.reason || start?.reason || start?.vaccineName || "";
-  const f = useLive({ vaccineId: svc0 === "vaccination" ? vaccineIdFromReason(initialReason) || (initialReason ? "vet-review" : "") : "", followUpId: editing?.followUpId || start?.followUpId || "", service: svc0, petId: editing ? editing.petId : (start && start.petId) || (pets.length === 1 ? pets[0].id : ""), vetId: editing ? editing.vetId : "", date: editing ? editing.date : (start && start.date) || "", time: editing ? editing.time : "", notes: editing ? editing.notes || "" : "" }, mkRules(db, me, editing));
+  const [choice0,other0]=splitReason(svc0,initialReason);
+  const f = useLive({ reasonChoice:choice0, otherReason:other0, vaccineId: svc0 === "vaccination" ? vaccineIdFromReason(initialReason) || (initialReason ? "vet-review" : "") : "", followUpId: editing?.followUpId || start?.followUpId || "", service: svc0, petId: editing ? editing.petId : (start && start.petId) || (pets.length === 1 ? pets[0].id : ""), vetId: editing ? editing.vetId : "", date: editing ? editing.date : (start && start.date) || "", time: editing ? editing.time : "", notes: editing ? editing.notes || "" : "" }, mkRules(db, me, editing));
   useEffect(() => {
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -59,7 +63,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
     if (!times.includes(v.time)) { say("Choose an available time from the refreshed list."); availability.refresh(); return; }
     if (!scope(db, me, "pets").some(p => p.id === v.petId)) { say("You can only book for your own pets"); return onClose(); }
     if (editing) { const cur = db.appts.find(a => a.id === editing.id); if (!cur || !OPEN.includes(cur.status)) { say("This visit can no longer be changed"); return onClose(); } }
-    const reason = v.service === "vaccination" ? vaccineReason(v.vaccineId, v.vaccineId === "vet-review" ? initialReason : "") : (v.service === svc0 && (editing?.reason || start?.reason) ? (editing?.reason || start.reason) : S.label), notes = (v.notes || "").trim();
+    const reason = v.service === "vaccination" ? vaccineReason(v.vaccineId, v.vaccineId === "vet-review" ? initialReason : "") : (v.service === svc0 && v.reasonChoice===choice0 && v.otherReason===other0 && initialReason ? initialReason : bookingReason(v.service,v.reasonChoice,v.otherReason)), notes = (v.notes || "").trim();
     const apptId = editing ? editing.id : bookingId.current;
 
     const payload = {
@@ -72,7 +76,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
       time: v.time,
       reason,
       service: v.service,
-      ...(v.service === "vaccination" ? {vaccineId:v.vaccineId} : {}),
+      ...(v.service === "vaccination" ? {vaccineId:v.vaccineId} : {reasonChoice:v.reasonChoice,otherReason:v.otherReason}),
       status: moved ? "Pending Approval" : (editing ? editing.status : "Pending Approval"),
       notes,
       actorName: me.name,
@@ -135,12 +139,13 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
         </section> : <Field id="date" label="Date" req type="date" min={TODAY} maxDate={LAST} value={v.date} onChange={x => f.patch({ date: x, time: "" })} onBlur={() => f.blur("date")} error={f.show("date")} valid={f.ok("date")} hint={holidayName(v.date) ? `${holidayName(v.date)} is a holiday. The clinic is closed` : `Pick a day within the next ${MAX_DAYS} days (closed on Philippine holidays)`} />}
         <p className="ow-book-policy"><CalendarDays size={16} aria-hidden="true" />One visit per pet, per day. To change plans, edit your existing visit. Different pets can have separate bookings.</p>
         {conflict && <section className="ow-book-conflict" role="alert"><b>A visit is already on this pet’s calendar</b><p>{conflict.date} · {conflict.time ? fmt12(conflict.time) : "Time not recorded"} · {conflict.status}</p><p>{conflict.reason}</p><button type="button" className="btn ghost sm" onClick={() => onExisting(conflict)}>View existing visit</button></section>}
-        <ServicePicker value={v.service} onChange={x => { if (x === v.service) return; f.set("service", x); f.quiet({ time: "", vaccineId: "" }); }} error={f.show("service")} />
+        <ServicePicker value={v.service} onChange={x => { if (x === v.service) return; f.set("service", x); f.quiet({ time: "", vaccineId: "",reasonChoice:"",otherReason:"" }); }} error={f.show("service")} />
         <div className="ow-book-patient">
         <Field id="petId" label="Pet" req type="select" disabled={!!editing?.followUpId} value={v.petId} onChange={x => f.patch({petId:x, followUpId:"", vaccineId:""})} onBlur={() => f.blur("petId")} options={pets.map(p => [p.id, `${p.name} (${p.species})${p.registrationStatus==='Pending' ? ' · Pending verification' : ''}`])} error={f.show("petId")} valid={f.ok("petId")} hint="Which pet is coming in?" />
         <Field id="vetId" label="Veterinarian" req type="select" value={v.vetId} onChange={x => f.patch({ vetId: x, time: "" })} onBlur={() => f.blur("vetId")} options={liveDoctors(db)} error={f.show("vetId")} valid={f.ok("vetId")} hint="Times below update for the vet you pick" />
         </div>
 
+        <BookingReason service={v.service} choice={v.reasonChoice} other={v.otherReason} onChoice={x=>f.set('reasonChoice',x)} onOther={x=>f.set('otherReason',x)} errors={{reasonChoice:f.show('reasonChoice'),otherReason:f.show('otherReason')}}/>
         {v.service === "vaccination" && <VaccinePicker value={v.vaccineId} onChange={x=>f.set("vaccineId",x)} species={pets.find(p=>p.id===v.petId)?.species} petSelected={!!v.petId} error={f.show("vaccineId")} />}
         {availability.error && <button type="button" className="btn ghost" onClick={availability.refresh}>Retry availability</button>}
         <SlotPicker times={times} value={v.time} onChange={x => f.set("time", x)} error={f.show("time")} hint={timeHint} dur={S ? S.dur : 30} suggest={nextDay} onSuggest={() => f.patch({ date: nextDay, time: "" })} />
@@ -203,10 +208,10 @@ const KIND = { visit: ["Visit", "k-visit"], done: ["Past visit", "k-done"], give
 function buildEvents(db, me, pet, svc, q) {
   const TODAY = bookingToday();
   const ev = {}, add = (d, x) => { if (d) (ev[d] = ev[d] || []).push(x); }, needle = q.trim().toLowerCase();
-  scope(db, me, "appts").filter(a => a.status !== "Cancelled" && (!pet || a.petId === pet) && (!svc || serviceOf(a) === svc)).forEach(a => {
+  scope(db, me, "appts").filter(a => !["Cancelled","Rejected"].includes(a.status) && (!pet || a.petId === pet) && (!svc || serviceOf(a) === svc)).forEach(a => {
     const vet = (liveDoctors(db).find(v => v[0] === a.vetId) || [])[1] || "", text = `${petName(db, a.petId)}: ${a.reason}`;
     if (needle && ![text, vet, a.status, a.date].join(" ").toLowerCase().includes(needle)) return;
-    add(a.date, { kind: ["Completed", "No-show"].includes(a.status) || a.date < TODAY ? "done" : "visit", text, appt: a });
+    add(a.date, { time:a.time,kind: ["Completed", "No-show"].includes(a.status) || a.date < TODAY ? "done" : "visit", text, appt: a });
   });
   const current = currentVaccinationDue(scope(db, me, "vacc"));
   if (!svc) scope(db, me, "vacc").filter(v => !pet || v.petId === pet).forEach(v => {
@@ -215,6 +220,7 @@ function buildEvents(db, me, pet, svc, q) {
     if (v.done) add(v.date, { kind: "given", text: `${nm}: ${v.vaccine} given`, sub: v.notes || "", vacc: v });
     if (current.some(x => x.id === v.id)) add(v.nextDue, { kind: vaccinationStatus(v, current) === "Overdue" ? "over" : "due", text: `${nm}: ${v.vaccine} due`, sub: vaccinationStatus(v, current), vacc: v });
   });
+  Object.values(ev).forEach(events=>events.sort(chronologicalAppointments));
   return ev;
 }
 
@@ -255,16 +261,17 @@ export default function OwnerAppts({ db, setDb, me, say }) {
   useEffect(() => { prefill.data = null; }, []);
   const pets = scope(db, me, "pets").filter(p=>p.registrationStatus!=="Declined");
   const selectedVisit = scope(db, me, "appts").find(a => a.id === (modal?.view?.id || modal?.cancel?.id));
-  let list = scope(db, me, "appts").slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  let list = scope(db, me, "appts").slice();
   const live = a => OPEN.includes(a.status) || ["Checked-in", "In consultation"].includes(a.status);
-  if (day) list = list.filter(a => a.date === day && a.status !== "Cancelled");
+  if (day) list = list.filter(a => a.date === day && !["Cancelled","Rejected"].includes(a.status));
   else if (view === "upcoming") list = list.filter(a => live(a) && a.date >= TODAY);
-  else if (view === "past") list = list.filter(a => a.status === "Completed" || a.status === "No-show" || (live(a) && a.date < TODAY)).reverse();
+  else if (view === "past") list = list.filter(a => a.status === "Completed" || a.status === "No-show" || (live(a) && a.date < TODAY));
   else if (view === "rejected") list = list.filter(a => a.status === "Rejected");
   else if (view === "cancelled") list = list.filter(a => a.status === "Cancelled");
   if (pet) list = list.filter(a => a.petId === pet);
   if (svc) list = list.filter(a => serviceOf(a) === svc);
   if (q.trim()) list = list.filter(a => [petName(db, a.petId), a.reason, (SERVICES[serviceOf(a)] || {}).label, a.status, a.date, (liveDoctors(db).find(v => v[0] === a.vetId) || [])[1]].join(" ").toLowerCase().includes(q.trim().toLowerCase()));
+  list.sort(day ? chronologicalAppointments : view==='past' ? (a,b)=>chronologicalAppointments(b,a) : (a,b)=>upcomingAppointments(a,b,TODAY));
   const ev = buildEvents(db, me, pet, svc, q), hol = day ? holidayName(day) : "", dayVacc = day ? (ev[day] || []).filter(x => x.vacc) : [];
   const dayNice = day ? new Date(day + "T00:00:00").toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "";
   const waiting = scope(db, me, "appts").filter(a => a.status === "Pending Approval" && a.date >= TODAY).length;

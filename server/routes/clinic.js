@@ -1,3 +1,4 @@
+import {bookingReasonErrors,bookingReason} from '../../src/bookingReason.js';
 import {digitalVetCardRouter} from './digitalVetCard.js';
 import {ensureDigitalVetCardSchema,internalCardReference,refreshDigitalVetCard} from '../digitalVetCard.js';
 import {ensureVitalsSchema} from '../vitals.js';
@@ -300,6 +301,7 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
       ...(page?{page,weights:weightsByPet}:{}),
       vets: vetsRes.rows.map(v => ({
         id: v.vet_id || v.id,
+        userId: v.id,
         name: `Dr. ${[v.first_name, v.last_name].filter(Boolean).join(" ")}`
       })),
       owners,
@@ -1097,8 +1099,10 @@ clinicRouter.get("/appointments/availability", async (req, res) => {
       excluded = (await query("SELECT * FROM appointments WHERE id = $1", [excludeId])).rows[0];
       if (!excluded || (req.user.role === "owner" && !(await query("SELECT id FROM pets WHERE id = $1 AND owner_id = $2", [excluded.pet_id, req.user.ownerId])).rows.length)) throw bookingError("Appointment not found.", 404);
     }
-    const rows = (await query("SELECT * FROM appointments WHERE date = $1 AND vet_id = $2", [date, doctor.vet_id || doctor.id])).rows;
-    res.json({ slots: availableSlots(rows, { date, service, excludeId: excluded?.id }) });
+    if (excluded && req.user.role==='assistant' && ![doctor.id,doctor.vet_id].includes(excluded.vet_id)) throw bookingError('Keep the assigned veterinarian when rescheduling.');
+    const rows = (await query("SELECT * FROM appointments WHERE date = $1 AND vet_id = ANY($2::varchar[])", [date, [doctor.id,doctor.vet_id].filter(Boolean)])).rows;
+    const rescheduling=excluded && req.user.role==='assistant';
+    res.json({ slots: availableSlots(rows, { date, service:rescheduling?excluded.service:service, excludeId: excluded?.id },new Date(),rescheduling?excluded.duration_minutes || 30:undefined) });
   } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Unable to load availability. Choose a valid date and retry." }); }
 });
 
@@ -1121,6 +1125,35 @@ async function saveBooking(req, res, editing = false) {
       await lockRegistrationOwner(client,patient.owner_id);
       const registration=(await client.query('SELECT registration_status FROM pets WHERE id=$1',[v.petId])).rows[0];
       if(registration?.registration_status==='Declined') throw bookingError('Correct and resubmit this pet registration before requesting a visit.',409);
+      if(previous && req.user.role==='assistant') {
+        // Reception reschedules an existing request; all clinical/request fields stay immutable.
+        const fixed={id:previous.id,petId:previous.pet_id,vetId:previous.vet_id,service:previous.service,reason:previous.reason,notes:previous.notes || '',followUpId:previous.follow_up_id || null,amount:Number(previous.amount),durationMinutes:previous.duration_minutes,bookingKind:previous.booking_kind};
+        const doctor=(await client.query("SELECT id, vet_id FROM users WHERE role = 'vet' AND COALESCE(to_jsonb(users)->>'is_active','true') <> 'false' AND (id = $1 OR vet_id = $1)",[previous.vet_id])).rows[0];
+        if(!doctor)throw bookingError('The assigned veterinarian is unavailable. Contact the clinic to review this visit.');
+        for(const [key,value] of Object.entries(fixed)) {
+          if(b[key]!==undefined && b[key]!==value && !(key==='vetId' && [doctor.id,doctor.vet_id].includes(b[key])))
+            throw bookingError('Rescheduling can change only the date and time. Keep the original patient, veterinarian, service, reason and follow-up.');
+        }
+        if(b.vaccineId!==undefined && b.vaccineId!==vaccineIdFromReason(previous.reason))throw bookingError('Keep the original vaccine request when rescheduling.');
+        if(b.reasonChoice!==undefined || b.otherReason!==undefined)throw bookingError('Keep the original visit reason when rescheduling.');
+        const sameSlot=v.date===toDateStr(previous.date) && v.time===previous.time;
+        if(b.expectedVisit && !sameIntakeVisit(previous,b.expectedVisit)) {
+          // A lost-response retry may acknowledge the same saved slot, including a later reapproval.
+          const original={...b.expectedVisit,date:previous.date,time:previous.time,status:previous.status};
+          if(!sameSlot || !sameIntakeVisit(previous,original))throw bookingError('This appointment has changed. Refresh and review its current schedule.',409);
+        }
+        if(sameSlot)return previous;
+        await assertAvailable(client,{...v,vetAliases:[doctor.id,doctor.vet_id].filter(Boolean)},previous.id,previous.duration_minutes || 30);
+        const saved=(await client.query("UPDATE appointments SET date=$2,time=$3,status='Pending Approval',approved_at=NULL,approved_by=NULL,approved_by_user_id=NULL WHERE id=$1 RETURNING *",[previous.id,v.date,v.time])).rows[0];
+        await client.query("INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)",[req.user.name,req.user.role,`Rescheduled appointment ${previous.id} from ${toDateStr(previous.date)} ${previous.time} to ${v.date} ${v.time}`]);
+        return saved;
+      }
+      if(b.reasonChoice!==undefined || b.otherReason!==undefined) {
+        const reasonErrors=bookingReasonErrors(v.service,b.reasonChoice,b.otherReason);
+        if(v.service==='vaccination' || Object.keys(reasonErrors).length)throw bookingError(Object.values(reasonErrors)[0] || 'Choose a vaccine request instead.');
+        // Preserve unchanged legacy wording, while deriving every new/changed reason from the choices.
+        if(!(previous && v.service===previous.service && b.reason===previous.reason))v.reason=bookingReason(v.service,b.reasonChoice,b.otherReason);
+      }
       if (typeof v.reason !== "string" || v.reason.trim().length < 3 || v.reason.length > 300 || typeof v.notes !== "string" || v.notes.length > 200) throw bookingError("Add a visit reason (3–300 characters) and keep notes under 200 characters.");
       // Recheck ownership inside the transaction, after any simultaneous change.
       if (req.user.role === "owner") {
@@ -1162,7 +1195,9 @@ async function saveBooking(req, res, editing = false) {
         if (existing.some(a => a.pet_id === v.petId && !["Cancelled", "Rejected", "No-show", "Completed"].includes(a.status))) throw bookingError("This pet already has an active visit today. Check in that visit.", 409);
         duration = 30;
       } else {
-        duration = await assertAvailable(client, v, previous?.id);
+        const doctor=(await client.query("SELECT id, vet_id FROM users WHERE role = 'vet' AND COALESCE(to_jsonb(users)->>'is_active','true') <> 'false' AND (id = $1 OR vet_id = $1)",[v.vetId])).rows[0];
+        if(!doctor)throw bookingError('Choose a current veterinarian.');
+        duration = await assertAvailable(client, {...v,vetAliases:[doctor.id,doctor.vet_id].filter(Boolean)}, previous?.id);
       }
       const changedSlot = previous && (v.petId !== previous.pet_id || v.vetId !== previous.vet_id || v.date !== previous.date || v.time !== previous.time || v.service !== previous.service || (v.service === "vaccination" && v.reason !== previous.reason));
       const values = [editing ? previous.id : b.id || `a_${crypto.randomUUID()}`, v.petId, v.vetId, v.date, v.time, v.reason.trim(), req.user.role === "owner" ? previous?.amount ?? 600 : Number(b.amount) || previous?.amount || 600, v.service, duration, walkIn ? "walk-in" : "reservation", v.notes];
@@ -1182,7 +1217,7 @@ async function saveBooking(req, res, editing = false) {
       await client.query("INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)", [req.user.name,req.user.role,`${editing ? "Updated" : "Booked"} appointment ${values[0]} on ${v.date} ${v.time}: ${v.reason.trim()}`]);
       return saved.rows[0];
     });
-    res.json({ success: true, appointment: { followUpId: row.follow_up_id || null, id: row.id, petId: row.pet_id, vetId: row.vet_id, date: toDateStr(row.date), time: row.time, reason: row.reason, notes: row.notes, service: row.service, durationMinutes: row.duration_minutes, bookingKind: row.booking_kind, status: row.status, billingStatus: row.billing_status, amount: Number(row.amount) } });
+    res.json({ success: true, appointment: { followUpId: row.follow_up_id || null, id: row.id, petId: row.pet_id, vetId: row.vet_id, date: toDateStr(row.date), time: row.time, reason: row.reason, notes: row.notes, service: row.service, durationMinutes: row.duration_minutes, bookingKind: row.booking_kind, status: row.status, billingStatus: row.billing_status, approvedAt:row.approved_at || null,approvedBy:row.approved_by || null,approvedByUserId:row.approved_by_user_id || null, amount: Number(row.amount) } });
   } catch (error) {
     res.status(error.status || (error.code === "23505" ? 409 : 500)).json({ error: error.status ? error.message : error.code === "23505" ? "This booking already exists. Refresh before retrying." : "Unable to save the booking. Please retry." });
   }

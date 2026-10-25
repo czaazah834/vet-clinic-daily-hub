@@ -1,3 +1,4 @@
+import {chronologicalAppointments} from '../../appointmentOrder.js';
 import {useFollowingClinicDay} from "../../useClinicDay.js";
 import { useState } from "react";
 import { VETS, TODAY, scope, petName, dueState } from "../../lib.jsx";
@@ -11,14 +12,15 @@ export default function OwnerCalendar({ db, me, go }) {
   const t = new Date(TODAY+"T00:00:00"), [cur, setCur] = useState({ y: t.getFullYear(), m: t.getMonth() }), [pet, setPet] = useState(""), [sel, setSel] = useFollowingClinicDay();
   const pets = scope(db, me, "pets"), ev = {};
   const add = (d, e) => { if (d) (ev[d] = ev[d] || []).push(e); };
-  scope(db, me, "appts").filter(a => a.status !== "Cancelled" && (!pet || a.petId === pet)).forEach(a => add(a.date, { kind: ["Completed", "No-show"].includes(a.status) || a.date < TODAY ? "done" : "visit", time: a.time, text: `${petName(db, a.petId)}: ${a.reason}`, sub: `${(VETS.find(v => v[0] === a.vetId) || [])[1] || ""} · ${a.status}`, appt: a }));
+  scope(db, me, "appts").filter(a => !["Cancelled","Rejected"].includes(a.status) && (!pet || a.petId === pet)).forEach(a => add(a.date, { kind: ["Completed", "No-show"].includes(a.status) || a.date < TODAY ? "done" : "visit", time: a.time, text: `${petName(db, a.petId)}: ${a.reason}`, sub: `${(VETS.find(v => v[0] === a.vetId) || [])[1] || ""} · ${a.status}`, appt: a }));
   scope(db, me, "vacc").filter(v => !pet || v.petId === pet).forEach(v => {
-    add(v.date, { kind: "given", text: `${petName(db, v.petId)}: ${v.vaccine} given`, sub: v.notes || "", vacc: v });
+    if(v.done) add(v.date, { kind: "given", text: `${petName(db, v.petId)}: ${v.vaccine} given`, sub: v.notes || "", vacc: v });
     if (!v.done && v.nextDue) add(v.nextDue, { kind: dueState(v.nextDue) === "Overdue" ? "over" : "due", text: `${petName(db, v.petId)}: ${v.vaccine} due`, sub: dueState(v.nextDue), vacc: v });
   });
+  Object.values(ev).forEach(events=>events.sort(chronologicalAppointments));
   const first = new Date(cur.y, cur.m, 1), cells = Array.from({ length: 42 }, (_, i) => new Date(cur.y, cur.m, 1 - first.getDay() + i));
   const move = n => { const d = new Date(cur.y, cur.m + n, 1); setCur({ y: d.getFullYear(), m: d.getMonth() }); };
-  const list = (ev[sel] || []).slice().sort((a, b) => (a.time || "99").localeCompare(b.time || "99"));
+  const list = (ev[sel] || []).slice().sort(chronologicalAppointments);
   const book = (petId, reason, date) => { setPrefill({ petId, reason, date }); go("appts"); };
   const nice = new Date(sel + "T00:00:00").toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   return (<>

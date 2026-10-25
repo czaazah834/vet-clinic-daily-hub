@@ -260,8 +260,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
             </div>
           )}
 
-            <PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />
-            <DigitalVetCard key={p.id} petId={p.id} />
+            <DigitalVetCard key={p.id} petId={p.id} portrait={<PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />} />
 
             {/* Navigation Tabs (Vaccinations / Medical Profile) */}
             <div className="ow-tabs vc-noprint" role="tablist" aria-label={`${p.name} sections`}>
