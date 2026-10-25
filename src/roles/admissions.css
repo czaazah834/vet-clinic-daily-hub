@@ -34,3 +34,6 @@
   .admission-measurements { grid-template-columns:1fr; gap:0; }
   .admission-summary .btn { width:100%; }
 }
+
+.admission-medicine-order { border-top:1px solid #dce5f2; margin-top:16px; padding-top:14px; }
+.admission-medicine-order h4 { margin:0 0 8px; }

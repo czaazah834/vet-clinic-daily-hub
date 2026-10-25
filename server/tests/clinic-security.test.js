@@ -16,6 +16,8 @@ const fakeQuery = async (sql, params = []) => {
   if (sql.includes('FROM sessions s')) return rows(users[params[0]] ? [users[params[0]]] : []);
   if (sql.startsWith('SELECT to_regclass')) return rows([]);
   if (sql.startsWith('-- Preserve owner-submitted') || sql.startsWith('-- Durable reception') || sql.startsWith('-- Idempotent migration') || sql.startsWith('SELECT pg_advisory_xact_lock')) return rows([]);
+  if (sql.startsWith('-- Admission is separate') || sql.startsWith('-- Extend existing stays')) return rows([]);
+  if (sql.includes('FROM admissions WHERE appt_id') || sql.includes('FROM admission_updates e JOIN admissions')) return rows([]);
   if (sql.startsWith('ALTER TABLE')) return rows([]);
   if (sql.startsWith('SELECT')) {
     if (sql.startsWith('SELECT id FROM owners WHERE id = $1')) return rows(db.owners.filter(o=>o.id===params[0]));
@@ -93,6 +95,7 @@ const request = async (role, method, path, body) => {
 };
 const endpoints = [['GET','/admin/staff'],['GET','/admin/audit'],['POST','/admin/staff/u_vet/access'],['POST','/admin/invitations/inv1/revoke'],['GET', '/checkout-inbox'], ['POST', '/checkout-inbox/a1/claim'], ['POST', '/checkout-inbox/a1/renew'], ['POST', '/checkout-inbox/a1/release'], ['GET', '/appointments/availability'], ['GET', '/reminders/status'], ['GET','/reminders/calls'], ['GET', '/state'], ['GET', '/logs'], ['GET', '/services/prices'], ['POST', '/owners'], ['POST', '/pets'], ['POST', '/owner/contact'], ['POST', '/owner/pets'], ['POST', '/pets/p1/weights'], ['POST', '/pets/p1/photo'], ['POST', '/owner/pets/p1/photo'], ['POST', '/pet-requests'], ['PUT', '/pet-requests/r1'], ['DELETE', '/pet-requests/r1'], ['POST', '/pet-requests/r1/approve'], ['POST', '/pet-requests/r1/decline'], ['POST', '/appointments'], ['PUT', '/appointments/a1'], ['PATCH', '/appointments/a1/status'], ['DELETE', '/appointments/a1'], ['POST', '/appointments/a1/billing'], ['POST', '/walk-in'], ['POST', '/vaccinations'], ['DELETE', '/vaccinations/v1'], ['POST', '/consultations'], ['POST', '/logs'], ['POST', '/reminders/send'], ['POST', '/reminders/log-call']];
 endpoints.push(['GET','/admissions'],['GET','/admissions/eligible'],['GET','/admissions/00000000-0000-0000-0000-000000000000'],['POST','/admissions'],['POST','/admissions/00000000-0000-0000-0000-000000000000/update'],['POST','/admissions/00000000-0000-0000-0000-000000000000/discharge']);
+for(const action of ['release','order','stop-medication','medication','correct-medication']) endpoints.push(['POST',`/admissions/00000000-0000-0000-0000-000000000000/${action}`]);
 test('all clinic endpoints reject anonymous access before any database query', async () => {
   for (const [method, path] of endpoints) assert.equal((await request(null, method, path, method === 'GET' ? undefined : {})).status, 401, path);
   assert.equal(calls.length, 0);

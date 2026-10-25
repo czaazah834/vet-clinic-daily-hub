@@ -45,7 +45,7 @@ adminRouter.post('/staff/:id/access',async(req,res)=>{
    if (u.access_revision!==revision) throw problem('This account changed. Refresh and review its current status.',409);
    if (action==='deactivate' && !u.is_active || action==='reactivate' && u.is_active || action==='unlock' && (!u.is_active || !u.is_locked)) throw problem('This action does not match the current account status. Refresh the list.',409);
    if(action==='deactivate' && u.role==='vet') {
-    const active=(await client.query("SELECT COUNT(*)::int AS count FROM appointments WHERE vet_id = ANY($1::varchar[]) AND (status IN ('Checked-in','In consultation') OR EXISTS (SELECT 1 FROM admissions d WHERE d.appt_id=appointments.id AND d.status='Admitted'))",[[u.id,u.vet_id].filter(Boolean)])).rows[0].count;
+    const active=(await client.query("SELECT COUNT(*)::int AS count FROM appointments WHERE vet_id = ANY($1::varchar[]) AND (status IN ('Checked-in','In consultation') OR EXISTS (SELECT 1 FROM admissions d WHERE d.appt_id=appointments.id AND d.status<>'Discharged'))",[[u.id,u.vet_id].filter(Boolean)])).rows[0].count;
     if(active)throw problem(`Transfer waiting or active consultations and complete any remaining admissions before deactivating this account (${active} patient visit(s) still under care).`,409);
    }
    if(action==='unlock') await client.query('UPDATE users SET is_locked=false,failed_login_attempts=0,lockout_until=NULL,access_reason=$2,access_revision=access_revision+1,updated_at=NOW() WHERE id=$1',[u.id,reason.trim()]);

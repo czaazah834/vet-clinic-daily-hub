@@ -220,7 +220,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     newRecord.treatment += followUpNote;
     const request={...newRecord,...(f.weight?{weight:Number(f.weight)}:{}),vaccination:newVacc,expectedVisit};
     if (!await review.ask({title:"Review and finalize visit",confirmLabel:"Finalize visit",
-      description:"Check the clinical record before finalizing. This completes the consultation, saves the notes for the owner and sends the visit to reception for checkout. Admission and discharge are managed separately in Admitted Pets.",
+      description:"Check the clinical record before finalizing. This completes the consultation, saves the notes for the owner and sends the visit to reception for checkout. For admitted pets, final checkout waits for vet discharge approval in Admitted Pets.",
       fields:[
         ["Patient / owner",`${pet.name} / ${owner.name}`],
         ["Veterinarian",me.name],

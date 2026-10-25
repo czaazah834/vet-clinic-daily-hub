@@ -17,7 +17,7 @@ export default function CheckoutInbox({ me, blocked, onOpen }) {
   const open=task=>{if(onOpen(task)!==false){seen.current ||= new Set();seen.current.add(task.appointmentId);}};
   return <section className="card" style={{marginBottom:16}} aria-label="Checkout inbox">
     <h3>Ready for checkout ({data ? tasks.length : "—"})</h3>
-    <p>Completed consultations stay here until payment is saved. The oldest waiting visits appear first.</p>
+    <p>Completed consultations stay here until payment is saved. Admitted pets appear after the veterinarian approves discharge. The oldest waiting visits appear first.</p>
     {error && <p role="alert">{error} {data && "Showing the last loaded inbox."} <button className="btn ghost sm" disabled={loading} onClick={()=>load()}>Retry inbox</button></p>}
     {(!data || loading) && !error && <p role="status">{data ? "Refreshing checkout inbox…" : "Loading checkout inbox…"}</p>}
     <div aria-live="polite">{data && !error && !tasks.length && <p>No visits waiting for checkout.</p>}</div>

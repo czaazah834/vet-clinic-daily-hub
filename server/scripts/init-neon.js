@@ -56,6 +56,7 @@ async function main() {
 
     await query(fs.readFileSync(path.join(__dirname, "../database/note-options.sql"), "utf8"));
     await query(fs.readFileSync(path.join(__dirname, "../database/admissions.sql"), "utf8"));
+    await query(fs.readFileSync(path.join(__dirname, "../database/admission-workflow.sql"), "utf8"));
 
     // 2. Default Seed Passwords (satisfies 12-128 chars, uppercase, lowercase, number, symbol)
     const adminPassHash = await hashPassword("Admin1234567!");
