@@ -1,3 +1,4 @@
+import LiveControl from '../components/LiveControl.jsx';
 import { VaccinePicker, VaccineEstimate, useBookingCatalog } from '../components/VaccineBooking.jsx';
 import { vaccineChoiceError, vaccineIdFromReason, vaccineReason, vaccinePriceLabel } from '../vaccineBooking.js';
 import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
@@ -1133,7 +1134,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
           <div style={{ display: "grid", gap: "12px" }}>
             <div className="fld">
               <label htmlFor="quick-book-pet">Select Patient (Pet &amp; Owner)</label>
-              <select id="quick-book-pet" disabled={!!(slot.editing && slot.followUpId)} value={petId} onChange={e => { setPetId(e.target.value); setVaccineId(""); setFollowUpId(""); }} required>
+              <LiveControl as="select" id="quick-book-pet" disabled={!!(slot.editing && slot.followUpId)} value={petId} onChange={e => { setPetId(e.target.value); setVaccineId(""); setFollowUpId(""); }} required>
                 {db.pets.map(p => {
                   const o = db.owners.find(x => x.id === p.ownerId) || {};
                   return (
@@ -1142,34 +1143,34 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
                     </option>
                   );
                 })}
-              </select>
+              </LiveControl>
             </div>
 
-            <label>Follow-up request (optional)<select disabled={!!(slot.editing && slot.followUpId)} value={followUpId} onChange={e => setFollowUpId(e.target.value)}><option value="">Regular visit</option>{db.records.filter(r => r.petId === petId && (r.id === followUpId || openFollowUps(db,petId).some(x => x.id === r.id))).map(r => <option key={r.id} value={r.id}>{r.followUpDate} · {r.followUpReason}</option>)}</select></label>
+            <label>Follow-up request (optional)<LiveControl as="select" disabled={!!(slot.editing && slot.followUpId)} value={followUpId} onChange={e => setFollowUpId(e.target.value)}><option value="">Regular visit</option>{db.records.filter(r => r.petId === petId && (r.id === followUpId || openFollowUps(db,petId).some(x => x.id === r.id))).map(r => <option key={r.id} value={r.id}>{r.followUpDate} · {r.followUpReason}</option>)}</LiveControl></label>
             {followUp && <section aria-label="Selected follow-up instructions" className="ow-note"><b>{followUp.careStatus} · Target: {followUp.followUpDate}</b><p style={{whiteSpace:"pre-wrap"}}>{followUp.followUpReason}</p><small>Select an available visit time. Booking does not change the vet's target date.</small></section>}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div className="fld">
                 <label htmlFor="quick-book-vetId">Veterinarian</label>
-                <select id="quick-book-vetId" value={vetId} onChange={e => setVetId(e.target.value)}>
+                <LiveControl as="select" id="quick-book-vetId" value={vetId} onChange={e => setVetId(e.target.value)}>
                   {!doctors.some(([id]) => id === vetId) && <option value={vetId} disabled>Choose an active veterinarian</option>}
                   {doctors.map(([id, name]) => (
                     <option key={id} value={id}>{name}</option>
                   ))}
-                </select>
+                </LiveControl>
               </div>
 
               <div className="fld">
                 <label htmlFor="quick-book-service">Service Category</label>
-                <select id="quick-book-service" value={service} onChange={e => {setService(e.target.value);setVaccineId("");}}>
+                <LiveControl as="select" id="quick-book-service" value={service} onChange={e => {setService(e.target.value);setVaccineId("");}}>
                   {Object.entries(SERVICES).map(([key, item]) => <option key={key} value={key}>{item.label} ({item.dur} min)</option>)}
-                </select>
+                </LiveControl>
               </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div className="fld">
                 <label htmlFor="quick-book-date">Date *</label>
-                <input
+                <LiveControl as="input"
                   id="quick-book-date"
                   type="date"
                   value={date}
@@ -1190,19 +1191,19 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
                 <label htmlFor="quick-book-time">Time Slot</label>
                 {availability.error && <p role="alert">{availability.error} <button type="button" onClick={availability.refresh}>Retry</button></p>}
                 {availability.loading && <small>Checking availability…</small>}
-                <select id="quick-book-time" value={availability.slots.includes(time) ? time : ""} onChange={e => setTime(e.target.value)}>
+                <LiveControl as="select" id="quick-book-time" value={availability.slots.includes(time) ? time : ""} onChange={e => setTime(e.target.value)}>
                   <option value="">Choose an available time</option>
                   {availability.slots.map(t => (
                     <option key={t} value={t}>{t}</option>
                   ))}
-                </select>
+                </LiveControl>
               </div>
             </div>
 
             {service === 'vaccination' && <VaccinePicker id="quick-book-vaccine" value={vaccineId} onChange={setVaccineId} species={selectedPet.species} petSelected={!!petId} />}
             {service !== 'vaccination' && <div className="fld">
               <label htmlFor="quick-book-reason">Reason / Owner Symptoms</label>
-              <input
+              <LiveControl as="input"
                 id="quick-book-reason"
                 type="text"
                 maxLength={300}

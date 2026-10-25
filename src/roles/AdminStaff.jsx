@@ -1,3 +1,4 @@
+import LiveControl from '../components/LiveControl.jsx';
 import AuditActivity from "../components/AuditActivity.jsx";
 import { AUDIT_TYPES, auditActivity } from "../auditActivity.js";
 import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
@@ -456,7 +457,7 @@ export default function AdminStaff({ onInvite }) {
                 <label htmlFor="access-reason" style={{ fontWeight: 600, fontSize: "12.5px" }}>
                   Administrative Reason<i> *</i>
                 </label>
-                <textarea
+                <LiveControl as="textarea"
                   id="access-reason"
                   aria-label="Access change reason"
                   required
@@ -547,7 +548,7 @@ export function AdminAudit() {
   return <section className="card admin-audit" aria-labelledby="audit-title">
     <header className="admin-page-intro"><div><span className="admin-eyebrow">Activity & accountability</span><h2 id="audit-title">System audit trail</h2><p>See who performed an action, what they did and when it was saved.</p></div><button type="button" className="btn ghost" disabled={loading} onClick={()=>loadHistory()}><RefreshCw size={16} aria-hidden="true" />{loading?'Refreshing…':'Refresh activity'}</button></header>
     <div className="admin-audit-metrics"><div><b>{entries.length}</b><span>Loaded entries</span></div><div><b>{types.size}</b><span>Activity types loaded</span></div><div><b>{filtered.length}</b><span>Matching loaded entries</span></div></div>
-    <form className="admin-audit-search" onSubmit={e=>{e.preventDefault();if(loading)return;setQuery(search);loadHistory(null,search);}}><label htmlFor="audit-search">Search saved history<span className="admin-search-input"><Search size={17} aria-hidden="true" /><input id="audit-search" type="search" maxLength={100} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Person, action, patient or record reference" /></span></label><button className="btn" disabled={loading}>Search history</button>{query&&<button type="button" className="btn ghost" onClick={()=>{setSearch('');setQuery('');loadHistory(null,'');}}>Clear search</button>}</form>
+    <form className="admin-audit-search" onSubmit={e=>{e.preventDefault();if(loading)return;setQuery(search);loadHistory(null,search);}}><label htmlFor="audit-search">Search saved history<span className="admin-search-input"><Search size={17} aria-hidden="true" /><LiveControl as="input" id="audit-search" type="search" maxLength={100} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Person, action, patient or record reference" /></span></label><button className="btn" disabled={loading}>Search history</button>{query&&<button type="button" className="btn ghost" onClick={()=>{setSearch('');setQuery('');loadHistory(null,'');}}>Clear search</button>}</form>
     <div className="admin-audit-filters"><label>Performed by<select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)}><option value="all">All roles</option><option value="admin">Administrators</option><option value="vet">Veterinarians</option><option value="assistant">Vet assistants</option><option value="owner">Pet owners</option></select></label><label>Activity type<select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}><option value="all">All activity types</option>{AUDIT_TYPES.map(t=><option key={t}>{t}</option>)}</select></label><p>Role and type filters apply to loaded entries. Search checks saved history; load older entries to see more.</p></div>
     {error&&<p role="alert" className="admin-audit-error">{error}{data?' Your previously loaded entries are still shown.':''}<button type="button" className="btn sm ghost" onClick={()=>loadHistory()}>Retry</button></p>}
     {filtered.length?<PaginatedList label="Audit trail" resetKey={[data?.searchTerm,roleFilter,typeFilter]} className="audit-entry-list">{filtered.map((entry,index)=><AuditActivity key={entry.id||index} entry={entry}/>)}</PaginatedList>:<div className="empty sm">{loading?'Loading saved activity…':data?'No loaded activity matches these filters.':'No activity is available yet.'}</div>}

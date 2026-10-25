@@ -1,3 +1,4 @@
+import LiveControl from '../components/LiveControl.jsx';
 import { VaccinePicker, useBookingCatalog } from '../components/VaccineBooking.jsx';
 import { vaccineChoiceError, vaccineReason, vaccinePriceLabel } from '../vaccineBooking.js';
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
@@ -103,18 +104,18 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
           {review.card}
           <div className="sf-field">
             <label htmlFor="exw-search">Search patient or owner</label>
-            <input id="exw-search" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Pet name, breed, owner or mobile number" />
+            <LiveControl as="input" id="exw-search" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Pet name, breed, owner or mobile number" />
           </div>
 
           <div className="sf-field">
             <label htmlFor="exw-pet">Patient *</label>
-            <select id="exw-pet" value={selectedPetId} onChange={e => { setSelectedPetId(e.target.value); setVaccineId(""); setSaveError(""); }} disabled={busy} required>
+            <LiveControl as="select" id="exw-pet" value={selectedPetId} onChange={e => { setSelectedPetId(e.target.value); setVaccineId(""); setSaveError(""); }} disabled={busy} required>
               <option value="">{filteredPets.length ? "Choose a patient" : "No matching patients"}</option>
               {filteredPets.map(p => {
                 const o = (db.owners || []).find(x => sameOwner(x, p.ownerId)) || {};
                 return <option key={p.id} value={p.id}>{p.name} ({p.species}, {p.breed || "Breed not recorded"}) - {o.name || "Client"}{o.phone ? ` ${o.phone}` : ""}</option>;
               })}
-            </select>
+            </LiveControl>
           </div>
 
           {selectedPet && (
@@ -144,19 +145,19 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
 
           {!alreadyToday && <>
 
-          <div className="sf-field"><label htmlFor="exw-service">Purpose of visit *</label><select id="exw-service" value={service} disabled={busy} onChange={e=>{setService(e.target.value);setVaccineId('');setReason({checkup:'Walk-in consultation and routine exam',deworming:'Routine deworming',grooming:'Grooming and sanitary care'}[e.target.value] || 'Vaccination consultation');}}><option value="checkup">Consultation</option><option value="vaccination">Vaccination</option><option value="deworming">Deworming</option><option value="grooming">Grooming</option></select></div>
+          <div className="sf-field"><label htmlFor="exw-service">Purpose of visit *</label><LiveControl as="select" id="exw-service" value={service} disabled={busy} onChange={e=>{setService(e.target.value);setVaccineId('');setReason({checkup:'Walk-in consultation and routine exam',deworming:'Routine deworming',grooming:'Grooming and sanitary care'}[e.target.value] || 'Vaccination consultation');}}><option value="checkup">Consultation</option><option value="vaccination">Vaccination</option><option value="deworming">Deworming</option><option value="grooming">Grooming</option></LiveControl></div>
           {service === 'vaccination' && <VaccinePicker id="exw-vaccine" value={vaccineId} onChange={setVaccineId} species={selectedPet?.species} petSelected={!!selectedPet} disabled={busy} />}
           {service !== 'vaccination' && <div className="sf-field">
             <label htmlFor="exw-reason">Reason for visit *</label>
-            <input id="exw-reason" type="text" required minLength={3} maxLength={300} disabled={busy} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Cough, routine check-up" />
+            <LiveControl as="input" id="exw-reason" type="text" required minLength={3} maxLength={300} disabled={busy} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Cough, routine check-up" />
           </div>}
 
           <div className="sf-field">
             <label htmlFor="exw-vet">Veterinarian *</label>
-            <select id="exw-vet" required disabled={busy} value={vetId} onChange={e => setVetId(e.target.value)}>
+            <LiveControl as="select" id="exw-vet" required disabled={busy} value={vetId} onChange={e => setVetId(e.target.value)}>
               <option value="">Choose a veterinarian</option>
               {doctors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-            </select>
+            </LiveControl>
           </div>
 
           </>}

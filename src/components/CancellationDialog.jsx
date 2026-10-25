@@ -1,3 +1,4 @@
+import LiveControl from './LiveControl.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { sameIntakeVisit } from '../intakeVisit.js';
 import { useSubmissionReview } from './SubmissionReview.jsx';
@@ -19,7 +20,7 @@ export default function CancellationDialog({visit,currentVisit,onClose,onSubmit,
       try {await onSubmit(reason.trim());} finally {pending.current=false;setSaving(false);}
     }}>
       <h3>Cancel appointment</h3>
-      <label>Cancellation reason<textarea required maxLength={500} value={reason} disabled={saving} onChange={e=>setReason(e.target.value)} /></label>
+      <label>Cancellation reason<LiveControl as="textarea" required maxLength={500} value={reason} disabled={saving} onChange={e=>setReason(e.target.value)} /></label>
       {(error || stale) && <p role="alert" className="err">{stale ? 'The visit changed. Close this form and reopen its current action.' : error}</p>}
       <div className="row end"><button type="button" className="btn ghost" disabled={saving} onClick={onClose}>Keep appointment</button>
         <button className="btn danger" disabled={saving || stale || !reason.trim()}>{saving ? 'Cancelling…' : 'Review cancellation'}</button></div>

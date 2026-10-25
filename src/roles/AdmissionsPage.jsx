@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { api } from '../api.js';
+import AdmissionForm from './AdmissionForm.jsx';
+import { Hospital } from 'lucide-react';
+import { useState } from 'react';
 import { useClinicRead } from '../useClinicRead.js';
-import ClinicDialog from '../components/ClinicDialog.jsx';
-import { useSubmissionReview } from '../components/SubmissionReview.jsx';
 import './admissions.css';
 import AdmissionMedicineForm from './AdmissionMedicineForm.jsx';
 
 const time = value => value ? new Date(value).toLocaleString('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'}) : '—';
-const Status = ({admission}) => <span className={`admission-status ${admission.status === 'Discharged' ? 'discharged' : ''}`}>{admission.status}</span>;
+const Status = ({admission}) => <span className={`admission-status ${admission.status === 'Discharged' ? 'discharged' : admission.status === 'Ready for discharge' ? 'ready' : ''}`}>{admission.status}</span>;
 
 export function AdmissionsSummary({me,go}) {
   const read = useClinicRead('/api/admissions',5000);
@@ -20,86 +19,14 @@ export function AdmissionsSummary({me,go}) {
   </section>;
 }
 
-function AdmissionForm({mode,admission,visits = [],me,onClose,onSaved}) {
-  const sources = useRef(visits).current, revision = useRef(admission?.revision).current;
-  const [form,setForm] = useState({apptId:visits[0]?.id || '',clinicalNote:'',carePlan:'',ownerUpdate:'',temp:'',weight:'',dischargeInstructions:''});
-  const [error,setError] = useState(''), [saving,setSaving] = useState(false), [discard,setDiscard] = useState(false);
-  const pending = useRef(false), request = useRef(null);
-  const create = mode === 'create', discharge = mode === 'discharge', release = mode === 'release';
-  const visit = sources.find(row => row.id === form.apptId);
-  const dirty = Object.entries(form).some(([key,value]) => key !== 'apptId' && value !== '');
-  const review = useSubmissionReview([form,visit,admission?.revision,admission?.status]);
-  const set = (key,value) => setForm(previous => ({...previous,[key]:value}));
-  const close = () => { if (!pending.current) dirty ? setDiscard(true) : onClose(); };
-  useEffect(() => {
-    if (!dirty) return;
-    const leave = event => { event.preventDefault(); event.returnValue = ''; };
-    window.addEventListener('beforeunload',leave);
-    return () => window.removeEventListener('beforeunload',leave);
-  },[dirty]);
-  const submit = async event => {
-    event.preventDefault();
-    if (pending.current) return;
-    setError('');
-    if (create && !visit) return setError('Choose an assigned consultation. Refresh visits if it is missing.');
-    const body = {clinicalNote:form.clinicalNote.trim(),ownerUpdate:form.ownerUpdate.trim(),measurements:{},
-      ...(create ? {apptId:visit.id,expectedVisit:visit} : {revision}),
-      ...(me.role === 'vet' && !discharge && !release ? {carePlan:form.carePlan.trim()} : {}),
-      ...(discharge ? {dischargeInstructions:form.dischargeInstructions.trim()} : {})};
-    for (const key of ['temp','weight']) if (form[key] !== '') body.measurements[key] = Number(form[key]);
-    if (!body.clinicalNote || (create && (!body.carePlan || !body.ownerUpdate)) || (discharge && !body.dischargeInstructions)) return setError('Complete the required notes and instructions.');
-    const fields = [['Pet',create ? `${visit.petName} · ${visit.ownerName}` : admission.petName],['Clinic-only note',body.clinicalNote],
-      ...(body.carePlan ? [['Veterinarian care plan',body.carePlan]] : []),
-      ['Measured observations',Object.entries(body.measurements).map(([key,value]) => `${key === 'temp' ? 'Temperature' : 'Weight'}: ${value} ${key === 'temp' ? '°C' : 'kg'}`).join('\n') || 'None entered'],
-      ['Message visible to owner',body.ownerUpdate || 'No new owner message'],
-      ...(discharge ? [['Home-care instructions visible to owner',body.dischargeInstructions]] : [])];
-    if (!await review.ask({title:create ? 'Review pet admission' : discharge ? 'Review discharge' : 'Review admission update',confirmLabel:create ? 'Admit pet' : release ? 'Confirm release to owner' : discharge ? 'Approve discharge' : 'Save update',
-      description:release ? 'Confirm the pet was released to the owner after veterinarian approval and saved payment.' : discharge ? 'Approve discharge and share home-care instructions. Reception must record final payment before releasing the pet.' : 'Check the clinical notes and the exact message that will be shared with the owner.',fields})) return;
-    const signature = JSON.stringify(body);
-    if (request.current?.signature !== signature) request.current = {signature,id:crypto.randomUUID()};
-    pending.current = true; setSaving(true);
-    try {
-      const result = await api.post(create ? '/api/admissions' : `/api/admissions/${admission.id}/${mode}`,{...body,requestId:request.current.id});
-      if (!result.success || !result.admission?.id || !Number.isInteger(result.admission.revision) || (create ? result.admission.id !== request.current.id : result.admission.id !== admission.id)) throw Error('The server did not confirm this save. Keep your entries and retry to check the result.');
-      onSaved(result.admission);
-    } catch (e) { setError(e.message); pending.current = false; setSaving(false); }
-  };
-  const title = create ? 'Admit a pet' : release ? `Release ${admission.petName} to owner` : discharge ? `Discharge ${admission.petName}` : `${admission.petName} · ${me.role === 'vet' ? 'Veterinarian update' : 'Care observation'}`;
-  return <ClinicDialog label={title} onClose={close}>
-    <section className="card admission-form">
-      {review.card}<h2>{title}</h2>
-      <p>{release ? 'Check the saved payment and home-care instructions, then confirm the pet was released to the owner.' : discharge ? 'The veterinarian approves discharge after finalizing the consultation. Enter the summary and instructions for going home.' : 'Record care that was actually observed or provided. Owner messages are shared only when you explicitly enter them.'}</p>
-      <form onSubmit={submit}>
-        <fieldset disabled={saving}>
-          {create && <label>Consultation visit *<select required value={form.apptId} onChange={event => set('apptId',event.target.value)}>
-            <option value="">Choose a consultation</option>{sources.map(row => <option key={row.id} value={row.id}>{row.petName} · {row.ownerName} · {row.date} {row.time} · {row.status}</option>)}
-          </select></label>}
-          <label>{create ? 'Reason for admission (clinic only)' : release ? 'Release confirmation (clinic only)' : discharge ? 'Discharge summary (clinic only)' : 'Observations / care provided (clinic only)'} *
-            <textarea required rows={3} maxLength={3000} value={form.clinicalNote} onChange={event => set('clinicalNote',event.target.value)} /></label>
-          {me.role === 'vet' && !discharge && !release && <label>{create ? 'Care plan and monitoring instructions *' : 'Updated care plan (optional; leave blank to keep the current plan)'}
-            <textarea required={create} rows={3} maxLength={3000} value={form.carePlan} onChange={event => set('carePlan',event.target.value)} /></label>}
-          {!discharge && !release && <div className="admission-measurements">
-            <label>Measured temperature (°C)<input type="number" min="33" max="45" step="0.1" value={form.temp} onChange={event => set('temp',event.target.value)} /></label>
-            <label>Measured weight (kg)<input type="number" min="0.05" max="120" step="0.01" value={form.weight} onChange={event => set('weight',event.target.value)} /></label>
-          </div>}
-          <label>Message visible to owner {create ? '*' : '(optional)'}<textarea required={create} rows={3} maxLength={2000} value={form.ownerUpdate} onChange={event => set('ownerUpdate',event.target.value)} placeholder="A clear update about the pet’s care and next steps" /></label>
-          {discharge && <label>Discharge and home-care instructions visible to owner *<textarea required rows={4} maxLength={3000} value={form.dischargeInstructions} onChange={event => set('dischargeInstructions',event.target.value)} /></label>}
-          {error && <p role="alert" className="err">{error} Your entries remain in this form.</p>}
-          <div className="row end"><button type="button" className="btn ghost" onClick={close}>Cancel</button><button className="btn gold">{saving ? 'Saving…' : 'Review and save'}</button></div>
-        </fieldset>
-      </form>
-    </section>
-    {discard && <ClinicDialog label="Discard unsaved admission entries?" onClose={() => setDiscard(false)}><section className="card admission-form"><h3>Discard unsaved admission entries?</h3><p>These entries have not been saved to the clinic.</p><div className="row end"><button className="btn gold" data-dialog-autofocus onClick={() => setDiscard(false)}>Keep editing</button><button className="btn ghost" onClick={onClose}>Discard entries</button></div></section></ClinicDialog>}
-  </ClinicDialog>;
-}
 
 function NewAdmission({me,onSaved}) {
   const [open,setOpen] = useState(false);
   const read = useClinicRead('/api/admissions/eligible',5000);
   return <>
     {read.error && <p role="alert">{read.error} <button className="btn sm" onClick={() => read.load()}>Retry consultation list</button></p>}
-    <button className="btn gold" disabled={!read.data?.visits.length || !!read.error} onClick={() => setOpen(true)}>Admit a pet</button>
-    {!read.error && read.data && !read.data.visits.length && <p>Start a consultation from the Clinical Queue to admit a pet. A pet can have one active admission.</p>}
+    <button className="btn ghost" disabled={!read.data?.visits.length || !!read.error} onClick={() => setOpen(true)}>Choose a consultation to admit</button>
+    {!read.error && read.data && !read.data.visits.length && <p>No other consultations are available for admission. Start the patient’s consultation from the Clinical Queue.</p>}
     {open && <AdmissionForm mode="create" me={me} visits={read.data?.visits || []} onClose={() => setOpen(false)} onSaved={row => {setOpen(false);read.load();onSaved(row);}} />}
   </>;
 }
@@ -161,22 +88,43 @@ export default function AdmissionsPage({me,go,say = () => {}}) {
   const data = read.data?.status === status && read.data?.offset === offset ? read.data : null;
   const changed = row => {read.load();say(row.status === 'Discharged' ? 'Release saved. The admission history is retained.' : 'Admission update saved.');};
   if (selected) return <AdmissionDetail key={selected} id={selected} me={me} go={go} onBack={() => setSelected(null)} onChanged={changed} />;
+  const owner = me.role === 'owner';
   return <div className="admissions-page">
-    <section className="card"><h2>{me.role === 'owner' ? 'Your pet’s admission updates' : 'Admission and daily monitoring'}</h2>
-      <p>{me.role === 'owner' ? 'Follow your pet’s stay, read messages from the clinic and find discharge instructions here. Updates refresh while connected.' : 'The veterinarian admits the pet and orders care. Staff record actual observations and medicine events. The vet approves discharge; reception records payment and confirms release. Owner messages are reviewed separately from clinic-only notes.'}</p>
-      {me.role === 'vet' && <NewAdmission me={me} onSaved={row => {changed(row);setSelected(row.id);}} />}
+    <section className="card admission-overview">
+      <div className="admission-overview-heading"><span className="admission-icon"><Hospital size={26} aria-hidden="true" /></span><div>
+        <h2>{owner ? 'Your pet’s stay at the clinic' : 'Admission and daily care'}</h2>
+        <p>{owner ? 'Read saved updates from the clinic and follow your pet’s progress through discharge.' : me.role === 'vet' ? 'Decide admission in the patient’s SOAP consultation. Monitor care and approve discharge here.' : 'Record daily care and medicine events, share owner updates, and coordinate release after payment.'}</p>
+      </div></div>
+      <ol className="admission-workflow" aria-label="Admission workflow">
+        <li><span>1</span><div><b>Vet admits</b><small>Reason and monitoring plan</small></div></li>
+        <li><span>2</span><div><b>Clinic provides care</b><small>Observations and actual medicine events</small></div></li>
+        <li><span>3</span><div><b>Vet approves discharge</b><small>Final SOAP and home-care instructions</small></div></li>
+        <li><span>4</span><div><b>Payment and release</b><small>Reception confirms the pet went home</small></div></li>
+      </ol>
+      {me.role === 'vet' && <div className="admission-actions">
+        <button className="btn gold" onClick={()=>go('home')}>Open Clinical Queue</button>
+        <NewAdmission me={me} onSaved={row => {changed(row);setSelected(row.id);}} />
+      </div>}
     </section>
-    <section className="card"><div className="admission-actions" role="group" aria-label="Admission status">{['Active','Admitted','Ready for discharge','Discharged'].map(value => <button key={value} className={`btn ${status === value ? 'gold' : 'ghost'}`} aria-pressed={status === value} onClick={() => {setStatus(value);setOffset(0);}}>{value}</button>)}<button className="btn sm ghost" disabled={read.loading} onClick={() => read.load()}>Refresh updates</button></div>
-      {read.error && <p role="alert" className="err">{read.error} {data && 'Showing the last loaded admissions.'}</p>}
-      {!data && !read.error && <p role="status">Loading admissions…</p>}
-      {data && <><p>{data.total} {status.toLowerCase()} pet {data.total === 1 ? 'stay' : 'stays'} · Checked at {time(data.checkedAt)}</p>
-        {!data.admissions.length && <p>No {status.toLowerCase()} pets on this page.</p>}
+    <section className="card admission-roster" aria-label="Admission list" aria-busy={read.loading}>
+      <div className="admission-list-toolbar"><div className="admission-filters" role="group" aria-label="Admission status">{['Active','Admitted','Ready for discharge','Discharged'].map(value => <button key={value} className={`btn ${status === value ? 'gold' : 'ghost'}`} aria-pressed={status === value} onClick={() => {setStatus(value);setOffset(0);}}>{value === 'Active' ? 'All active stays' : value}</button>)}</div>
+        <button className="btn sm ghost" disabled={read.loading} onClick={() => read.load()}>{read.loading && data ? 'Refreshing…' : 'Refresh updates'}</button></div>
+      {read.error && <p role="alert" className="err">{read.error} {data && 'Showing the last loaded admissions.'} <button className="btn sm ghost" onClick={()=>read.load()}>Retry admissions</button></p>}
+      {!data && !read.error && <><p role="status">Loading admissions…</p><div className="admission-list admission-loading" aria-hidden="true">{[1,2,3].map(i=><div key={i}><span /><span /><span /></div>)}</div></>}
+      {data && <>
+        <div className="admission-list-meta"><b>{data.total} {status === 'Active' ? 'active' : status.toLowerCase()} {data.total === 1 ? 'stay' : 'stays'}</b><small>Updated {time(data.checkedAt)}</small></div>
+        {!data.admissions.length && <div className="admission-empty"><Hospital size={32} aria-hidden="true" /><h3>{status === 'Active' ? 'No active admissions' : `No ${status.toLowerCase()} stays`}</h3>
+          <p>{owner ? 'When the clinic admits your pet, shared updates will appear here.' : me.role === 'vet' ? 'Open a patient’s consultation and use Admission under the Plan section to record hospital care.' : 'Patients appear here after a veterinarian saves an admission. You can then record care and share updates.'}</p></div>}
         <div className="admission-list">{data.admissions.map(row => <article key={row.id}>
-          <div className="admission-heading"><h3>{row.petName}</h3><Status admission={row} /></div><p>{row.vetName} · Admitted {time(row.admittedAt)}</p>
-          {row.latestUpdate && <p className="admission-preview">{row.latestUpdate}</p>}
-          <button className="btn" onClick={() => setSelected(row.id)}>{me.role === 'owner' ? 'View pet updates' : 'Open care timeline'}</button>
+          <div className="admission-heading"><h3>{row.petName}</h3><Status admission={row} /></div>
+          {!owner && <p className="admission-card-owner">Owner: {row.ownerName}</p>}
+          <p className="admission-card-meta">{row.vetName}<br />Admitted {time(row.admittedAt)}</p>
+          {!owner && <p className="admission-preview"><b>Reason: </b>{row.reason}</p>}
+          {row.latestUpdate ? <div className="admission-owner-update"><small>{owner ? 'Latest clinic update' : 'Latest shared owner update'}</small><p className="admission-preview">{row.latestUpdate}</p></div> : <p className="admission-footnote">No owner update shared yet.</p>}
+          <p className="admission-next-step"><b>Next: </b>{row.status === 'Admitted' ? owner ? 'Ongoing care and clinic updates.' : 'Continue care; vet approval is required for discharge.' : row.status === 'Ready for discharge' ? row.billingStatus === 'Paid' ? 'Reception confirms release to the owner.' : 'Reception records final payment before release.' : 'View the retained care history and home instructions.'}</p>
+          <button className="btn" onClick={() => setSelected(row.id)}>{owner ? 'View pet updates' : 'Open care record'}</button>
         </article>)}</div>
-        <div className="admission-actions"><button className="btn sm ghost" disabled={!offset} onClick={() => setOffset(previous => Math.max(0,previous-50))}>Previous stays</button><button className="btn sm ghost" disabled={offset+50 >= data.total} onClick={() => setOffset(previous => previous+50)}>More stays</button></div>
+        {data.total>50 && <div className="admission-actions"><button className="btn sm ghost" disabled={!offset} onClick={() => setOffset(previous => Math.max(0,previous-50))}>Previous stays</button><button className="btn sm ghost" disabled={offset+50 >= data.total} onClick={() => setOffset(previous => previous+50)}>More stays</button></div>}
       </>}
     </section>
   </div>;

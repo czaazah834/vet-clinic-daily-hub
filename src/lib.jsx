@@ -1,3 +1,4 @@
+import { useFormValidation } from './components/useFormValidation.jsx';
 import { PaginatedTable } from "./components/Pagination.jsx";
 import {today as currentClinicDate} from "./booking.js";
 import { changeAppointmentStatus } from "./appointmentStatus.js";
@@ -230,26 +231,24 @@ export function Table({ db, ent, list, acts, me, onEdit, onDel, onMove, onView }
 }
 
 export function FormModal({ ent, init, db, me, onSave, onClose }) {
-  const c = E[ent], [d, setD] = useState(init || c.def || {}), [err, setErr] = useState({}), [auto, setAuto] = useState(!(init && init.nextDue));
+  const c = E[ent], [d, setD] = useState(init || c.def || {}), [auto, setAuto] = useState(!(init && init.nextDue));
   const set = (k, v) => { if (ent === "vacc" && k === "nextDue") setAuto(false); setD(p => { const n = { ...p, [k]: v }; if (ent === "vacc" && k !== "nextDue" && auto && n.date && INTERVAL[n.vaccine]) { const x = new Date(n.date + "T00:00:00"); x.setDate(x.getDate() + INTERVAL[n.vaccine]); n.nextDue = ymd(x); } return n; }); };
   const opts = f => (f.o ? f.o(db, me) : []).map(o => Array.isArray(o) ? o : [o, o]);
-  const run = key => {
-    const ex = c.chk(d, init && init.id, db), e = {};
-    c.f.forEach(f => { const m = checkField(f, d[f.k]) || (f.k in ex ? ex[f.k] : ""); if (m) e[f.k] = m; });
-    setErr(key ? p => ({ ...p, [key]: e[key] || "" }) : e); return !Object.keys(e).length;
-  };
-  const submit = ev => { ev.preventDefault(); if (run()) onSave({ ...d, ...(f => f)(d), weight: d.weight === undefined ? d.weight : +d.weight }); };
+  const extra = c.chk(d, init && init.id, db);
+  const errors = Object.fromEntries(c.f.map(f=>[f.k,checkField(f,d[f.k]) || extra[f.k] || '']));
+  const validation = useFormValidation(errors);
+  const submit = ev => { ev.preventDefault(); if (validation.validate(ev)) onSave({ ...d, weight: d.weight === undefined ? d.weight : +d.weight }); };
   return (
     <div className="scrim" onMouseDown={ev => ev.target === ev.currentTarget && onClose()}>
-      <form className="modal" onSubmit={submit} noValidate>
+      <form className="modal" {...validation.formProps} onSubmit={submit}>
         <h3>{init && init.id ? "Edit" : "Add"} {c.one}</h3>
         {c.f.map(f => (
           <div className="fld" key={f.k}>
             <label htmlFor={f.k}>{f.l}{f.req && <i> *</i>}</label>
-            {f.t === "select" ? <select id={f.k} value={d[f.k] || ""} aria-invalid={!!err[f.k]} onChange={e => set(f.k, e.target.value)} onBlur={() => run(f.k)}><option value="">Select…</option>{opts(f).map(([a, b]) => <option key={a} value={a}>{b}</option>)}</select>
-              : f.t === "textarea" ? <textarea id={f.k} rows={3} value={d[f.k] || ""} aria-invalid={!!err[f.k]} onChange={e => set(f.k, e.target.value)} onBlur={() => run(f.k)} />
-              : <input id={f.k} type={f.t || "text"} step={f.t === "number" ? "0.1" : undefined} value={d[f.k] ?? ""} aria-invalid={!!err[f.k]} onChange={e => set(f.k, e.target.value)} onBlur={() => run(f.k)} />}
-            {err[f.k] && <span className="err">{err[f.k]}</span>}
+            {f.t === "select" ? <select {...validation.field(f.k)} id={f.k} value={d[f.k] || ""} onChange={e => set(f.k, e.target.value)}><option value="">Select…</option>{opts(f).map(([a, b]) => <option key={a} value={a}>{b}</option>)}</select>
+              : f.t === "textarea" ? <textarea {...validation.field(f.k)} id={f.k} rows={3} value={d[f.k] || ""} onChange={e => set(f.k, e.target.value)} />
+              : <input {...validation.field(f.k)} id={f.k} type={f.t || "text"} step={f.t === "number" ? "0.1" : undefined} value={d[f.k] ?? ""} onChange={e => set(f.k, e.target.value)} />}
+            {validation.feedback(f.k)}
           </div>))}
         <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button className="btn">Save {c.one}</button></div>
       </form>
