@@ -1,3 +1,5 @@
+import ClinicDialog from "../components/ClinicDialog.jsx";
+import { useSoapDraft } from "../useSoapDraft.js";
 import { VaccineEstimate } from "../components/VaccineBooking.jsx";
 import { PaginatedList } from "../components/Pagination.jsx";
 import {HistoryControls} from "../ClinicHistory.jsx";
@@ -13,23 +15,6 @@ import { api } from "../api.js";
 import { today, plus } from "../booking.js";
 import { intakeVisitSnapshot, sameIntakeVisit } from "../intakeVisit.js";
 import { confirmedConsultation, applyConsultationSave } from "../consultationSave.js";
-
-const DIAGNOSIS_SHORTCUTS = [
-  "Dermatitis",
-  "Otitis externa",
-  "Gastroenteritis",
-  "Parasitic infection",
-  "Dental disease",
-  "Injury / wound",
-  "No abnormal findings on examination",
-];
-const PLAN_SHORTCUTS = [
-  "Discussed findings and home care with the owner.",
-  "Wound cleaned and dressed.",
-  "Diagnostic tests recommended; discuss results with the owner.",
-  "Monitor appetite, activity and symptoms at home.",
-  "Return for a recheck if symptoms persist or worsen.",
-];
 
 function NoteShortcuts({ field, label, options, value, onChange }) {
   const [choice, setChoice] = useState("");
@@ -55,9 +40,6 @@ function NoteShortcuts({ field, label, options, value, onChange }) {
 export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClose, onSaved }) {
   const TODAY=today();
   const inFlight=useRef(false),consultationId=useRef(uid()),vaccinationId=useRef("v"+uid());
-  const expectedVisit=useRef(intakeVisitSnapshot(appt)).current;
-  const current=(db.appts || []).find(a=>a.id===expectedVisit?.id);
-  const stale=!current || !sameIntakeVisit(current,expectedVisit) || current.petId!==pet.id || !db.pets.some(p=>p.id===pet.id) || ![me.id,me.vetId].filter(Boolean).includes(current.vetId) || current.status!=="In consultation";
   const [tab, setTab] = useState("soap"); // 'soap' | 'emr'
   const owner = db.owners.find(o => o.id === pet.ownerId) || {};
   const followUpRequest = db.records.find(r => r.id === appt?.followUpId);
@@ -72,7 +54,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
   const weightRemark = iv?.weightAnalysis ? ` (${iv.weightAnalysis.label})` : "";
   const triageRemark = iv?.triageLevel && iv.triageLevel !== "Routine" ? ` [TRIAGE: ${iv.triageLevel.toUpperCase()}]` : "";
 
-  const [f, setF] = useState({
+  const initialForm = {
     date: TODAY,
     symptoms: appt?.reason ? `Chief Complaint: ${appt.reason}${triageRemark}` : "",
     objective: `Temp: ${initialTemp}${tempRemark}, Weight: ${initialWeight ? `${initialWeight} kg` : "—"}${weightRemark}.`,
@@ -96,10 +78,29 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
     followUpDays: "7",
     followUpDate: plus(7),
     followUpReason: `Clinical Follow-up & Post-treatment Re-check for ${pet.name}`,
-  });
+  };
+  const draftState = useSoapDraft({userId:me.id, appt, petId:pet.id, initialForm,
+    consultationId:consultationId.current, vaccinationId:vaccinationId.current, expectedVisit:intakeVisitSnapshot(appt)});
+  const {form:f, prescriptionItems, performedServices, expectedVisit} = draftState.draft;
+  consultationId.current = draftState.draft.consultationId;
+  vaccinationId.current = draftState.draft.vaccinationId;
+  const setF = value => draftState.setPart('form', value);
+  const setPrescriptionItems = value => draftState.setPart('prescriptionItems', value);
+  const setPerformedServices = value => draftState.setPart('performedServices', value);
+  const current=(db.appts || []).find(a=>a.id===expectedVisit?.id);
+  const stale=!current || !sameIntakeVisit(current,expectedVisit) || current.petId!==pet.id || !db.pets.some(p=>p.id===pet.id) || ![me.id,me.vetId].filter(Boolean).includes(current.vetId) || current.status!=="In consultation";
 
-  const [prescriptionItems, setPrescriptionItems] = useState([]);
-  const [performedServices, setPerformedServices] = useState([]);
+  const [closing, setClosing] = useState(false);
+  const requestClose = () => { if (!inFlight.current) { if (draftState.dirty || draftState.error) setClosing(true); else onClose(); } };
+  const [noteOptions, setNoteOptions] = useState({diagnosis:[], treatment:[]});
+  const [optionsError, setOptionsError] = useState('');
+  const [optionsAttempt, retryOptions] = useState(0);
+  useEffect(() => {
+    let active = true;
+    api.get('/api/clinical/note-options').then(r => { if (active) { setNoteOptions(r.options); setOptionsError(''); } })
+      .catch(e => { if (active) setOptionsError(e.message); });
+    return () => { active = false; };
+  }, [optionsAttempt]);
   const [serviceCatalog, setServiceCatalog] = useState([]);
   const [catalogError, setCatalogError] = useState('');
   const [catalogAttempt, retryCatalog] = useState(0);
@@ -241,15 +242,29 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
       const next=applyConsultationSave(previous,saved,expectedVisit);
       return next===previous?previous:{...next,log:addLog(previous,me,`Finalized consultation ${saved.record.id} for visit ${saved.record.apptId}`)};
     });
+    draftState.clear();
     setLoading(false);
     onSaved && onSaved(saved.record);
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !inFlight.current && onClose()}>
+    <ClinicDialog labelledBy="soap-title" onClose={requestClose}>
       <div className="modal clinical-soap" style={{ width: "min(760px, 100%)", maxHeight: "94vh" }}>
         <HistoryControls auto />
         {review.card}
+        {closing && <ClinicDialog labelledBy="soap-close-title" onClose={() => setClosing(false)}>
+          <div className="modal" style={{width:'min(540px,100%)'}}>
+            <h3 id="soap-close-title">Leave unfinished consultation?</h3>
+            <p>Your notes have not been finalized. Keep a draft to resume this visit on this browser, or discard your edits.</p>
+            {draftState.error && <p role="alert" className="err">{draftState.error}</p>}
+            <div className="row end" style={{gap:10,flexWrap:'wrap'}}>
+              <button type="button" className="btn ghost" data-dialog-autofocus onClick={() => setClosing(false)}>Keep editing</button>
+              <button type="button" className="btn" onClick={() => { if (draftState.persist()) onClose(); }}>Keep draft and close</button>
+              <button type="button" className="btn danger" onClick={() => { if (draftState.clear()) onClose(); }}>Discard edits</button>
+            </div>
+          </div>
+        </ClinicDialog>}
+        {draftState.error ? <p role="alert" className="err">{draftState.error}</p> : draftState.dirty && <p role="status" className="ow-note">{draftState.recovered ? 'Recovered unfinished consultation. Review all details before finalizing.' : draftState.saved ? 'Draft saved on this browser.' : 'Saving draft…'} Drafts stay on this browser until finalized or discarded and are not part of the medical record.</p>}
         <style>{`.clinical-soap input[type=checkbox]{width:auto;flex:0 0 auto}.clinical-soap .service-check{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}.clinical-soap .tabs{flex-wrap:wrap}.clinical-soap .tabs button{white-space:normal;max-width:100%;min-width:0}`}</style>
         {followUpRequest && <div className="ow-note info"><b>Linked {followUpRequest.careStatus}</b><p>Target: {followUpRequest.followUpDate} · {followUpRequest.followUpReason}</p></div>}
         {(appt?.handoffs || []).length > 0 && <section className="ow-note info" aria-label="Veterinarian handoff instructions" style={{overflowWrap:'anywhere'}}>
@@ -259,7 +274,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px", marginBottom: "14px" }}>
           <div>
-            <h3 style={{ margin: "0 0 4px", fontSize: "20px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <h3 id="soap-title" style={{ margin: "0 0 4px", fontSize: "20px", display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ color: "var(--navy)" }}><I e={pet.species || "paw"} size={22} /></span>
               <span>SOAP Consultation &amp; EMR: <b>{pet.name}</b></span>
             </h3>
@@ -267,7 +282,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               <b>Owner:</b> {owner.name} ({owner.phone}) &bull; <b>Breed:</b> {pet.breed || pet.species} &bull; <b>Sex:</b> {pet.sex}
             </p>
           </div>
-          <button type="button" className="btn ghost sm" aria-label="Close consultation" disabled={loading} onClick={()=>{if(!inFlight.current)onClose();}}><X size={16} /></button>
+          <button type="button" className="btn ghost sm" aria-label="Close consultation" disabled={loading} onClick={requestClose}><X size={16} /></button>
         </div>
 
         <p className="ow-note"><b>Requested visit:</b> {appt.reason}</p><VaccineEstimate appointment={appt} />
@@ -448,7 +463,8 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
                 <label htmlFor="soap-diagnosis"><b>A - Assessment (Diagnosis)</b><i> *</i></label>
-                <NoteShortcuts field="diagnosis" label="Common diagnosis" options={DIAGNOSIS_SHORTCUTS} value={f.diagnosis} onChange={value => set("diagnosis", value)} />
+                {optionsError && <p role="alert">Choices could not load. You can still type your notes. <button type="button" onClick={() => retryOptions(n => n + 1)}>Retry choices</button></p>}
+                <NoteShortcuts field="diagnosis" label="Common diagnosis" options={noteOptions.diagnosis} value={f.diagnosis} onChange={value => set("diagnosis", value)} />
                 <p id="soap-diagnosis-hint" className="soap-note-label">Diagnosis and patient-specific details</p>
                   <textarea
                     id="soap-diagnosis"
@@ -466,7 +482,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
                 <label htmlFor="soap-treatment"><b>P - Plan (Treatment &amp; In-Clinic Procedures)</b><i> *</i></label>
-                <NoteShortcuts field="treatment" label="Common plan entry" options={PLAN_SHORTCUTS} value={f.treatment} onChange={value => set("treatment", value)} />
+                <NoteShortcuts field="treatment" label="Common plan entry" options={noteOptions.treatment} value={f.treatment} onChange={value => set("treatment", value)} />
                 <p id="soap-treatment-hint" className="soap-note-label">Treatment and patient-specific instructions</p>
                   <textarea
                     id="soap-treatment"
@@ -629,7 +645,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
             {stale && <p className="err" role="alert">This visit has changed or is not in consultation. Refresh clinic records and reopen it. Your notes remain here for reference.</p>}
             {errs.save && <p className="err" role="alert">{errs.save}</p>}
             <div className="row end" style={{ marginTop: "20px", gap: "10px" }}>
-              <button type="button" className="btn ghost" onClick={onClose} disabled={loading}>Cancel</button>
+              <button type="button" className="btn ghost" onClick={requestClose} disabled={loading}>Cancel</button>
               <button type="submit" className="btn gold" disabled={loading || stale || !serviceCatalog.length || !!catalogError} style={{ fontWeight: 700 }}>
                 {loading ? "Saving to EMR & Database..." : "Review and finalize visit"}
               </button>
@@ -638,6 +654,6 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
           </form>
         )}
       </div>
-    </div>
+    </ClinicDialog>
   );
 }

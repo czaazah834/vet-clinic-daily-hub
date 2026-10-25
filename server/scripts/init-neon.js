@@ -54,6 +54,8 @@ async function main() {
 
     await query(fs.readFileSync(path.join(__dirname, "../database/state-read-indexes.sql"), "utf8"));
 
+    await query(fs.readFileSync(path.join(__dirname, "../database/note-options.sql"), "utf8"));
+
     // 2. Default Seed Passwords (satisfies 12-128 chars, uppercase, lowercase, number, symbol)
     const adminPassHash = await hashPassword("Admin1234567!");
     const vetPassHash = await hashPassword("Vet123456789!");
@@ -141,9 +143,9 @@ async function main() {
     await query(`
       INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount, intake_vitals)
       VALUES
-        ('a_1', 'p_1', 'u_vet_1', $1, '09:00 AM', 'Annual Booster & Routine Checkup', 'Checked-in', 'Unbilled', 850.00, '{"weight": 24.5, "weightStatus": "healthy", "temp": 38.4, "tempStatus": "normal", "heartRate": 95, "checkedInBy": "Liza Ramos"}'),
-        ('a_2', 'p_2', 'u_vet_2', $1, '10:30 AM', 'Skin Scratching / Allergy Consultation', 'Confirmed', 'Unbilled', 600.00, NULL),
-        ('a_3', 'p_3', 'u_vet_1', $1, '02:00 PM', 'Rabies Booster Shot', 'Scheduled', 'Unbilled', 500.00, NULL)
+        ('a_1', 'p_1', 'u_vet_1', $1, '09:00', 'Annual Booster & Routine Checkup', 'Checked-in', 'Unbilled', 850.00, '{"weight": 24.5, "weightStatus": "healthy", "temp": 38.4, "tempStatus": "normal", "heartRate": 95, "checkedInBy": "Liza Ramos"}'),
+        ('a_2', 'p_2', 'u_vet_2', $1, '10:30', 'Skin Scratching / Allergy Consultation', 'Confirmed', 'Unbilled', 600.00, NULL),
+        ('a_3', 'p_3', 'u_vet_1', $1, '14:00', 'Rabies Booster Shot', 'Scheduled', 'Unbilled', 500.00, NULL)
       ON CONFLICT (id) DO NOTHING
     `, [today]);
 

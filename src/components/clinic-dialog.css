@@ -1,0 +1,4 @@
+.clinic-dialog{position:fixed;inset:0;box-sizing:border-box;margin:0;padding:0;border:0;width:100%;height:100%;max-width:none;max-height:none;background:transparent;color:inherit;overflow:hidden}
+.clinic-dialog:not([open]){display:none}
+.clinic-dialog::backdrop{background:transparent}
+.clinic-dialog>.scrim{width:100%;height:100%;box-sizing:border-box}
