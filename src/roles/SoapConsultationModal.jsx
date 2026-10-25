@@ -14,6 +14,44 @@ import { today, plus } from "../booking.js";
 import { intakeVisitSnapshot, sameIntakeVisit } from "../intakeVisit.js";
 import { confirmedConsultation, applyConsultationSave } from "../consultationSave.js";
 
+const DIAGNOSIS_SHORTCUTS = [
+  "Dermatitis",
+  "Otitis externa",
+  "Gastroenteritis",
+  "Parasitic infection",
+  "Dental disease",
+  "Injury / wound",
+  "No abnormal findings on examination",
+];
+const PLAN_SHORTCUTS = [
+  "Discussed findings and home care with the owner.",
+  "Wound cleaned and dressed.",
+  "Diagnostic tests recommended; discuss results with the owner.",
+  "Monitor appetite, activity and symptoms at home.",
+  "Return for a recheck if symptoms persist or worsen.",
+];
+
+function NoteShortcuts({ field, label, options, value, onChange }) {
+  const [choice, setChoice] = useState("");
+  const [added, setAdded] = useState(false);
+  const included = !!choice && value.split(/\r?\n/).some(line => line.trim() === choice);
+  const next = value + (value && !value.endsWith("\n") ? "\n" : "") + choice;
+  const tooLong = !!choice && next.length > 10000;
+  const hintId = `soap-${field}-shortcut-hint`;
+  return <div className="soap-note-shortcuts">
+    <div className="soap-shortcut-controls">
+      <label htmlFor={`soap-${field}-shortcut`}>{label} (optional)
+        <select id={`soap-${field}-shortcut`} value={choice} aria-describedby={hintId} onChange={e => { setChoice(e.target.value); setAdded(false); }}>
+          <option value="">Choose an entry to add</option>
+          {options.map(option => <option key={option} value={option}>{option}</option>)}
+        </select>
+      </label>
+      <button type="button" className="btn sm ghost" aria-label={`Add ${field === "diagnosis" ? "diagnosis" : "plan"} to notes`} disabled={!choice || included || tooLong} onClick={() => { onChange(next); setAdded(true); }}>Add to notes</button>
+    </div>
+    <p id={hintId} role="status">{included ? (added ? "Added to notes. You can edit the text below." : "This entry is already in your notes.") : tooLong ? "This entry would exceed 10,000 characters. Shorten your notes before adding it." : "Choose an entry and select Add to notes, or type your own notes below."}</p>
+  </div>;
+}
+
 export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClose, onSaved }) {
   const TODAY=today();
   const inFlight=useRef(false),consultationId=useRef(uid()),vaccinationId=useRef("v"+uid());
@@ -409,36 +447,39 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
               </div>
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
-                <label>
-                  <b>A - Assessment (Diagnosis)</b><i> *</i>
+                <label htmlFor="soap-diagnosis"><b>A - Assessment (Diagnosis)</b><i> *</i></label>
+                <NoteShortcuts field="diagnosis" label="Common diagnosis" options={DIAGNOSIS_SHORTCUTS} value={f.diagnosis} onChange={value => set("diagnosis", value)} />
+                <p id="soap-diagnosis-hint" className="soap-note-label">Diagnosis and patient-specific details</p>
                   <textarea
+                    id="soap-diagnosis"
                     rows={2}
                     aria-invalid={!!errs.diagnosis}
-                    aria-describedby={errs.diagnosis ? "soap-diagnosis-error" : undefined}
+                    aria-describedby={`soap-diagnosis-hint${errs.diagnosis ? " soap-diagnosis-error" : ""}`}
                     value={f.diagnosis}
                     onChange={e => set("diagnosis", e.target.value)}
                     onBlur={() => touch("diagnosis")}
                     placeholder="Clinical diagnosis, differential diagnosis, condition assessment..."
                     className={errs.diagnosis ? "bad" : f.diagnosis.trim() ? "ok" : ""}
                   />
-                </label>
                 {errs.diagnosis && <span id="soap-diagnosis-error" className="err" role="alert">{errs.diagnosis}</span>}
               </div>
 
               <div className="fld full" style={{ gridColumn: "1/-1" }}>
-                <label>
-                  <b>P - Plan (Treatment &amp; In-Clinic Procedures)</b><i> *</i>
+                <label htmlFor="soap-treatment"><b>P - Plan (Treatment &amp; In-Clinic Procedures)</b><i> *</i></label>
+                <NoteShortcuts field="treatment" label="Common plan entry" options={PLAN_SHORTCUTS} value={f.treatment} onChange={value => set("treatment", value)} />
+                <p id="soap-treatment-hint" className="soap-note-label">Treatment and patient-specific instructions</p>
                   <textarea
+                    id="soap-treatment"
                     rows={2}
                     aria-invalid={!!errs.treatment}
-                    aria-describedby={errs.treatment ? "soap-treatment-error" : undefined}
+                    aria-describedby={`soap-treatment-hint${errs.treatment ? " soap-treatment-error" : ""}`}
                     value={f.treatment}
                     onChange={e => set("treatment", e.target.value)}
                     onBlur={() => touch("treatment")}
                     placeholder="Procedures performed, fluids administered, wound treatment, instructions..."
                     className={errs.treatment ? "bad" : f.treatment.trim() ? "ok" : ""}
                   />
-                </label>
+                <p className="soap-note-hint">Text shortcuts add to your notes only. Confirm billable services separately below.</p>
                 {errs.treatment && <span id="soap-treatment-error" className="err" role="alert">{errs.treatment}</span>}
               </div>
 

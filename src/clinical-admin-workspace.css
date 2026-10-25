@@ -105,3 +105,16 @@
 }
 @media screen and (max-height:500px){.shell:is(.th-vet,.th-admin)[data-page] .side .brand{padding-bottom:12px}.shell:is(.th-vet,.th-admin)[data-page] .sidefoot{margin-top:8px;padding-top:8px}.shell:is(.th-vet,.th-admin)[data-page] .sidefoot .me{display:none}.shell:is(.th-vet,.th-admin)[data-page] .top{position:static}}
 @media screen and (prefers-reduced-motion:reduce){.shell:is(.th-vet,.th-admin)[data-page] *{transition:none!important;scroll-behavior:auto!important}}
+
+@media screen {
+  .clinical-soap .soap-note-shortcuts { margin:8px 0 12px; padding:12px; border:1px solid #dce5f2; border-radius:10px; background:#f5f8fd; }
+  .clinical-soap .soap-shortcut-controls { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; }
+  .clinical-soap .soap-shortcut-controls label { flex:1 1 240px; min-width:0; margin:0; font-size:12px; color:#48648a; }
+  .clinical-soap .soap-shortcut-controls select { display:block; width:100%; min-height:44px; margin-top:6px; text-overflow:ellipsis; }
+  .clinical-soap .soap-shortcut-controls .btn { flex:0 0 auto; min-height:44px; }
+  .clinical-soap .soap-note-shortcuts p, .clinical-soap .soap-note-hint { margin:8px 0 0; font-size:11px; line-height:1.7; color:#63758e; }
+  .clinical-soap .soap-note-label { margin:0 0 6px; font-size:12px; color:#48648a; }
+}
+@media screen and (max-width:480px) {
+  .clinical-soap .soap-shortcut-controls .btn { width:100%; }
+}
