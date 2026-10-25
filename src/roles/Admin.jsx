@@ -1,3 +1,4 @@
+import { PaginatedList } from "../components/Pagination.jsx";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import AdminStaff, { useAdminStaff, AdminAudit } from "./AdminStaff.jsx";
 import ReminderStatus from "./ReminderStatus.jsx";
@@ -36,7 +37,7 @@ function Bars({ title, data }) {
     <section className="card">
       <h3 style={{ margin: "0 0 12px" }}>{title}</h3>
       {Object.entries(data).map(([k, n]) => (
-        <div className="bar2" key={k} style={{ display: "grid", gridTemplateColumns: "130px 1fr 40px", gap: "10px", alignItems: "center", margin: "8px 0" }}>
+        <div className="bar2" key={k} style={{ display: "grid", gridTemplateColumns: "minmax(0,130px) minmax(0,1fr) 30px", gap: "10px", alignItems: "center", margin: "8px 0" }}>
           <span style={{ fontSize: "13px", fontWeight: "600", color: "#334155" }}>{k}</span>
           <i style={{ display: "block", height: "12px", background: "var(--butter, #f5c542)", borderRadius: "99px", width: `${(n / max) * 100}%` }} />
           <b style={{ fontSize: "13px", textAlign: "right" }}>{n}</b>
@@ -626,7 +627,7 @@ function Dash({ db, setDb, me, go, say }) {
         </div>
 
         {logs.length ? (
-          <div style={{ maxHeight: "320px", overflowY: "auto", display: "grid", gap: "8px" }}>
+          <PaginatedList label="Recent activity" resetKey={logSearch} style={{ maxHeight: "320px", overflowY: "auto", display: "grid", gap: "8px" }}>
             {logs.map(l => (
               <div
                 key={l.id}
@@ -657,7 +658,7 @@ function Dash({ db, setDb, me, go, say }) {
                 </span>
               </div>
             ))}
-          </div>
+          </PaginatedList>
         ) : (
           <div className="empty sm">No activity matching your search.</div>
         )}

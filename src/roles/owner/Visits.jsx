@@ -1,3 +1,4 @@
+import { PaginatedTable } from "../../components/Pagination.jsx";
 import { OwnerBillDetails } from "./Bills.jsx";
 import { today } from "../../booking.js";
 import { ownerFollowUp, ownerFollowUpBooking } from "../../ownerCare.js";
@@ -46,14 +47,14 @@ export function OwnerVisits({ db, me, go }) {
     <p className="vh-count" aria-live="polite"><b>{list.length}</b> visit record{list.length === 1 ? "" : "s"}{filtered ? ` of ${all.length}` : ""}</p>
     {list.length ? <>
       <p className="ow-hint vh-tip">Open a visit to read the veterinarian’s instructions, prescription and next steps.</p>
-      <div className="tw"><table className="vh-tbl"><thead><tr><th>Date</th><th>Pet</th><th>Veterinarian</th><th>Diagnosis</th><th>Follow-up</th><th>Details</th></tr></thead><tbody>{list.map(r => {
+      <div className="tw"><PaginatedTable label="Visit history" resetKey={[pet,q,care,f.v.from,f.v.to]} className="vh-tbl"><thead><tr><th>Date</th><th>Pet</th><th>Veterinarian</th><th>Diagnosis</th><th>Follow-up</th><th>Details</th></tr></thead><tbody>{list.map(r => {
         const followUp = ownerFollowUp(r, appointments);
         return <tr key={r.id} className="vh-r" title="Open visit details" onClick={() => setOpenId(r.id)}>
           <td data-label="Date">{fmtDate(r.date)}</td><td data-label="Pet">{petName(db, r.petId)}</td><td data-label="Veterinarian">{vetName(r.vetId)}</td><td data-label="Diagnosis">{r.diagnosis || "Not recorded"}</td>
           <td data-label="Follow-up">{followUp ? <span><b>{followUp.status}{followUp.overdue ? " · Overdue" : ""}</b><small className="ow-sub">Target: {fmtDate(r.followUpDate)}</small></span> : "None requested"}</td>
           <td data-label="Details"><button className="btn sm ghost" aria-label={`View visit for ${petName(db, r.petId)} on ${fmtDate(r.date)}`} onClick={e => { e.stopPropagation(); setOpenId(r.id); }}>View visit</button></td>
         </tr>;
-      })}</tbody></table></div>
+      })}</tbody></PaginatedTable></div>
     </> : <div className="empty"><div><Icon n="file" size={34} /></div>{all.length ? "No visits match these filters." : "No visit records yet. They appear here after your pet is seen by the vet."}</div>}
 
     {open && <Modal title={`${petName(db, open.petId)} · ${fmtDate(open.date)}`} onClose={() => setOpenId(null)}>

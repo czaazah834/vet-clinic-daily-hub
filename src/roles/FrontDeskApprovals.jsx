@@ -1,3 +1,4 @@
+import { PaginatedList } from "../components/Pagination.jsx";
 import { useState } from "react";
 import { CalendarCheck, CalendarDays, PawPrint } from "lucide-react";
 import { pendingVisitApprovals } from "../assistantWorkflow.js";
@@ -17,7 +18,7 @@ export default function FrontDeskApprovals({ db, onReviewPet, onOpenCard, onCale
       <button className="btn sm" aria-pressed={view === "pets"} onClick={() => setView("pets")}><PawPrint size={17} aria-hidden="true" />Pet registrations ({pets.length})</button>
     </div>
     {error && <p className="err" role="alert">{error}</p>}
-    <div className="sf-approval-list">
+    <PaginatedList className="sf-approval-list" label="Clinic approvals" resetKey={view}>
       {view === "visits" ? visits.length ? visits.map(a => {
         const pet = db.pets.find(p => p.id === a.petId);
         const owner = db.owners.find(o => o.id === (pet?.ownerId || a.ownerId));
@@ -32,6 +33,6 @@ export default function FrontDeskApprovals({ db, onReviewPet, onOpenCard, onCale
         const owner = db.owners.find(o => o.id === p.ownerId);
         return <article className="sf-approval-item" key={p.id}><span className="sf-species"><PawPrint size={24} aria-hidden="true" /></span><div className="sf-body"><h3>{p.name}</h3><p>{p.species} · {p.breed || "Breed not recorded"}</p><p>{owner?.name || "Owner"} · {owner?.phone || owner?.email || "No contact on file"}</p>{p.notes && <p>{p.notes}</p>}<small>Approval issues the pet’s digital card. Vaccination records and booster dates require veterinarian review.</small></div><button className="btn sm" onClick={() => onReviewPet(p)}>Review registration</button></article>;
       }) : <div className="sf-approval-empty"><PawPrint size={26} aria-hidden="true" /><b>No pet registrations awaiting approval</b><span>New owner submissions will appear here.</span></div>}
-    </div>
+    </PaginatedList>
   </section>;
 }

@@ -1,3 +1,4 @@
+import { PaginatedTable } from "../components/Pagination.jsx";
 import { useState, useMemo } from "react";
 import { E, scope, petName, VETS, TODAY, Badge } from "../lib.jsx";
 import {
@@ -347,7 +348,7 @@ export default function ReportsPage({ db, me }) {
                 aria-label="Filter to date"
               />
 
-              <div style={{ display: "flex", gap: "4px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
                 {[
                   ["all", "All Time"],
                   ["today", "Today"],
@@ -396,7 +397,7 @@ export default function ReportsPage({ db, me }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "20px" }}>🐾</span>
+                <PawPrint size={22} aria-hidden="true" />
                 <h1 style={{ margin: 0, fontSize: "21px", color: "var(--navy, #0f172a)", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                   {CLINIC.name}
                 </h1>
@@ -449,7 +450,7 @@ export default function ReportsPage({ db, me }) {
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table className="tbl" style={{ width: "100%", margin: 0, fontSize: "12.5px" }}>
+            <PaginatedTable label="Report records" resetKey={[reportType,from,to,search]} className="tbl" style={{ width: "100%", margin: 0, fontSize: "12.5px" }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
                   {currentCfg.headers.map((h, i) => (
@@ -477,7 +478,7 @@ export default function ReportsPage({ db, me }) {
                   );
                 })}
               </tbody>
-            </table>
+            </PaginatedTable>
           </div>
         )}
 

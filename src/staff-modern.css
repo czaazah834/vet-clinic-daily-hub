@@ -305,7 +305,7 @@
   .shell:is(.th-vet,.th-assistant) .hero::before{width:100%;opacity:.2;-webkit-mask-image:linear-gradient(to bottom,#000 10%,transparent);mask-image:linear-gradient(to bottom,#000 10%,transparent)}
   .shell:is(.th-vet,.th-assistant) .hero .row{flex-direction:column;align-items:stretch}
   .shell:is(.th-vet,.th-assistant) .hero .row .btn{width:100%}
-  .shell:is(.th-vet,.th-assistant) .stats{grid-template-columns:1fr 1fr;gap:10px}
+  .shell:is(.th-vet,.th-assistant) .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .shell:is(.th-vet,.th-assistant) .stat{padding:12px;column-gap:10px}
   .shell:is(.th-vet,.th-assistant) .stat .si{width:38px;height:38px;border-radius:12px}
   .shell:is(.th-vet,.th-assistant) .stat b{font-size:22px}
@@ -411,3 +411,12 @@
  .staff-pet-card .staff-pet-controls .btn{flex:1 1 auto}
  .staff-pet-card .staff-pet-banner{align-items:flex-start!important}
 }
+
+.shell.th-vet .stat{min-width:0;grid-template-columns:auto minmax(0,1fr)}
+.shell.th-vet .stat span:last-child{overflow-wrap:anywhere}
+
+.shell.th-admin .two{grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}
+.shell.th-admin .bar2>span{overflow-wrap:anywhere;min-width:0}
+
+.staff-account-card,.staff-account-card *{min-width:0;overflow-wrap:anywhere}
+.staff-account-card svg{flex-shrink:0}

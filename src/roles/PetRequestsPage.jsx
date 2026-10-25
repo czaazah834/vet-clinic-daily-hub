@@ -1,3 +1,4 @@
+import { PaginatedList } from "../components/Pagination.jsx";
 import { useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { ICON, I } from "../lib.jsx";
@@ -70,7 +71,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
       {/* List */}
       <div className="card">
         {filtered.length ? (
-          <div style={{ display: "grid", gap: "12px" }}>
+          <PaginatedList label="Pet registrations" resetKey={[filter,search]} style={{ display: "grid", gap: "12px" }}>
             {filtered.map(r => {
               const owner = db.owners.find(o => o.id === r.ownerId) || {};
               const isPending = r.status === "Pending";
@@ -169,7 +170,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
                 </div>
               );
             })}
-          </div>
+          </PaginatedList>
         ) : (
           <div className="empty sm">
             No pet registration requests found matching current filter.

@@ -1,5 +1,5 @@
+import { PaginatedTable } from "../../components/Pagination.jsx";
 import { ShieldCheck, AlertTriangle, Scale, Hospital, ClipboardList, Info } from "lucide-react";
-import {HistoryControls} from "../../ClinicHistory.jsx";
 import { useState } from "react";
 import { formatSpeciesLabel } from "../../preventiveSchedule.js";
 import { Icon } from "./ui.jsx";
@@ -24,7 +24,6 @@ export default function MedProfile({ p }) {
 
   return (
     <div className="ow-mp" style={{ maxWidth: "100%", padding: "4px 0" }}>
-      <HistoryControls auto />
       {/* 1. Verified Allergies Section */}
       <section aria-labelledby="mp-al" style={{ marginBottom: "24px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
@@ -116,7 +115,7 @@ export default function MedProfile({ p }) {
 
         {weights.length ? (
           <div className="tw" style={{ border: "1px solid var(--ln)", borderRadius: "10px", overflow: "hidden" }}>
-            <table style={{ margin: 0, width: "100%", fontSize: "0.82rem" }}>
+            <PaginatedTable label="Weight history" resetKey={p.id} style={{ margin: 0, width: "100%", fontSize: "0.82rem" }}>
               <thead>
                 <tr style={{ background: "#f8fafc", textAlign: "left" }}>
                   <th style={{ padding: "10px 12px" }}>Date Weighed</th>
@@ -161,7 +160,7 @@ export default function MedProfile({ p }) {
                     );
                   })}
               </tbody>
-            </table>
+            </PaginatedTable>
           </div>
         ) : (
           <p className="ow-none">No clinical weight measurements on file.</p>

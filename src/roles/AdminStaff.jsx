@@ -1,3 +1,4 @@
+import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
 import { useRef, useState } from 'react';
 import { useClinicRead } from '../useClinicRead.js';
 import { api } from '../api.js';
@@ -143,7 +144,7 @@ export default function AdminStaff({ onInvite }) {
             />
           </div>
 
-          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
             <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>Role:</span>
             {['all', 'vet', 'assistant'].map(r => (
               <button
@@ -176,7 +177,7 @@ export default function AdminStaff({ onInvite }) {
         {/* Staff Directory Cards Grid */}
         <div style={{ marginTop: "20px" }}>
           {!data && loading ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "14px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%,320px), 1fr))", gap: "14px" }}>
               {[1, 2].map(k => (
                 <div key={k} className="card" style={{ padding: "20px", minHeight: "160px", background: "#f8fafc", border: "1.5px dashed #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>
                   <span style={{ fontSize: "13px" }}>Loading staff accounts…</span>
@@ -190,12 +191,13 @@ export default function AdminStaff({ onInvite }) {
               </p>
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "14px" }}>
+            <PaginatedList label="Staff accounts" resetKey={[filter,roleFilter]} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%,320px), 1fr))", gap: "14px" }}>
               {staff.map(u => {
                 const isVet = u.role === 'vet';
                 const initials = (u.name || "U").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
                 return (
                   <article
+                    className="staff-account-card"
                     key={u.id}
                     style={{
                       background: "#ffffff",
@@ -211,7 +213,7 @@ export default function AdminStaff({ onInvite }) {
                   >
                     <div>
                       {/* Top Row: Avatar & Status */}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", alignItems: "flex-start", marginBottom: "12px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                           <div style={{
                             width: "42px",
@@ -264,7 +266,7 @@ export default function AdminStaff({ onInvite }) {
                             color: !u.active ? "#64748b" : u.locked ? "#dc2626" : "#059669",
                             border: `1px solid ${!u.active ? "#cbd5e1" : u.locked ? "#fecaca" : "#a7f3d0"}`
                           }}>
-                            {!u.active ? "○ Inactive" : u.locked ? "🔒 Locked" : "● Active"}
+                            {!u.active ? "○ Inactive" : u.locked ? "Locked" : "● Active"}
                           </span>
                         </div>
                       </div>
@@ -278,7 +280,7 @@ export default function AdminStaff({ onInvite }) {
                         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                           <Phone size={13} color={u.mobileVerified ? "#16a34a" : "#d97706"} />
                           <span style={{ color: u.mobileVerified ? "#15803d" : "#b45309", fontWeight: 600 }}>
-                            {u.mobileVerified ? "✓ Mobile OTP Verified" : "⏳ Pending SMS 2FA"}
+                            {u.mobileVerified ? "Mobile OTP verified" : "Pending SMS verification"}
                           </span>
                         </div>
                       </div>
@@ -317,7 +319,7 @@ export default function AdminStaff({ onInvite }) {
                   </article>
                 );
               })}
-            </div>
+            </PaginatedList>
           )}
         </div>
       </section>
@@ -348,7 +350,7 @@ export default function AdminStaff({ onInvite }) {
           </div>
         ) : (
           <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: "14px" }}>
-            <table className="tbl" style={{ margin: 0, fontSize: "12.5px" }}>
+            <PaginatedTable label="Staff invitations" className="tbl" style={{ margin: 0, fontSize: "12.5px" }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
                   <th style={{ padding: "10px 14px" }}>Staff Member</th>
@@ -418,7 +420,7 @@ export default function AdminStaff({ onInvite }) {
                   );
                 })}
               </tbody>
-            </table>
+            </PaginatedTable>
           </div>
         )}
       </section>
@@ -640,7 +642,7 @@ export function AdminAudit() {
             </p>
           </div>
         ) : (
-          <div style={{ display: "grid" }}>
+          <PaginatedList label="Audit trail" resetKey={[query,roleFilter]} style={{ display: "grid" }}>
             {filteredEntries.map((l, idx) => {
               const roleMeta = getRoleBadge(l.role || l.user_role);
               const dateStr = l.at || l.created_at;
@@ -699,7 +701,7 @@ export function AdminAudit() {
                 </div>
               );
             })}
-          </div>
+          </PaginatedList>
         )}
       </div>
 

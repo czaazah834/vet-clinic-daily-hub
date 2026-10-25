@@ -1,3 +1,4 @@
+import { PaginatedTable } from "./components/Pagination.jsx";
 import {today as currentClinicDate} from "./booking.js";
 import { changeAppointmentStatus } from "./appointmentStatus.js";
 import { useState } from "react";
@@ -220,11 +221,11 @@ export function Table({ db, ent, list, acts, me, onEdit, onDel, onMove, onView }
   const c = E[ent], showActs = acts && (can(ent, me, "u") || can(ent, me, "d") || (ent === "owners" && onView));
   if (!list.length) return <div className="empty"><div><I e="paw" size={34} /></div>No {c.title.toLowerCase()} found yet.</div>;
   return (
-    <div className="tw"><table><thead><tr>{c.cols.map(k => <th key={k}>{LAB[k] || (c.f.find(f => f.k === k) || {}).l || k}</th>)}{showActs && <th />}</tr></thead>
+    <div className="tw"><PaginatedTable label={c.title} resetKey={list.map(x => x.id)}><thead><tr>{c.cols.map(k => <th key={k}>{LAB[k] || (c.f.find(f => f.k === k) || {}).l || k}</th>)}{showActs && <th />}</tr></thead>
       <tbody>{list.map(x => (
         <tr key={x.id}>{c.cols.map(k => <td key={k}><Cell db={db} x={x} k={k} /></td>)}
           {showActs && <td className="act">{ent === "owners" && onView && <button className="btn ghost sm" onClick={() => onView(x)}>View</button>} {ent === "appts" && onMove && (me.role === "vet" && x.status === "In consultation" ? <button className="btn sm" onClick={() => onMove(x, "WRITE")}>Write consultation</button> : nextSteps(x, me).map(s => <button key={s} className={s === "Cancelled" || s === "No-show" ? "btn danger sm" : "btn sm"} onClick={() => onMove(x, s)}>{LABEL[s]}</button>))} {can(ent, me, "u") && (ent !== "appts" || ["Scheduled", "Confirmed"].includes(x.status)) && <button className="btn ghost sm" onClick={() => onEdit(x)}>Edit</button>} {can(ent, me, "d") && <button className="btn danger sm" onClick={() => onDel(x)}>Delete</button>}</td>}
-        </tr>))}</tbody></table></div>
+        </tr>))}</tbody></PaginatedTable></div>
   );
 }
 

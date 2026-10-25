@@ -1,3 +1,4 @@
+import { PaginatedTable } from "../components/Pagination.jsx";
 import {HistoryControls,useHistoryComplete} from "../ClinicHistory.jsx";
 import { useState } from "react";
 import {
@@ -418,7 +419,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
 
         {filtered.length ? (
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
+            <PaginatedTable label="Consultations" resetKey={[search,vetFilter]} style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ textAlign: "left", background: "#f8fafc", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>
                   <th style={{ padding: "12px 14px" }}>Date &amp; Time</th>
@@ -548,7 +549,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
                   );
                 })}
               </tbody>
-            </table>
+            </PaginatedTable>
           </div>
         ) : (
           <div className="empty sm" style={{ padding: "32px 16px", textAlign: "center" }}>

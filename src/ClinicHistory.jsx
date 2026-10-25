@@ -74,9 +74,10 @@ export function HistoryControls({auto=false}) {
     );
   }
 
-  if(!auto && history.hasMore) {
+  if(history.hasMore) {
     return (
-      <div style={{margin:'0 0 12px'}}>
+      <div className="clinic-history-more" style={{margin:'0 0 12px'}}>
+        <p>Showing loaded records. Load older history to include earlier records in searches and pages.</p>
         <button className="btn sm ghost" disabled={history.loading} onClick={()=>history.load()}>
           {history.loading ? 'Loading older records…' : 'Load older history'}
         </button>

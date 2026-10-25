@@ -1,3 +1,4 @@
+import { PaginatedTable } from "../../components/Pagination.jsx";
 import { bookingDayConflict, validateOwnerBooking } from "../../ownerBooking.js";
 import { CalendarDays, Plus, Syringe } from "lucide-react";
 import { useSubmissionReview } from "../../components/SubmissionReview.jsx";
@@ -357,7 +358,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
         {/* 2. Appointments on this day or Empty State (Displayed after vaccines) */}
         {(list.length ? (
           <div className="tw">
-            <table>
+            <PaginatedTable label="My appointments" resetKey={[q,view,pet,svc,day]}>
               <thead>
                 <tr><th>Date</th><th>Time</th><th>Pet</th><th>Veterinarian</th><th>Reason</th><th>Status</th><th /></tr>
               </thead>
@@ -377,7 +378,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
                   );
                 })}
               </tbody>
-            </table>
+            </PaginatedTable>
           </div>
         ) : (
           <div className="empty" style={{ padding: "28px 16px" }}>

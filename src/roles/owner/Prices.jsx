@@ -1,3 +1,4 @@
+import { PaginatedList } from "../../components/Pagination.jsx";
 import { useEffect, useState } from "react";
 import { api } from "../../api.js";
 
@@ -49,10 +50,10 @@ export default function Prices({ go }) {
           : !visible.length ? <div className="empty sm"><p>No offers match your search or filters.</p><button className="btn sm ghost" onClick={clear}>Clear filters</button></div>
           : groups.map(([name, rows]) => <section className="ow-price-group" key={name} aria-label={name}>
             <h4>{name}</h4>
-            <ul className="ow-price-list">{rows.map(p => <li key={p.id}>
+            <PaginatedList as="ul" label={`${name} offers`} resetKey={[search,type,category]} className="ow-price-list">{rows.map(p => <li key={p.id}>
               <div className="ow-price-detail"><h5>{p.name}</h5>{p.desc && <p>{p.desc}</p>}{p.requiresPrescription && <span className="ow-price-rx">Veterinarian prescription required</span>}</div>
               <div className="ow-price-amount"><strong>{money.format(p.price)}</strong><small>{isProduct(p) ? `per ${p.unit || "item / package"}` : "per service"}</small></div>
-            </li>)}</ul>
+            </li>)}</PaginatedList>
           </section>)}
       </>}
   </section>;
