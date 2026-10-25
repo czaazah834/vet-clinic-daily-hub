@@ -1,6 +1,7 @@
+import {vitalValueError} from './vitalValidation.js';
 // Initial arrivals must use their reserved clinic day; ongoing intake can cross midnight.
 export function checkInDateError(visit, clinicDate) {
-  if (visit?.status !== 'Checked-in' && visit?.date !== clinicDate) {
+  if (!['Checked-in','In consultation'].includes(visit?.status) && visit?.date !== clinicDate) {
     return `Check-in is only available on the scheduled day (${visit?.date || 'date missing'}). Today in Manila is ${clinicDate}. Reschedule the appointment first if the day is incorrect.`;
   }
   return null;
@@ -20,7 +21,7 @@ export const sameIntakeVisit = (a,b) => JSON.stringify(ordered(intakeVisitSnapsh
 export function savedIntakeVisit(response, expected) {
   const visit = intakeVisitSnapshot(response?.appointment);
   const vitals = visit?.intakeVitals;
-  if (!response?.success || !visit?.id || visit.id !== expected.id || visit.petId !== expected.petId || visit.status !== 'Checked-in'
+  if (!response?.success || !visit?.id || visit.id !== expected.id || visit.petId !== expected.petId || visit.status !== (expected.status==='In consultation'?'In consultation':'Checked-in')
       || !Number.isFinite(vitals?.weight) || !Number.isFinite(vitals?.temp) || !visit.date) {
     throw new Error('The server did not confirm the saved intake. Refresh clinic records before continuing.');
   }
@@ -32,6 +33,8 @@ export function intakeFieldsError(v, reason) {
   if (!v || typeof v !== 'object' || Array.isArray(v)
     || typeof v.weight !== 'number' || !Number.isFinite(v.weight) || v.weight < 0.05 || v.weight > 120
     || typeof v.temp !== 'number' || !Number.isFinite(v.temp) || v.temp < 33 || v.temp > 45) return 'Record a valid measured weight (0.05–120 kg) and temperature (33–45°C).';
+  const measurementError=vitalValueError(v.weight,'weight') || vitalValueError(v.temp,'temp');
+  if(measurementError) return measurementError;
   if (v.triageLevel !== undefined && !['Routine','Priority','Emergency'].includes(v.triageLevel)) return 'Choose Routine, Priority or Emergency triage.';
   if (v.fasted !== undefined && typeof v.fasted !== 'boolean') return 'Fasted must be Yes or No.';
   if (v.notes !== undefined && (typeof v.notes !== 'string' || v.notes.length > 2000)) return 'Intake notes cannot exceed 2,000 characters.';

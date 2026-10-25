@@ -1,3 +1,4 @@
+import {ensureVitalsSchema} from '../vitals.js';
 import express from 'express';
 import { admissionCharges, saveMedicineAction } from '../admissionMedication.js';
 import { ensureCheckoutInboxSchema, createCheckoutTask } from '../checkout.js';
@@ -10,7 +11,7 @@ import { ensureAdmissionsSchema, admissionError, admissionInput, admissionView, 
 export const admissionsRouter = express.Router();
 admissionsRouter.use(async (req,res,next) => {
   res.set('Cache-Control','private, no-store');
-  try { await ensureAdmissionsSchema(); next(); }
+  try { await ensureAdmissionsSchema(); await ensureVitalsSchema(); next(); }
   catch { res.status(500).json({error:'Unable to load admissions. Please retry.'}); }
 });
 const base = `SELECT d.*,p.name pet_name,p.owner_id,o.name owner_name,a.vet_id,a.status visit_status,a.billing_status,

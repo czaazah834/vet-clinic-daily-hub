@@ -29,7 +29,7 @@ export async function approveRegistration(client, reqId, user, revision) {
 
   // 2. Insert weight baseline
   await client.query(
-    `INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1, $2, $3, $4)`,
+    `INSERT INTO pet_weights (pet_id, date, kg, recorded_by,origin) VALUES ($1, $2, $3, $4,'registration')`,
     [newPetId, today, r.weight, "registration"]
   );
 

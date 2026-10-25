@@ -1,3 +1,4 @@
+import {vitalValueError} from '../src/vitalValidation.js';
 import { readFileSync } from 'node:fs';
 import { query } from './db.js';
 import { consentErrors } from '../src/admissionCare.js';
@@ -56,6 +57,7 @@ export function admissionInput(body, action, role) {
       const value = body.measurements[key];
       if (value !== undefined) {
         if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) throw admissionError(`Enter a measured ${key === 'temp' ? 'temperature (33–45°C)' : 'weight (0.05–120 kg)'}.`);
+        const invalid=vitalValueError(value,key);if(invalid)throw admissionError(invalid);
         data.measurements[key] = value;
       }
     }

@@ -27,3 +27,11 @@ test('initial intake requires the scheduled day while ongoing intake survives mi
  }
  assert.equal(checkInDateError(visit,'2026-10-25'),null);
 });
+
+
+test('active consultation remeasurement acknowledgment preserves its visit stage after midnight',()=>{
+ const active={...visit,status:'In consultation'};
+ assert.equal(checkInDateError(active,'2026-10-26'),null);
+ assert.equal(savedIntakeVisit({success:true,appointment:active},active).status,'In consultation');
+ assert.throws(()=>savedIntakeVisit({success:true,appointment:visit},active),/did not confirm/);
+});

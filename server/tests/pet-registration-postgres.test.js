@@ -185,13 +185,15 @@ test('weight history validates measured facts, preserves newest weight and audit
  const token=await user('weight-audit');const registered=await create(token);const id=registered.id;
  const approved=await call(assistant,'POST',`/pet-requests/${id}/approve`,{revision:0});assert.equal(approved.status,200);
  const petId=approved.data.pet.id;const {clinicClock,shiftDate}=await import('../scheduling.js');const today=clinicClock().date;
- const measure=body=>call(assistant,'POST',`/pets/${petId}/weights`,body);
+ await query("INSERT INTO appointments(id,pet_id,vet_id,date,time,reason,status) VALUES('weight-visit',$1,'walkin_vet',$2,'09:00','Weight visit','Completed')",[petId,today]);
+ const actualTime=new Date(Date.now()-60000).toISOString();
+ const measure=body=>call(assistant,'POST',`/pets/${petId}/weights`,{visitId:'weight-visit',measuredAt:actualTime,...body});
  const before=(await query('SELECT COUNT(*)::int n FROM pet_weights WHERE pet_id=$1',[petId])).rows[0].n;
  for(const kg of [undefined,null,-1,0,0.01,121,'5',true,5.123])assert.equal((await measure({kg,date:today})).status,400);
- for(const date of ['2026-02-30',shiftDate(today,1),'2020-01-01'])assert.equal((await measure({kg:5,date})).status,400);
+ for(const date of ['2026-02-30',shiftDate(today,1),'2020-01-01'])assert.equal((await measure({kg:5,measuredAt:date+'T12:00:00+08:00'})).status,400);
  assert.equal((await query('SELECT COUNT(*)::int n FROM pet_weights WHERE pet_id=$1',[petId])).rows[0].n,before);
  const saved=await measure({kg:5.25,recordedBy:'Forged vet'});assert.equal(saved.status,200);assert.equal(saved.data.measurement.by,'Synthetic assistant');assert.equal(saved.data.measurement.date,today);
- assert.equal((await measure({kg:4.5,date:shiftDate(today,-1)})).status,200);
+ assert.equal((await measure({kg:4.5,measuredAt:shiftDate(today,-1)+'T12:00:00+08:00'})).status,200);
  assert.equal(Number((await query('SELECT weight FROM pets WHERE id=$1',[petId])).rows[0].weight),5.25);
  await query(`CREATE FUNCTION reject_weight_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Recorded measured weight%' THEN RAISE EXCEPTION 'synthetic weight audit failure'; END IF; RETURN NEW; END $$`);
  await query('CREATE TRIGGER reject_weight_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_weight_audit()');

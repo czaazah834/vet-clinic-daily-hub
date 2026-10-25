@@ -34,13 +34,13 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const currentVisit = (db.appts || []).find(a => a.id === appt?.id);
   const [conflict, setConflict] = useState(false);
   const stale = conflict || !currentVisit || !sameIntakeVisit(baseline.current, currentVisit)
-    || !sameIntakeVisit(baseline.current, appt) || !["Scheduled", "Checked-in"].includes(currentVisit.status);
+    || !sameIntakeVisit(baseline.current, appt) || !["Scheduled", "Checked-in","In consultation"].includes(currentVisit.status);
   const pet = (db.pets && appt ? db.pets.find(p => p.id === appt.petId) : null) || {};
   const owner = (db.owners && pet.ownerId ? db.owners.find(o => o.id === pet.ownerId) : null) || {};
 
   const species = normalizeSpecies(pet.species);
   const speciesConfig = SPECIES_DEFAULTS[species] || SPECIES_DEFAULTS.Other;
-  const lastWeight = pet.weight || (pet.weights && pet.weights.length ? pet.weights[pet.weights.length - 1].kg : null);
+  const lastWeight=pet.weightOrigin==='clinic'?pet.weight:[...(pet.weights || [])].reverse().find(w=>w.origin==='clinic')?.kg;
 
   const [TODAY, setToday] = useState(today);
   useEffect(() => {
@@ -48,7 +48,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
     return () => clearInterval(timer);
   }, []);
   const dateError = checkInDateError(appt, TODAY);
-  const saved = appt?.status === "Checked-in" ? appt.intakeVitals : null;
+  const saved = ["Checked-in","In consultation"].includes(appt?.status) ? appt.intakeVitals : null;
   const inFlight = useRef(false);
   const [weight, setWeight] = useState(saved?.weight ?? "");
   const [temp, setTemp] = useState(saved?.temp ?? "");
@@ -117,8 +117,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
     if (fieldError) { setValErr(fieldError); return; }
     setValErr("");
 
-    if (!await review.ask({title:"Review measured intake",confirmLabel:"Save intake and send to vet",
-      description:"Check the measured values and triage before saving. This places the patient in the assigned veterinarian’s waiting queue.",
+    if (!await review.ask({title:"Review measured intake",confirmLabel:"Save measured vitals",
+      description:"Check the measured values and triage before saving. Earlier measurements stay in the history. An active consultation remains in consultation.",
       fields:[
         ["Patient / owner",`${pet.name} / ${owner.name}`],
         ["Veterinarian",db.vets?.find(v=>v.id===appt.vetId)?.name],
@@ -147,7 +147,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
     };
 
     const patchPayload = {
-      status: "Checked-in",
+      status: appt.status==='In consultation'?'In consultation':'Checked-in',
       expectedVisit: baseline.current,
       reason: serviceReason.trim() || appt.reason,
       intakeVitals,
@@ -190,7 +190,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
             ? {
                 ...x,
                 weight: savedVisit.intakeVitals.weight,
-                weights: [...(x.weights || []).filter(item => item.date !== savedVisit.date), { date: savedVisit.date, kg: savedVisit.intakeVitals.weight, by: savedVisit.intakeVitals.checkedInBy || me?.name || "Assistant" }],
+                weightOrigin:"clinic",
+                weights: [...(x.weights || []), {id:savedVisit.intakeVitals.measurementIds?.weight,date:today(),kg:savedVisit.intakeVitals.weight,by:savedVisit.intakeVitals.checkedInBy,origin:"clinic",visitId:savedVisit.id,measuredAt:savedVisit.intakeVitals.measuredAt,unit:"kg"}],
               }
             : x
         );
@@ -211,7 +212,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
         log: addLog(
           p,
           me,
-          `Front Desk checked in ${pet.name} (${owner.name}). Vitals: ${w} kg (${weightAnalysis?.status || "recorded"}), ${t}°C (${tempAnalysis?.status || "recorded"}). ${alertNotes ? `[${alertNotes}]` : ""} Patient moved to doctor queue.`
+          `Recorded clinic intake for ${pet.name} (${owner.name}). Vitals: ${w} kg (${weightAnalysis?.status || "recorded"}), ${t}°C (${tempAnalysis?.status || "recorded"}). ${alertNotes ? `[${alertNotes}]` : ""} ${savedVisit.status === "In consultation" ? "Consultation continues." : "Patient is in the doctor queue."}`
         ),
       };
     });
@@ -228,7 +229,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
           <div>
             <h3 style={{ margin: "0 0 4px", fontSize: "19px", display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ color: "var(--navy)" }}><I e={ICON[species] || "paw"} size={22} /></span>
-              <span>Front Desk Patient Check-In &amp; Triage</span>
+              <span>Patient Check-In &amp; Measured Vitals</span>
             </h3>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
               <b>Patient:</b> {pet.name || "Patient"} ({pet.breed || species}) &bull; <b>Owner:</b> {owner.name || "—"} ({owner.phone || "—"})
@@ -237,6 +238,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
           <button className="btn ghost sm" onClick={onClose}><X size={16} /></button>
         </div>
 
+        <p>Earlier measurements are retained. Recording new vitals keeps an active consultation in progress.</p>
         {stale && <p className="err" role="alert">This visit or its saved intake has changed. Close this form, refresh clinic records and reopen intake.</p>}
 
         {/* Allergy Alert if any */}
@@ -259,7 +261,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
                 <b style={{ color: "var(--navy)", fontSize: "14px" }}>1. Patient Weight (Automated Breed Assessment)</b>
                 {lastWeight && (
                   <span style={{ fontSize: "12px", color: "#64748b" }}>
-                    Last recorded: <b>{lastWeight} kg</b>
+                    Last clinic measurement: <b>{lastWeight} kg</b>
                   </span>
                 )}
               </div>
@@ -560,7 +562,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
           <div className="row end" style={{ marginTop: "20px", gap: "10px", flexWrap: "wrap" }}>
             <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn gold" disabled={saving || stale || !!dateError || !pet.id || !owner.id}>
-              Review check-in
+              Review measured vitals
             </button>
           </div>
         </form>

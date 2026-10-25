@@ -1,3 +1,5 @@
+import VitalsHistory from '../VitalsHistory.jsx';
+import {weightSourceLabel} from '../../vitalLabels.js';
 import ClinicDialog from '../../components/ClinicDialog.jsx';
 import { isVerifiedPet, registrationPatient } from '../../ownerOnboarding.js';
 import { reviewedRequest } from '../../registrationReview.js';
@@ -475,7 +477,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSet
             )}
           </div>
 
-          <Field id="pw" label="Weight (kg)" req value={v.weight} filter={onlyDecimal} filterMsg="Numbers only, with one decimal point" inputMode="decimal" onChange={x => f.set("weight", x)} onBlur={() => f.blur("weight")} error={f.show("weight")} valid={f.ok("weight")} hint="For example 4.5" />
+          <Field id="pw" label="Reported registration weight (kg)" req value={v.weight} filter={onlyDecimal} filterMsg="Numbers only, with one decimal point" inputMode="decimal" onChange={x => f.set("weight", x)} onBlur={() => f.blur("weight")} error={f.show("weight")} valid={f.ok("weight")} hint="For example 4.5" />
 
           <div>
             <Field id="pt" label="Spayed or neutered?" req type="select" value={v.neutered} onChange={x => f.set("neutered", x)} onBlur={() => f.blur("neutered")} options={NEUTERED.map(s => [s, s])} error={f.show("neutered")} valid={f.ok("neutered")} />
@@ -576,7 +578,7 @@ export function PetProfileModal({ pet, db, me, onClose, onVacc, onBook }) {
     ["Sex", p.sex],
     ["Age", p.birth ? petAge(p.birth) : ""],
     ["Birth date", p.birth],
-    ["Weight", p.weight != null ? `${p.weight} kg` : ""],
+    [weightSourceLabel(p), p.weight != null ? `${p.weight} kg` : ""],
     ["Spayed or neutered", p.neutered],
     ["Color", p.color],
     p.dentalOcclusion ? ["Dental Status", p.dentalOcclusion] : null
@@ -590,6 +592,7 @@ export function PetProfileModal({ pet, db, me, onClose, onVacc, onBook }) {
       {(p.allergies || []).length > 0 && <div className="op-sec"><h4>Allergies</h4><ul className="ow-tags">{p.allergies.map(a => <li className="ow-tag" key={a}>{a}</li>)}</ul></div>}
       {p.notes && <div className="op-sec"><h4>Care notes</h4><p>{p.notes}</p></div>}
       
+      <VitalsHistory petId={p.id} me={me} />
       <div className="op-sec">
         <h4>Health at a glance</h4>
         <p className="op-line"><Icon n="syringe" size={16} /> {V.length ? <>{V.length} {historyComplete?"":"loaded "}vaccine record{V.length > 1 ? "s" : ""}{over ? <span className="op-chip no">{over} overdue</span> : soon ? <span className="op-chip wait">{soon} due soon</span> : current.length ? <span className="op-chip ok">Approved boosters on track</span> : <span className="op-chip">No approved booster date</span>}{pending > 0 && <span className="op-chip wait">{pending} awaiting vet review</span>}</> : "No vaccine records yet"}</p>

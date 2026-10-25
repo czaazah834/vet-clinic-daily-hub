@@ -1191,3 +1191,56 @@ appointment's current approval metadata; the earlier audit entry remains saved.
 
 Validation: `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/pawcare_test npm run test:approval:postgres`.
 The database must be disposable and local; the test uses isolated schemas and synthetic records.
+
+### Check-in and complete vitals history
+
+Apply `server/database/vitals-history.sql` after the registration/onboarding and
+admission/workflow/care migrations. `db:init` includes it, and clinical endpoints
+initialize it when the runtime role has DDL permission. Deploy the server and
+frontend together. This repeatable migration retains existing patient, visit,
+weight and admission records and IDs. It imports recorded weights, saved intake
+snapshots and admission observations. Unknown historical visit links, exact times
+and staff IDs stay unknown. Temperatures overwritten before this migration cannot
+be reconstructed from the latest snapshot.
+
+Assistants and assigned veterinarians can capture initial intake on the scheduled
+Manila day. They can record more measurements while Checked-in or In consultation,
+including ongoing care after midnight. Remeasurement preserves the consultation
+stage. Every new intake saves separate weight (kg) and temperature (°C) events with
+patient, visit, timestamp and authenticated staff identity. The latest intake
+snapshot is retained for clinical summaries; it no longer replaces the history.
+
+**Vitals and observations history** is available in patient details and the owner's
+medical profile. It loads independently of the summary state and pages through the
+complete journal. Registration weights are explicitly reported registration data;
+unknown legacy sources are labeled as such. They are not used as measured intake
+or automatically recorded again when SOAP is finalized. SOAP keeps saved intake in
+the exam summary and accepts an optional explicitly entered new weight.
+
+Clinical staff can record a value and reason using **Correct entry**. A correction
+appends a linked entry with its own recording staff/time and retains the original
+measurement and its measurement time. Only the current referenced snapshot is
+refreshed. Correcting an older event cannot replace a newer measurement. Repeated
+correction requests return the saved result, and competing corrections require a
+refresh. Journal rows cannot be edited or deleted. Intake, history, weight mirrors
+and durable audits commit or roll back together.
+
+Measurement and correction fields validate inline on each edit, including ranges,
+precision and correction reason length; server validation also applies. Owners can
+only read their own patient histories and cannot correct measurements. Admission
+clinical observations and their corrections remain staff-only, including through
+the shared weight summary. Admission notes, medication records, discharge approval,
+payment and confirmed release retain their existing workflow.
+
+API compatibility: `POST /api/pets/:id/weights` now requires `visitId` and an actual
+`measuredAt` ISO timestamp with timezone alongside `kg`. Date-only payloads must be
+updated; the timestamp determines the Manila measurement day. The assigned-vet
+boundary applies to veterinarian writes. Intake screens supply server-stamped
+measurement metadata automatically. `GET /api/pets/:id/vitals` returns keyset pages;
+`POST /api/pets/:id/vitals/:measurementId/correct` accepts a stable UUID `requestId`,
+numeric `value` and correction `reason`.
+
+Validation: run `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/pawcare_test node --test server/tests/vitals-postgres.test.js`
+against a disposable local database. The suite uses isolated schemas and synthetic
+identities to check migration, access, repeat measurements, correction races,
+rollback, private observations and complete pagination.

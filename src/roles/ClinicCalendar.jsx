@@ -198,8 +198,9 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
 
   const doctorActions = (visit, pet) => {
     if (!isDoctor) return null;
-    if (visit.status === "Checked-in") return <button className="btn sm gold" disabled={!!startingId} onClick={() => startConsultation(visit, pet)}>{startingId === visit.id ? "Starting…" : "Start consultation"}</button>;
-    if (visit.status === "In consultation") return <button className="btn sm gold" disabled={!!startingId} onClick={() => setActiveSoap({ appt: visit, pet })}>Resume SOAP notes</button>;
+    if (visit.status === "Scheduled") return <button className="btn sm" disabled={!!checkInDateError(visit,bookingToday())} onClick={()=>setCheckInAppt(visit)}>Capture intake</button>;
+    if (visit.status === "Checked-in") return <><button className="btn ghost sm" onClick={()=>setCheckInAppt(visit)}>Record vitals</button><button className="btn sm gold" disabled={!!startingId} onClick={() => startConsultation(visit, pet)}>{startingId === visit.id ? "Starting…" : "Start consultation"}</button></>;
+    if (visit.status === "In consultation") return <><button className="btn ghost sm" onClick={()=>setCheckInAppt(visit)}>Record vitals</button><button className="btn sm gold" disabled={!!startingId} onClick={() => setActiveSoap({ appt: visit, pet })}>Resume SOAP notes</button></>;
     if (visit.status === "Completed") return <button className="btn sm ghost" onClick={() => {
       setActionError("");
       const record = completedVisitRecord(db.records || [], visit);

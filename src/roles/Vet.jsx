@@ -1,3 +1,4 @@
+import CheckInModal from './CheckInModal.jsx';
 import { VaccineEstimate } from "../components/VaccineBooking.jsx";
 import AdmissionsPage, { AdmissionsSummary } from './AdmissionsPage.jsx';
 import { PaginatedList } from "../components/Pagination.jsx";
@@ -17,6 +18,7 @@ const tempTone = s => (s === "normal" ? "" : s === "high_fever" || s === "hypoth
 const weightTone = s => (s === "ideal" ? "" : "wa");
 
 function Dash({ db, setDb, me, go, say }) {
+  const [intake,setIntake]=useState(null);
   const [stage, setStage] = useState("waiting");
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [startingId, setStartingId] = useState(null);
@@ -57,6 +59,7 @@ function Dash({ db, setDb, me, go, say }) {
 
   return (
     <>
+      {intake&&<CheckInModal appt={intake} db={db} setDb={setDb} me={me} onClose={()=>setIntake(null)} onCheckedIn={()=>{setIntake(null);say("Measured vitals saved; earlier measurements retained.");}}/>}
       <Hero
         title={`Clinical Desk: ${doctorName(me.name)}`}
         text={`${waiting.length} checked-in patient${waiting.length === 1 ? "" : "s"} waiting in your queue today.`}
@@ -142,6 +145,7 @@ function Dash({ db, setDb, me, go, say }) {
 
                   <div className="sf-row-act">
                     <Badge v={a.status} />
+                    {["Checked-in","In consultation"].includes(a.status)&&<button className="btn sm ghost" onClick={()=>setIntake(a)}>Record vitals</button>}
                     {["Checked-in", "In consultation"].includes(a.status) && <button className="btn sm" disabled={!!startingId} onClick={() => setHandoff(a)}>Hand over care</button>}
                     {a.status === "Checked-in" && <button className="btn sm gold" disabled={!!startingId} onClick={() => startConsult(a)}>{startingId === a.id ? "Starting…" : "Start consultation"}</button>}
                     {a.status === "In consultation" && <button className="btn sm gold" disabled={!!startingId} onClick={() => setActiveSoap({ appt: a, pet: p })}>Resume SOAP notes</button>}
