@@ -32,9 +32,9 @@ export async function clinicAccess(req, res, next) {
     if(path==='/clinic-document-profile')return (['GET','PUT'].includes(req.method) && allow('admin'))?next():denied();
     if(/^\/pets\/[^/]+\/vet-card(?:\/pdf)?$/.test(path))return req.method==='GET' && allow('owner','vet','assistant','admin')?next():denied();
     if (key === 'GET /admissions/eligible') return allow('vet') ? next() : denied();
-    if (path === '/admissions' || /^\/admissions\/[^/]+(?:\/(update|discharge|release|order|stop-medication|medication|correct-medication|discharge-summary))?$/.test(path)) {
-      if (req.method === 'GET' && ! /\/(update|discharge|release|order|stop-medication|medication|correct-medication)$/.test(path)) return allow('owner','vet','assistant','admin') ? next() : denied();
-      if (req.method === 'POST') return (path.endsWith('/release') ? allow('assistant') : path === '/admissions' || /\/(discharge|order|stop-medication|correct-medication)$/.test(path) ? allow('vet') : /\/(update|medication)$/.test(path) && allow('vet','assistant')) ? next() : denied();
+    if (path === '/admissions' || /^\/admissions\/[^/]+(?:\/(update|consent|discharge|release|order|stop-medication|medication|correct-medication|discharge-summary))?$/.test(path)) {
+      if (req.method === 'GET' && ! /\/(update|consent|discharge|release|order|stop-medication|medication|correct-medication)$/.test(path)) return allow('owner','vet','assistant','admin') ? next() : denied();
+      if (req.method === 'POST') return ((/\/(release|consent)$/.test(path)) ? allow('assistant') : path === '/admissions' || /\/(discharge|order|stop-medication|correct-medication)$/.test(path) ? allow('vet') : /\/(update|medication)$/.test(path) && allow('vet','assistant')) ? next() : denied();
       return denied();
     }
     if (path === '/clinical/note-options') {
@@ -50,6 +50,7 @@ export async function clinicAccess(req, res, next) {
     // Account edits use the validated, session-scoped account router.
     if (key === 'POST /owner/contact') return fail(res, 410, 'Use account profile settings to update your contact details.');
     if (key === 'POST /owner/pets') return fail(res, 410, 'Submit a pet registration request for clinic review.');
+    if (/^\/pets\/[^/]+\/reference-history$/.test(path)) return req.method==='PUT' && allow('owner') ? next() : denied();
     if (key === 'POST /pet-requests') {
       if (!allow('owner')) return denied();
       req.body.ownerId = req.user.ownerId;

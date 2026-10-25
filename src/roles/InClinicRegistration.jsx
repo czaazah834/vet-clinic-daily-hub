@@ -1,3 +1,4 @@
+import {addressError} from '../externalHistory.js';
 import DocumentHeader from "../components/DocumentHeader.jsx";
 import { VaccinePicker, useBookingCatalog } from '../components/VaccineBooking.jsx';
 import { vaccineChoiceError, vaccineReason, vaccinePriceLabel, VACCINE_CHOICES } from '../vaccineBooking.js';
@@ -45,7 +46,7 @@ function validateWalkIn(v) {
 
   // 4. Address (optional)
   const addr = (v.address || "").trim();
-  if (addr && addr.length > 150) e.address = "Keep address under 150 characters";
+  if (addressError(addr)) e.address = addressError(addr);
 
   // 5. Pet Name
   const pName = (v.petName || "").trim();
@@ -316,7 +317,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                 {existingOwner ? `Add New Pet for ${existingOwner.name}` : "Walk-In Registration (Client & Patient)"}
               </h3>
               <span style={{ fontSize: "12px", color: "#64748b" }}>
-                {existingOwner ? "Add and link a new animal patient to this verified client account" : "Front desk express intake with live validation and instant Digital Vaccination Card generation"}
+                {existingOwner ? "Add and link a new animal patient to this verified client account" : "Front desk intake with live validation and a stable internal patient reference"}
               </span>
             </div>
           </div>
@@ -827,7 +828,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               <button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button>
               {saveError && <p className="err" role="alert">{saveError}</p>}
               <button type="submit" className="btn gold" disabled={loading} style={{ fontWeight: 700 }}>
-                {loading ? "Registering & Issuing Card..." : "Review registration"}
+                {loading ? "Saving registration…" : "Review registration"}
               </button>
             </div>
           </form>

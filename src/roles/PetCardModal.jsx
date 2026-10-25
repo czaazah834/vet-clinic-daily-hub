@@ -1,3 +1,4 @@
+import {ExternalHistorySummary} from '../components/ExternalHistory.jsx';
 import DigitalVetCard from './DigitalVetCard.jsx';
 import VitalsHistory from './VitalsHistory.jsx';
 import { approvalVisit } from "../appointmentStatus.js";
@@ -248,6 +249,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
           </div>
         )}
 
+        <ExternalHistorySummary patient={p} />
         <DigitalVetCard key={p.id} petId={p.id} portrait={<PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />} refreshKey={`${activeAppt?.billingStatus || ''}-${activeAppt?.status || ''}`} />
 
         <VitalsHistory petId={p.id} me={me} refreshKey={activeAppt?.intakeVitals} />

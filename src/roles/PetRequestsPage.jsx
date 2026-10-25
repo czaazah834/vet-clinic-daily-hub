@@ -1,3 +1,4 @@
+import {registrationsWithoutVisit} from '../assistantWorkflow.js';
 import { PaginatedList } from "../components/Pagination.jsx";
 import { useState } from "react";
 import { CheckCircle2 } from "lucide-react";
@@ -9,7 +10,8 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
   const [search, setSearch] = useState("");
   const [activeReq, setActiveReq] = useState(null);
 
-  const reqs = db.petRequests || [];
+  const standalone=new Set(registrationsWithoutVisit(db).map(r=>r.id));
+  const reqs = (db.petRequests || []).filter(r=>r.status!=='Pending' || standalone.has(r.id));
   const pendingCount = reqs.filter(r => r.status === "Pending").length;
 
   const filtered = reqs.filter(r => {
@@ -28,10 +30,10 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
         <div>
           <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "var(--navy)" }}>
-            Online Pet Registrations &amp; Digital Card Issuance
+            Pets without a visit and registration history
           </h2>
           <p style={{ margin: 0, color: "#64748b", fontSize: "13.5px" }}>
-            Owners register pets via the online portal. Approve registrations to automatically generate their official digital vaccination card and suggested protocols for veterinarian review.
+            Booked pets use one combined appointment and registration review at Front Desk. This page retains registration details and previous decisions. Approval creates an internal treatment reference; official publication follows completed consultation and saved payment.
           </p>
         </div>
       </div>
@@ -151,7 +153,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
                         style={{ display: "flex", alignItems: "center", gap: "6px" }}
                       >
                         <CheckCircle2 size={16} aria-hidden="true" />
-                        <b>Review and issue card</b>
+                        <b>View registration / booking details</b>
                       </button>
                     ) : isApproved ? (
                       <span style={{ fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>
@@ -190,7 +192,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
             if (action === "appointment-approved") {
               say("Appointment approved, registration verified and slot confirmed.");
             } else if (action === "approved") {
-              say(`Pet approved! Digital Vaccination Card #${cardId} automatically created.`);
+              say("Registration verified. The internal patient reference is ready for treatment.");
             } else {
               say("Pet registration request declined.");
             }

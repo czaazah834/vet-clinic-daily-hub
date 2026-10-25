@@ -4,6 +4,7 @@ import { today, lastDay } from './booking.js';
 export { currentVaccinationDue };
 
 export function vaccinationStatus(record, current, date = today()) {
+  if (record.batch==='EXTERNAL-HIST' || /external history.*guide/i.test(record.protocolType || '')) return 'External reference · unverified';
   if (!record.done) return 'Vet review needed';
   if (!current.some(v => v.id === record.id)) return 'Completed';
   if (record.nextDue < date) return 'Overdue';

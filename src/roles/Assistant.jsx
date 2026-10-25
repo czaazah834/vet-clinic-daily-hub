@@ -5,7 +5,7 @@ import AdmissionsPage, { AdmissionsSummary } from './AdmissionsPage.jsx';
 import { PaginatedList } from "../components/Pagination.jsx";
 import FrontDeskApprovals from "./FrontDeskApprovals.jsx";
 import ExistingPatientCheckInModal from "./ExistingPatientCheckInModal.jsx";
-import { assistantQueue, dailyCollections, pendingCheckout, money } from "../assistantWorkflow.js";
+import { assistantQueue, registrationsWithoutVisit, dailyCollections, pendingCheckout, money } from "../assistantWorkflow.js";
 import CareFollowUps from "./CareFollowUps.jsx";
 import CheckoutInbox from "./CheckoutInbox.jsx";
 import ReminderStatus from "./ReminderStatus.jsx";
@@ -38,7 +38,7 @@ function Dash({ db, setDb, me, go, say }) {
   const confirmingRef = useRef(new Set());
   const [confirming, setConfirming] = useState({});
   const [actionError, setActionError] = useState("");
-  const [queueStage, setQueueStage] = useState("waiting");
+  const [queueStage, setQueueStage] = useState("arrivals");
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [showExistingWalkIn, setShowExistingWalkIn] = useState(false);
   const [billingAppt, setBillingAppt] = useState(null);
@@ -49,7 +49,7 @@ function Dash({ db, setDb, me, go, say }) {
   const [cardAppt, setCardAppt] = useState(null);
   const [logCallTarget, setLogCallTarget] = useState(null);
 
-  const pendingReqs = (db.petRequests || []).filter(r => r.status === "Pending");
+  const pendingReqs = registrationsWithoutVisit(db);
   const queue = assistantQueue(db.appts, TODAY);
   const q = queue[queueStage];
   const waiting = queue.waiting, inConsult = queue.consultation;
@@ -66,8 +66,9 @@ function Dash({ db, setDb, me, go, say }) {
     confirmingRef.current.add(a.id);
     setActionError(""); setConfirming(p => ({...p,[a.id]:true}));
     try {
-      const saved = await moveAppt(setDb, a.id, "Scheduled", me, setActionError, approvalVisit(db,a));
-      if (saved) say("Appointment approved, registration verified and slot confirmed.");
+      const saved = await moveAppt(setDb, a.id, "Scheduled", me, setActionError, a.expectedRegistration ? a : approvalVisit(db,a));
+      if (saved) {setQueueStage("arrivals");say("Appointment approved. Find it in Expected arrivals and upcoming visits above.");}
+      return saved;
     } finally {
       confirmingRef.current.delete(a.id);
       setConfirming(p => ({...p,[a.id]:false}));
@@ -76,7 +77,6 @@ function Dash({ db, setDb, me, go, say }) {
 
   return (
     <>
-      <CareFollowUps db={db} go={go}  />
       <Hero
         title="Front Desk and Clinic Operations"
         text="Review visit requests, welcome patients and keep every step of their care moving."
@@ -87,13 +87,14 @@ function Dash({ db, setDb, me, go, say }) {
           <button className="btn" onClick={() => setShowExistingWalkIn(true)} title="Quick check-in for patients who are already registered"><UserCheck size={16} aria-hidden="true" />Existing patient check-in</button>
           <button className="btn" onClick={() => go("cal")}><CalendarDays size={16} aria-hidden="true" />Appointments and calendar</button>
           {pendingReqs.length > 0 && (
-            <button className="btn gold" onClick={() => go("pet-requests")}><PawPrint size={16} aria-hidden="true" />Review pet requests ({pendingReqs.length})</button>
+            <button className="btn gold" onClick={() => go("pet-requests")}><PawPrint size={16} aria-hidden="true" />Pets without a visit ({pendingReqs.length})</button>
           )}
         </div>
       </Hero>
-      <AdmissionsSummary me={me} go={go} />
 
       <FrontDeskApprovals onReject={a=>{setActionError("");setRejecting(a);}} db={db} onReviewPet={setReviewReq} onOpenCard={openCard} onCalendar={() => go("cal")} onConfirm={confirmVisit} confirming={confirming} error={actionError} />
+      <AdmissionsSummary me={me} go={go} />
+      <CareFollowUps db={db} go={go} />
 
       {rejecting && <CancellationDialog reject visit={rejecting} currentVisit={db.appts.find(a=>a.id===rejecting.id)} error={actionError} onClose={()=>setRejecting(null)} onSubmit={async cancelReason=>{if(await moveAppt(setDb,rejecting.id,"Rejected",me,setActionError,rejecting,{cancelReason})){setRejecting(null);say("Appointment request rejected.");}}} />}
 
@@ -279,7 +280,7 @@ function Dash({ db, setDb, me, go, say }) {
           onClose={() => setReviewReq(null)}
           onProcessed={(action, newPet, cardId) => {
             setReviewReq(null);
-            say(action === "appointment-approved" ? "Appointment approved, registration verified and slot confirmed." : action === "approved" ? `Pet approved. Digital vaccination card #${cardId} created.` : "Pet registration request declined.");
+            say(action === "appointment-approved" ? "Appointment approved, registration verified and slot confirmed." : action === "approved" ? "Registration verified. Internal patient reference ready for treatment." : "Pet registration request declined.");
           }}
         />
       )}

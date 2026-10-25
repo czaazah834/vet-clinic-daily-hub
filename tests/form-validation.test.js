@@ -56,10 +56,14 @@ test('intake and editable clinic choices show required, range, length and duplic
   assert.ok(noteChoiceError(Array.from({length:101},(_,i)=>`Choice ${i}`).join('\n')));
 });
 
-test('new admission consent, emergency contact and observation time validate live',()=>{
+test('assistant consent and vet observation tasks validate live independently',()=>{
   const context={mode:'create',vet:true,visits:[{id:'visit'}]};
   const errors=admissionErrors({...form,consentConfirmed:false,consentName:' ',consentMethod:'Guessed',emergencyName:'',emergencyPhone:'123',emergencyRelationship:'',nextObservationAt:'2026-02-30T12:00',observationInstructions:''},context);
-  for(const key of ['consentConfirmed','consentName','consentMethod','emergencyName','emergencyPhone','emergencyRelationship','nextObservationAt','observationInstructions'])assert.ok(errors[key],key);
+  for(const key of ['nextObservationAt','observationInstructions'])assert.ok(errors[key],key);
+  assert.equal(errors.consentConfirmed,undefined);
+  const assistant=admissionErrors({...form,consentConfirmed:false,consentName:' ',consentMethod:'Guessed',emergencyName:'',emergencyPhone:'123',emergencyRelationship:''},{mode:'consent',vet:false});
+  for(const key of ['consentConfirmed','consentName','consentMethod','emergencyName','emergencyPhone','emergencyRelationship'])assert.ok(assistant[key],key);
+  assert.ok(Object.values(admissionErrors(form,{mode:'consent',vet:false})).every(v=>!v));
   assert.ok(admissionErrors({...form,nextObservationAt:'2000-01-01T12:00'},context).nextObservationAt);
   const kept=admissionErrors({...form,nextObservationAt:'',observationInstructions:'',consentConfirmed:false},{mode:'update',vet:true});
   assert.equal(kept.nextObservationAt,'');assert.equal(kept.consentName,undefined);

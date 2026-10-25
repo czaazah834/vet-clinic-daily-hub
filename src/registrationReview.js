@@ -7,7 +7,7 @@ export function registrationReviewChanged(request, requests = []) {
 }
 export function reviewedRequest(row) {
   return {
-    id:row.id, ownerId:row.owner_id, name:row.name, species:row.species,
+    priorVaccines:row.prior_vaccines || [],externalClinicNotes:row.external_clinic_notes || '',id:row.id, ownerId:row.owner_id, name:row.name, species:row.species,
     speciesOther:row.species_other || '', breed:row.breed || '', sex:row.sex,
     birth:dateOnly(row.birth), weight:Number(row.weight), color:row.color || '',
     neutered:row.neutered || '', notes:row.notes || '', photo:row.photo || '',
@@ -23,7 +23,7 @@ export function approvedRegistration(data) {
   return {
     request:reviewedRequest(data.request),
     cardId:p.vaccination_card_id,
-    pet:{id:p.id, ownerId:p.owner_id,registrationStatus:p.registration_status || 'Verified', name:p.name, species:p.species, speciesOther:p.species_other || '',
+    pet:{priorVaccines:p.prior_vaccines || [],externalClinicNotes:p.external_clinic_notes || '',referenceRevision:p.reference_revision || 0,id:p.id, ownerId:p.owner_id,registrationStatus:p.registration_status || 'Verified', name:p.name, species:p.species, speciesOther:p.species_other || '',
       breed:p.breed || '', sex:p.sex, birth:dateOnly(p.birth), weight:Number(p.weight),weightOrigin:p.weight_origin || 'registration',
       color:p.color || '', neutered:p.neutered || 'Not sure', allergies:p.allergies || [],
       vaccinationCardId:p.vaccination_card_id, notes:p.notes || '', photo:p.photo || '',

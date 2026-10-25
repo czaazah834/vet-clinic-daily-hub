@@ -1,3 +1,4 @@
+import {externalHistoryErrors} from '../../src/externalHistory.js';
 import {bookingReasonErrors,bookingReason} from '../../src/bookingReason.js';
 import {digitalVetCardRouter} from './digitalVetCard.js';
 import {ensureDigitalVetCardSchema,internalCardReference,refreshDigitalVetCard} from '../digitalVetCard.js';
@@ -168,6 +169,7 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
       notes: p.notes || "",
       photo: p.photo || "",
       dentalOcclusion: p.dental_occlusion || "",
+      priorVaccines:p.prior_vaccines || [], externalClinicNotes:p.external_clinic_notes || "", referenceRevision:p.reference_revision || 0,
       weights: weightsByPet[p.id] || []
     }));
 
@@ -245,6 +247,7 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
       vetId: c.vet_id,
       apptId: c.appt_id || "",
       date: toDateStr(c.date),
+      backdateReason:c.backdate_reason || "",
       symptoms: c.symptoms,
       objective: c.objective,
       diagnosis: c.diagnosis,
@@ -272,6 +275,7 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
       notes: r.notes || "",
       photo: r.photo || "",
       dentalOcclusion: r.dental_occlusion || "",
+      priorVaccines:r.prior_vaccines || [], externalClinicNotes:r.external_clinic_notes || "",
       revision: r.revision ?? 0,
       status: r.status,
       declineReason: r.decline_reason || "",
@@ -984,6 +988,29 @@ clinicRouter.post(['/owner/pets/:id/photo','/pets/:id/photo'],async (req,res) =>
   } catch(error) {res.status(error.status || 500).json({error:error.status ? error.message : 'Unable to save the pet picture. Please retry.'});}
 });
 
+clinicRouter.put('/pets/:id/reference-history', async (req,res) => {
+  try {
+    const error=Object.values(externalHistoryErrors(req.body)).find(Boolean);
+    if(error) throw registrationError(error);
+    if(req.user.role!=='owner') throw registrationError('Only the pet owner can submit owner-reported references.',403);
+    if(!Number.isInteger(req.body.revision) || req.body.revision<0) throw registrationError('Refresh the reference history before saving.',409);
+    await ensurePetRegistrationSchema();
+    const pet=await withTransaction(async client=>{
+      await lockRegistrationOwner(client,req.user.ownerId);
+      const row=(await client.query('SELECT * FROM pets WHERE id=$1 AND owner_id=$2 FOR UPDATE',[req.params.id,req.user.ownerId])).rows[0];
+      if(!row) throw registrationError('Patient not found.',404);
+      if(row.registration_status!=='Verified') throw registrationError('Edit the pending registration to update these references.',409);
+      const vaccines=(req.body.priorVaccines || []).map(v=>v.trim()), notes=(req.body.externalClinicNotes || '').trim();
+      if(JSON.stringify(vaccines)===JSON.stringify(row.prior_vaccines) && notes===row.external_clinic_notes) return row;
+      if(row.reference_revision!==req.body.revision) throw registrationError('Reference history changed. Close and reopen it before editing.',409);
+      await client.query('INSERT INTO pet_reference_updates(pet_id,prior_vaccines,notes,actor_id,actor_name) VALUES($1,$2,$3,$4,$5)',[row.id,JSON.stringify(vaccines),notes,req.user.id,req.user.name]);
+      await registrationAudit(client,req.user,`Updated owner-reported vaccination references for ${row.id}`);
+      return (await client.query('UPDATE pets SET prior_vaccines=$2,external_clinic_notes=$3,reference_revision=reference_revision+1 WHERE id=$1 RETURNING *',[row.id,JSON.stringify(vaccines),notes])).rows[0];
+    });
+    res.json({success:true,pet});
+  } catch(error) {res.status(error.status || 500).json({error:error.status?error.message:'Unable to save references. Keep your entries and retry.'});}
+});
+
 /* 4. ONLINE PET REGISTRATION REQUESTS & APPROVAL AUTOMATION */
 // Creating and correcting requests use the same validation and owner lock.
 async function savePetRequest(req, res) {
@@ -1015,6 +1042,8 @@ async function savePetRequest(req, res) {
             status='Pending',decline_reason=NULL,approved_at=NULL,approved_by=NULL,revision=revision+1,requested_at=CURRENT_DATE WHERE id=$13 RETURNING *`,[...values,req.params.id])
         : await client.query(`INSERT INTO pet_requests (name,species,species_other,breed,sex,birth,weight,color,neutered,notes,photo,dental_occlusion,id,owner_id)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,[...values,submissionId,req.user.ownerId]);
+      const history=(await client.query('UPDATE pet_requests SET prior_vaccines=$2,external_clinic_notes=$3 WHERE id=$1 RETURNING *',[saved.rows[0].id,JSON.stringify(data.priorVaccines),data.externalClinicNotes])).rows[0];
+      Object.assign(saved.rows[0],history);
       if(saved.rows[0].pet_id) {
         const visits=(await client.query("SELECT to_jsonb(a)->>'service' AS service,a.reason FROM appointments a WHERE pet_id=$1 AND status IN ('Pending Approval','Scheduled')",[saved.rows[0].pet_id])).rows;
         for(const visit of visits) if(visit.service==='vaccination' && vaccineIdFromReason(visit.reason)) requestedVaccineReason({...visit,species:data.species});
@@ -1500,9 +1529,10 @@ clinicRouter.post("/walk-in", async (req, res) => {
       };
 
       const seeded = [];
-      const priorList = Array.isArray(priorVaccines) ? priorVaccines : [];
+      const priorList = patient.priorVaccines;
+      await client.query('UPDATE pets SET prior_vaccines=$2,external_clinic_notes=$3 WHERE id=$1',[petId,JSON.stringify(priorList),patient.externalClinicNotes]);
 
-      // A) Save Prior External Vaccines as Official Guide (done: true, recorded_by: Previous Vet)
+      // A) Preserve previous-clinic references; document readers identify these as unverified reports.
       const hasPriorDHPP1 = priorList.some(x => /dhpp.*1|dose.*1|puppy.*1/i.test(String(x)));
       const hasPriorDHPP2 = priorList.some(x => /dhpp.*2|dose.*2|puppy.*2/i.test(String(x)));
       const hasPriorDHPP3 = priorList.some(x => /dhpp.*3|dose.*3|puppy.*3/i.test(String(x)));
@@ -1824,6 +1854,7 @@ clinicRouter.post("/consultations", async (req, res) => {
   if (weight !== undefined && (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0 || weight > 120)) return res.status(400).json({ error: "Enter a valid weight." });
   try {
     await ensureDigitalVetCardSchema();
+    await ensurePetRegistrationSchema();
     const rx = normalizePrescription(req.body.prescriptionItems, prescription);
     const services = clinicalCharges(req.body.performedServices, vaccination);
     if (!validDate(date) || date > clinicClock().date) throw bookingError("Enter a valid administration / consultation date that is not in the future.");
@@ -1839,6 +1870,9 @@ clinicRouter.post("/consultations", async (req, res) => {
       if (!appt || appt.pet_id !== petId || !assignedTo(appt, req.user)) throw Object.assign(new Error("An assigned visit is required."), { status: 403 });
       if (req.body.expectedVisit !== undefined && !sameIntakeVisit(appt, req.body.expectedVisit)) throw bookingError("This visit has changed. Refresh clinic records and reopen the consultation.",409);
       if (appt.status !== "In consultation") throw Object.assign(new Error("Start the consultation before finalizing. This visit may already be complete."), { status: 409 });
+      if (date < toDateStr(appt.date)) throw bookingError("The consultation date cannot be before the linked visit.");
+      const backdateReason=req.body.backdateReason;
+      if(date<clinicClock().date && (typeof backdateReason!=='string' || backdateReason.trim().length<5 || backdateReason.length>500 || !/[\p{L}]/u.test(backdateReason))) throw bookingError("Explain why this historical consultation date is being recorded (5–500 characters).");
       const patient = (await client.query("SELECT birth, vaccination_card_id FROM pets WHERE id = $1 FOR UPDATE", [petId])).rows[0];
       if (!patient) throw bookingError("Patient record not found.",404);
       patient.vaccination_card_id=await internalCardReference(client,petId,patient.vaccination_card_id);
@@ -1848,6 +1882,7 @@ clinicRouter.post("/consultations", async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
         [consultId, petId, vetId, apptId, date, symptoms.trim(), objective.trim(), diagnosis.trim(), treatment.trim(), rx.text]
       );
+      await client.query('UPDATE consultations SET backdate_reason=$2 WHERE id=$1',[consultId,date<clinicClock().date ? req.body.backdateReason.trim() : '']);
       await client.query("UPDATE consultations SET care_status=$1, follow_up_date=$2, follow_up_reason=$3 WHERE id=$4", [req.body.careStatus || "Routine care", req.body.careStatus && req.body.careStatus !== "Routine care" ? req.body.followUpDate : null, req.body.careStatus && req.body.careStatus !== "Routine care" ? req.body.followUpReason.trim() : "", consultId]);
       await client.query("UPDATE consultations SET prescription_items=$1 WHERE id=$2", [JSON.stringify(rx.items), consultId]);
       inserted.rows[0].prescription_items = rx.items;

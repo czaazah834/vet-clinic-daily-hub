@@ -285,7 +285,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                       <label className="ow-lbl" htmlFor="vc-st">Filter by Status</label>
                       <select id="vc-st" value={st} onChange={e => setSt(e.target.value)}>
                         <option value="">All statuses</option>
-                        {["Overdue", "Due soon", "On track", "Completed", "Vet review needed"].map(s => <option key={s}>{s}</option>)}
+                        {["Overdue", "Due soon", "On track", "Completed", "Vet review needed", "External reference · unverified"].map(s => <option key={s}>{s}</option>)}
                       </select>
                     </div>
                     <div>
@@ -318,7 +318,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                         </thead>
                         <tbody>
                           {list.map(v => {
-                            const s = stateOf(v), t = tone(s);
+                            const s = stateOf(v), t = tone(s), reference=v.batch==='EXTERNAL-HIST' || /external history.*guide/i.test(v.protocolType || '');
                             const matchedAppt = getApptForRecord(v);
                             const hasNext = hasBooster(v);
                             return (
@@ -340,13 +340,13 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                 </td>
                                 <td data-label="Date given">
                                   <span>
-                                    {v.done ? fmtDate(v.date) : <i>Planned · Not administered</i>}
+                                    {reference ? <i>Unknown · unverified external report</i> : v.done ? fmtDate(v.date) : <i>Planned · Not administered</i>}
                                     {vetOf(v) && <small className="vc-rel">{vetOf(v)}</small>}
                                   </span>
                                 </td>
                                 <td data-label="Next dose">
                                   <span>
-                                    {v.nextDue ? fmtDate(v.nextDue) : "—"}
+                                    {reference ? "Requires veterinarian review" : v.nextDue ? fmtDate(v.nextDue) : "—"}
                                     {hasBooster(v) && <small className={`vc-rel ${t}`}>{rel(v.nextDue)}</small>}
                                     {matchedAppt && (
                                       <small style={{ display: "block", color: "#166534", fontWeight: 700, marginTop: "2px" }}>
@@ -364,7 +364,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                                     ) : (
                                       <Badge v={s} />
                                     )}
-                                    {v.done ? (
+                                    {reference ? <small className="vc-rel">Previous-clinic reference only</small> : v.done ? (
                                       <small className="vc-rel">Dose administered</small>
                                     ) : matchedAppt ? (
                                       <small className="vc-rel" style={{ color: "#166534" }}>{matchedAppt.status}</small>

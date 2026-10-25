@@ -455,3 +455,8 @@
   .vc-profile-body { justify-content: flex-start; }
 }
 .owner-pet-setup{width:min(760px,100%);max-height:90dvh;overflow-y:auto}.owner-pet-setup .row.end{flex-wrap:wrap}
+.external-history { padding:16px; border:1px solid #e7c569; border-radius:12px; background:#fffaf0; color:#5c481d; overflow-wrap:anywhere; }
+.external-history h4 { margin-top:0; }
+.external-history .ow-chips { margin:12px 0; }
+.external-history .ow-chip[aria-pressed=true] { border-color:#a47717; background:#f5e5b7; color:#513c0b; }
+.external-history .ow-chip { white-space:normal; text-align:left; }

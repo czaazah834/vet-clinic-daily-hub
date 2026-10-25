@@ -14,6 +14,7 @@ const fakeQuery = async (sql, params = []) => {
   if (failSql && failSql.test(sql)) throw Error('synthetic database failure');
   const rows = value => ({ rows: structuredClone(value), rowCount: value.length });
   if (sql.includes('FROM sessions s')) return rows(users[params[0]] ? [users[params[0]]] : []);
+  if(sql==="SELECT version FROM pawcare_schema_migrations WHERE version='patient-reference-history-v1'")return rows([{version:'patient-reference-history-v1'}]);
   if(sql==="SELECT version FROM pawcare_schema_migrations WHERE version='digital-vet-card-v1'")return rows([{version:'digital-vet-card-v1'}]);
   if (sql==="SELECT version FROM pawcare_schema_migrations WHERE version='owner-pet-onboarding-v1'") return rows([{version:'owner-pet-onboarding-v1'}]);
   if (sql.startsWith('SELECT *,submission_payload=')) return rows([]);
@@ -60,11 +61,13 @@ const fakeQuery = async (sql, params = []) => {
   if (sql.startsWith('INSERT INTO audit_logs')) { const row = { user_name: params[0], user_role: params[1], action: params[2] }; db.logs.push(row); return rows([row]); }
   if (sql.startsWith('INSERT INTO appointments')) { const row = { id: params[0], pet_id: params[1], vet_id: params[2], date: params[3], time: params[4], reason: params[5], status: 'Pending Approval', amount: params[6], service:params[7],duration_minutes:params[8],booking_kind:params[9],notes:params[10],billing_status:'Unbilled' }; db.appts.push(row); return rows([row]); }
   if (sql.startsWith('INSERT INTO consultations')) { const row = Object.fromEntries(['id', 'pet_id', 'vet_id', 'appt_id', 'date', 'symptoms', 'objective', 'diagnosis', 'treatment', 'prescription'].map((k, i) => [k, params[i]])); db.consults.push(row); return rows([row]); }
+  if (sql.startsWith('UPDATE consultations SET backdate_reason=')) {const row=db.consults.find(c=>c.id===params[0]);row.backdate_reason=params[1];return rows([row]);}
   if (sql.startsWith('UPDATE consultations SET care_status')) { const row = db.consults.find(c => c.id === params[3]); Object.assign(row, {care_status:params[0], follow_up_date:params[1], follow_up_reason:params[2]}); return rows([row]); }
   if (sql.startsWith('UPDATE consultations SET performed_services')) { const row = db.consults.find(c => c.id === params[1]); row.performed_services=JSON.parse(params[0]); return rows([row]); }
   if (sql.startsWith('UPDATE consultations SET prescription_items')) { const row = db.consults.find(c => c.id === params[1]); row.prescription_items=JSON.parse(params[0]); return rows([row]); }
   if (sql.startsWith('INSERT INTO vaccinations')) { const row = { id: params[0], pet_id: params[1], card_id: params[2], vaccine: params[3], brand: params[4], batch: params[5], done: true, vet_id: params[9], recorded_by: params[10] }; db.vaccs.push(row); return rows([row]); }
   if (sql.startsWith('INSERT INTO pets(id,owner_id,name')) { const row=Object.fromEntries(['id','owner_id','name','species','species_other','breed','sex','birth','weight','color','neutered','notes','photo','dental_occlusion'].map((k,i)=>[k,params[i]]));row.registration_status='Pending';db.pets.push(row);return rows([row]); }
+  if (sql.startsWith('UPDATE pet_requests SET prior_vaccines=')) {const row=db.requests.find(r=>r.id===params[0]);Object.assign(row,{prior_vaccines:JSON.parse(params[1]),external_clinic_notes:params[2]});return rows([row]);}
   if (sql.startsWith('UPDATE pet_requests SET pet_id=')) {const r=db.requests.find(r=>r.id===params[0]);r.pet_id=params[1];return rows([]);}
   if (sql.startsWith('UPDATE pet_requests SET submission_payload=')) {db.requests.find(r=>r.id===params[0]).submission_payload=JSON.parse(params[1]);return rows([]);}
   if (sql.startsWith('UPDATE owners SET first_pet_registered_at=')) {db.owners.find(o=>o.id===params[0]).first_pet_registered_at='2026-10-25T00:00:00Z';return rows([]);}
@@ -249,7 +252,7 @@ test('only assigned doctor starts consultation; no direct completion bypass', as
   assert.equal((await request('vet', 'PATCH', '/appointments/a1/status', { status: 'In consultation' })).status, 200);
   assert.equal((await request('vet', 'PATCH', '/appointments/a1/status', { status: 'Completed' })).status, 409);
 });
-const soap = () => ({ id: 'c1', petId: 'p1', apptId: 'a1', vetId: 'spoofed', date: '2026-10-24', symptoms: 'Complaint', objective: 'Exam', diagnosis: 'Assessment', treatment: 'Plan', prescription: '', vaccination: { id: 'v-new', vaccine: 'Anti-rabies', brand: 'Synthetic brand', batch: 'SYNTHETIC', nextDue: '2027-10-24', intervalDays:365, scheduleApproved:true, doseNo:1, doseOf:1 } });
+const soap = () => ({ id: 'c1', petId: 'p1', apptId: 'a1', vetId: 'spoofed', date: clinicClock().date, symptoms: 'Complaint', objective: 'Exam', diagnosis: 'Assessment', treatment: 'Plan', prescription: '', vaccination: { id: 'v-new', vaccine: 'Anti-rabies', brand: 'Synthetic brand', batch: 'SYNTHETIC', nextDue: shiftDate(clinicClock().date,365), intervalDays:365, scheduleApproved:true, doseNo:1, doseOf:1 } });
 test('SOAP requires clinical fields and an assigned encounter', async () => {
   db.appts[0].status = 'In consultation';
   assert.equal((await request('vet', 'POST', '/consultations', { ...soap(), diagnosis: '' })).status, 400);

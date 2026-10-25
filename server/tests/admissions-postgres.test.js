@@ -246,14 +246,14 @@ test('workflow migration preserves legacy discharges and can be applied repeated
  }finally{await client.query('ROLLBACK');client.release();}
 });
 
-test('consent and timed observation tasks are vet-set, versioned, completed once and owner-isolated',async()=>{
+test('consent and timed observation tasks are vet-set and consent is staff-recorded, versioned, completed once and owner-isolated',async()=>{
   const f=await fixture();
   for(const extra of [{consentConfirmed:false},{consentName:42},{nextObservationAt:'2099-02-30T12:00:00Z'},{emergencyPhone:'123'},{nextObservationAt:'2000-01-01T12:00:00Z'},{observationInstructions:''}])assert.equal((await call('vet','POST','',{...f.body,...extra})).status,400);
   const created=await call('vet','POST','',f.body);assert.equal(created.status,200,JSON.stringify(created));
   const id=f.body.requestId,path=`/${id}`;
   assert.equal(created.data.admission.consent.name,'Synthetic owner');assert.ok(created.data.admission.consent.recordedAt);
   assert.equal(created.data.admission.nextObservationAt,f.body.nextObservationAt);
-  for(const extra of [{nextObservationAt:new Date(Date.now()+7200000).toISOString(),observationInstructions:'Unauthorized'},{consentConfirmed:true},{observationInstructions:'Unauthorized'}])assert.equal((await call('assistant','POST',`${path}/update`,update(0,extra))).status,403);
+  for(const extra of [{nextObservationAt:new Date(Date.now()+7200000).toISOString(),observationInstructions:'Unauthorized'},{observationInstructions:'Unauthorized'}])assert.equal((await call('assistant','POST',`${path}/update`,update(0,extra))).status,403);
   const done=update(0,{completeObservation:true,ownerUpdate:''});
   const completed=await call('assistant','POST',`${path}/update`,done);assert.equal(completed.status,200,JSON.stringify(completed));assert.ok(completed.data.admission.observationCompletedAt);
   assert.equal((await call('assistant','POST',`${path}/update`,done)).status,200);
@@ -289,4 +289,26 @@ test('discharge document scopes saved prescriptions and payment without private 
   }
   for(const role of ['other-owner','other-vet'])assert.equal((await call(role,'GET',`${path}/discharge-summary`)).status,404);
   assert.equal((await call(null,'GET',`${path}/discharge-summary`)).status,401);
+});
+
+test('vet admission order leaves an assistant consent task; consent saves are scoped, atomic and retry-safe',async()=>{
+ const f=await fixture();
+ for(const key of ['consentConfirmed','consentName','consentMethod','emergencyName','emergencyPhone','emergencyRelationship'])delete f.body[key];
+ const created=await call('vet','POST','',f.body);assert.equal(created.status,200,JSON.stringify(created));assert.equal(created.data.admission.consent,null);
+ const path=`/${f.body.requestId}/consent`,body=update(0,{measurements:{},consentConfirmed:true,consentName:'Synthetic owner',consentMethod:'Phone',emergencyName:'Synthetic contact',emergencyPhone:'+639170000001',emergencyRelationship:'Owner'});
+ for(const role of ['owner','other-owner','vet','admin'])assert.equal((await call(role,'POST',path,body)).status,403,role);
+ assert.equal((await call('assistant','POST',path,{...body,emergencyPhone:'123'})).status,400);
+ assert.equal((await call('assistant','POST',path,{...body,carePlan:'Unauthorized change'})).status,403);
+ const saves=await Promise.all([call('assistant','POST',path,body),call('assistant','POST',path,body)]);assert.deepEqual(saves.map(r=>r.status),[200,200]);
+ const consent=saves[0].data.admission.consent;assert.equal(consent.staffRole,'assistant');assert.ok(consent.staffId);assert.ok(consent.recordedAt);
+ let record=(await call('vet','GET',`/${f.body.requestId}`)).data;assert.equal(record.admission.revision,1);assert.equal(record.updates.filter(u=>u.id===body.requestId).length,1);assert.equal(record.admission.carePlan,f.body.carePlan);
+ assert.equal((await call('assistant','POST',path,{...body,requestId:crypto.randomUUID(),consentName:'Stale contact'})).status,409);
+ const correction={...body,requestId:crypto.randomUUID(),revision:1,emergencyName:'Updated contact'};
+ assert.equal((await call('assistant','POST',path,correction)).status,200);
+ record=(await call('vet','GET',`/${f.body.requestId}`)).data;
+ assert.equal(record.admission.consent.emergencyName,'Updated contact');assert.equal(record.updates.find(u=>u.id===body.requestId).careDetails.consent.emergencyName,'Synthetic contact');
+ assert.equal((await call('other-owner','GET',`/${f.body.requestId}`)).status,404);
+ await query("CREATE FUNCTION fail_consent_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action LIKE 'Updated admission%' THEN RAISE EXCEPTION 'synthetic audit failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_consent_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION fail_consent_audit()");
+ try{assert.equal((await call('assistant','POST',path,{...correction,requestId:crypto.randomUUID(),revision:2,emergencyName:'Must roll back'})).status,500);}finally{await query('DROP TRIGGER fail_consent_audit ON audit_logs');}
+ record=(await call('vet','GET',`/${f.body.requestId}`)).data;assert.equal(record.admission.revision,2);assert.equal(record.admission.consent.emergencyName,'Updated contact');assert.equal(record.updates.length,3);
 });

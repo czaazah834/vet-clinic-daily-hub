@@ -1,3 +1,4 @@
+import {addressError} from '../src/externalHistory.js';
 import { validatePetRegistration, registrationError } from './petRegistration.js';
 
 export function validateWalkInRegistration(body) {
@@ -14,5 +15,7 @@ export function validateWalkInRegistration(body) {
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw registrationError('Enter a valid email address or leave it blank.');
   const patient = validatePetRegistration({...body,name:body.petName});
   if (typeof body.addToQueue !== 'boolean') throw registrationError('Choose whether to add the patient to today’s arrivals.');
-  return {ownerName,phone,email,address:text('address',150),patient};
+  const address=text('address',150), invalidAddress=addressError(address);
+  if(invalidAddress) throw registrationError(invalidAddress);
+  return {ownerName,phone,email,address,patient};
 }
