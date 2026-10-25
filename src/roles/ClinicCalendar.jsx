@@ -1,3 +1,5 @@
+import { VaccinePicker, VaccineEstimate, useBookingCatalog } from '../components/VaccineBooking.jsx';
+import { vaccineChoiceError, vaccineIdFromReason, vaccineReason, vaccinePriceLabel } from '../vaccineBooking.js';
 import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
 import {useFollowingClinicDay} from "../useClinicDay.js";
 import { checkInDateError } from "../intakeVisit.js";
@@ -205,18 +207,19 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
     ? <button className="btn sm ghost" onClick={() => setBookingSlot({...visit, editing:true})}>Manage appointment</button> : null;
 
   // Quick booking submit saved to PostgreSQL backend
-  const handleQuickBook = async (petId, serviceName, reasonText, targetVetId, targetDate, targetTime, followUpId) => {
+  const handleQuickBook = async (petId, serviceName, reasonText, targetVetId, targetDate, targetTime, followUpId, vaccineId) => {
     if (!canBook) throw new Error("Only owners and reception can book visits.");
     const previous = bookingSlot?.editing ? bookingSlot : null;
     if (previous && me.role !== "assistant") throw new Error("Reception manages appointment reassignment.");
     const newApptId = previous?.id || "a_" + uid();
-    const reason = previous && previous.service === serviceName && previous.reason === reasonText ? reasonText
+    const reason = serviceName === "vaccination" ? reasonText : previous && previous.service === serviceName && previous.reason === reasonText ? reasonText
       : serviceName ? `${SERVICES[serviceName]?.label || serviceName}: ${reasonText}` : reasonText;
     const payload = {
       id: newApptId, followUpId: followUpId || null, petId, vetId: targetVetId,
       date: targetDate, time: targetTime, service: serviceName, reason,
+      ...(serviceName === "vaccination" ? {vaccineId} : {}),
       notes: previous?.notes || "",
-      status: previous && previous.petId === petId && previous.vetId === targetVetId && previous.date === targetDate && previous.time === targetTime && previous.service === serviceName ? previous.status : "Scheduled",
+      status: previous && previous.petId === petId && previous.vetId === targetVetId && previous.date === targetDate && previous.time === targetTime && previous.service === serviceName && (serviceName !== "vaccination" || previous.reason === reason) ? previous.status : "Scheduled",
       actorName: me.name, actorRole: me.role,
     };
     const response = previous ? await api.put(`/api/appointments/${previous.id}`, payload) : await api.post("/api/appointments", payload);
@@ -884,7 +887,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                             </td>
 
                             <td style={{ padding: "11px 10px", maxWidth: "260px" }}>
-                              <div style={{ color: "#1e293b", fontWeight: 500 }}>{a.reason}</div>
+                              <div style={{ color: "#1e293b", fontWeight: 500 }}>{a.reason}</div><VaccineEstimate appointment={a} compact />
                             </td>
 
                             <td style={{ padding: "11px 10px" }}>
@@ -1030,6 +1033,8 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
   const [time, setTime] = useState(slot.time || "09:00");
   const [service, setService] = useState(slot.service || "checkup");
   const [reason, setReason] = useState(slot.reason || "");
+  const [vaccineId,setVaccineId]=useState(vaccineIdFromReason(slot.reason) || (slot.service === 'vaccination' && slot.reason ? 'vet-review' : ''));
+  const catalog=useBookingCatalog()?.data?.catalog || [];
   const [followUpId, setFollowUpId] = useState(slot.followUpId || "");
   const [dateErr, setDateErr] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1040,7 +1045,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
   const maxBookingDate = lastDay();
   const availability = useAvailability({ vetId, date, service, excludeId:slot.editing ? slot.id : undefined });
 
-  const review = useSubmissionReview([petId,vetId,date,time,service,reason,followUpId,slot,db.appts.find(a => a.id === slot.id),doctors]);
+  const review = useSubmissionReview([petId,vetId,date,time,service,reason,vaccineId,followUpId,slot,db.appts.find(a => a.id === slot.id),doctors]);
   const selectedPet = db.pets.find(p => p.id === petId) || {};
   const owner = db.owners.find(o => o.id === selectedPet.ownerId) || {};
   const followUp = db.records.find(r => r.id === followUpId && r.petId === petId);
@@ -1078,6 +1083,9 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
       setDateErr(`${selectedPet.name || "Patient"} already has a scheduled visit at ${time} on this date.`);
       return;
     }
+    const vaccineError=service === 'vaccination' ? vaccineChoiceError(vaccineId,selectedPet.species) : '';
+    if(vaccineError){setSaveError(vaccineError);return;}
+    const visitReason=service === 'vaccination' ? vaccineReason(vaccineId,vaccineId === 'vet-review' ? slot.reason : '') : reason.trim() || 'General visit';
     if (!await review.ask({title:slot.editing ? "Review appointment changes" : "Review clinic booking", confirmLabel:slot.editing ? "Save appointment changes" : "Confirm booking",
       description:"Check the patient and assignment. Reception must confirm changed appointments with the owner.",
       fields:[
@@ -1086,14 +1094,15 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
         ["Veterinarian",doctors.find(([id]) => id === vetId)?.[1]],
         ["Date and time",`${date} at ${time}`],
         ["Service",SERVICES[service]?.label],
-        ["Reason",reason.trim() || "General visit"],
+        ["Reason",visitReason],
+        ...(service === "vaccination" ? [["Estimated vaccine price",vaccinePriceLabel(vaccineId,catalog)]] : []),
         ["Saved owner note",slot.notes],
         ["Follow-up request",followUp ? `${followUp.followUpDate}: ${followUp.followUpReason}` : "Regular visit"]]
     })) return;
     bookingFlight.current = true;
     setSaving(true);
     try {
-      await onBook(petId, service, reason.trim() || "General visit", vetId, date, time, followUpId);
+      await onBook(petId, service, visitReason, vetId, date, time, followUpId, vaccineId);
     } catch (error) {
       setSaveError(error.message);
       availability.refresh();
@@ -1124,7 +1133,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
           <div style={{ display: "grid", gap: "12px" }}>
             <div className="fld">
               <label htmlFor="quick-book-pet">Select Patient (Pet &amp; Owner)</label>
-              <select id="quick-book-pet" disabled={!!(slot.editing && slot.followUpId)} value={petId} onChange={e => { setPetId(e.target.value); setFollowUpId(""); }} required>
+              <select id="quick-book-pet" disabled={!!(slot.editing && slot.followUpId)} value={petId} onChange={e => { setPetId(e.target.value); setVaccineId(""); setFollowUpId(""); }} required>
                 {db.pets.map(p => {
                   const o = db.owners.find(x => x.id === p.ownerId) || {};
                   return (
@@ -1151,7 +1160,7 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
 
               <div className="fld">
                 <label htmlFor="quick-book-service">Service Category</label>
-                <select id="quick-book-service" value={service} onChange={e => setService(e.target.value)}>
+                <select id="quick-book-service" value={service} onChange={e => {setService(e.target.value);setVaccineId("");}}>
                   {Object.entries(SERVICES).map(([key, item]) => <option key={key} value={key}>{item.label} ({item.dur} min)</option>)}
                 </select>
               </div>
@@ -1190,7 +1199,8 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
               </div>
             </div>
 
-            <div className="fld">
+            {service === 'vaccination' && <VaccinePicker id="quick-book-vaccine" value={vaccineId} onChange={setVaccineId} species={selectedPet.species} petSelected={!!petId} />}
+            {service !== 'vaccination' && <div className="fld">
               <label htmlFor="quick-book-reason">Reason / Owner Symptoms</label>
               <input
                 id="quick-book-reason"
@@ -1198,9 +1208,9 @@ function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
                 maxLength={300}
                 value={reason}
                 onChange={e => setReason(e.target.value)}
-                placeholder="e.g. Annual booster, lethargy, skin itching..."
+                placeholder="e.g. Lethargy, skin itching..."
               />
-            </div>
+            </div>}
           </div>
 
           <div className="row end" style={{ marginTop: "18px", gap: "10px" }}>

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { bookingDayConflict, validateOwnerBooking } from '../src/ownerBooking.js';
 import { shiftDate } from '../server/scheduling.js';
 
-const context = {pets:[{id:'pet'}],vets:[{id:'vet'},{id:'other-vet'}],appointments:[],records:[],date:'2026-10-25',last:'2027-01-23',time:'10:15'};
-const booking = {petId:'pet',vetId:'vet',service:'vaccination',date:'2026-10-26',time:'10:00',notes:''};
+const context = {pets:[{id:'pet',species:'Canine'}],vets:[{id:'vet'},{id:'other-vet'}],appointments:[],records:[],date:'2026-10-25',last:'2027-01-23',time:'10:15'};
+const booking = {petId:'pet',vetId:'vet',service:'vaccination',vaccineId:'rabies',date:'2026-10-26',time:'10:00',notes:''};
 const validate = (patch = {}, extra = {}) => validateOwnerBooking({...booking,...patch},{...context,...extra});
 
 test('one pet cannot book twice on the same day, across veterinarians and services', () => {
@@ -50,4 +50,10 @@ test('notes respect the size limit and allow owners to describe care needs in th
   assert.ok(validate({notes:'x'.repeat(201)}).notes);
   assert.ok(validate({notes:'123!'}).notes);
   assert.equal(validate({notes:'我的宠物需要帮助'}).notes,undefined);
+});
+
+test('vaccination requests require an explicit, species-compatible vaccine',()=>{
+  assert.ok(validate({vaccineId:''}).vaccineId);
+  assert.ok(validate({vaccineId:'feline-core'}).vaccineId);
+  assert.equal(validate({vaccineId:'vet-review'}).vaccineId,undefined);
 });

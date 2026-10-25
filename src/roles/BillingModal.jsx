@@ -1,3 +1,4 @@
+import { VaccineEstimate } from "../components/VaccineBooking.jsx";
 import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { confirmedPayment } from "../receptionSaves.js";
@@ -236,6 +237,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
         ) : (
           me.role !== "assistant" ? <p role="status">This visit is awaiting front desk checkout. Financial records are available for review after payment.</p> : <form onSubmit={handlePay}>
             <fieldset disabled={loading || !claim.ready} style={{border:0,padding:0,margin:0,minWidth:0}}>
+            <p><b>Requested purpose:</b> {appt.reason}</p><VaccineEstimate appointment={appt} />
             {/* Patient Context Card */}
             <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "10px", marginBottom: "14px", border: "1px solid #e2e8f0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>

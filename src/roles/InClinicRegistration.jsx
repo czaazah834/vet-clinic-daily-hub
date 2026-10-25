@@ -1,3 +1,5 @@
+import { VaccinePicker, useBookingCatalog } from '../components/VaccineBooking.jsx';
+import { vaccineChoiceError, vaccineReason, vaccinePriceLabel, VACCINE_CHOICES } from '../vaccineBooking.js';
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { useRef, useState } from "react";
 import { addLog } from "../lib.jsx";
@@ -146,7 +148,9 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
 
   // Clinical service needed today & prior history guide states
   const [serviceCategory, setServiceCategory] = useState("consultation");
-  const [specificVaccine, setSpecificVaccine] = useState("DHPP (5-in-1 Core Vaccine)");
+  const [vaccineId,setVaccineId]=useState('');
+  const specificVaccine = vaccineId === 'canine-core' ? 'DHPP (5-in-1 Core Vaccine)' : vaccineId === 'feline-core' ? 'FVRCP (4-in-1 Feline Core)' : VACCINE_CHOICES.find(c=>c.id===vaccineId)?.name || '';
+  const catalog=useBookingCatalog()?.data?.catalog || [];
   const [hasExternalHistory, setHasExternalHistory] = useState(false);
   const [priorVaccines, setPriorVaccines] = useState([]);
   const [externalClinicNotes, setExternalClinicNotes] = useState("");
@@ -167,20 +171,17 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       customBreed: "",
       dentalOcclusion: newSpecies.includes("Rodent") ? "Not Evaluated Yet" : ""
     });
-    const norm = normalizeSpecies(newSpecies);
-    if (norm === "Feline") {
-      setSpecificVaccine("FVRCP (4-in-1 Feline Core)");
-    } else {
-      setSpecificVaccine("DHPP (5-in-1 Core Vaccine)");
-    }
+    setVaccineId('');
+    if(serviceCategory === 'vaccination') f.set('reason','Vaccination consultation');
   };
 
   const handleServiceChange = (cat) => {
     setServiceCategory(cat);
+    setVaccineId('');
     if (cat === "consultation") {
       f.set("reason", "Walk-in Consultation & Routine Exam");
     } else if (cat === "vaccination") {
-      f.set("reason", `Vaccination: ${specificVaccine}`);
+      f.set("reason", "Vaccination consultation");
     } else if (cat === "deworming") {
       f.set("reason", "Routine Deworming (Parasiticide)");
     } else if (cat === "flea_tick") {
@@ -193,9 +194,9 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
   };
 
   const handleVaccineChange = (vac) => {
-    setSpecificVaccine(vac);
+    setVaccineId(vac);
     if (serviceCategory === "vaccination") {
-      f.set("reason", `Vaccination: ${vac}`);
+      f.set("reason", vaccineReason(vac));
     }
   };
 
@@ -205,7 +206,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
     );
   };
 
-  const review = useSubmissionReview([v,vetId,serviceCategory,specificVaccine,hasExternalHistory,priorVaccines,externalClinicNotes,existingOwner,db.vets]);
+  const review = useSubmissionReview([v,vetId,serviceCategory,specificVaccine,vaccineId,hasExternalHistory,priorVaccines,externalClinicNotes,existingOwner,db.vets]);
 
   const handleSubmit = async (ev) => {
     ev.preventDefault();
@@ -214,6 +215,10 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
     f.submit();
     if (!f.valid) return;
     if (v.addToQueue && !vetId) { setSaveError("Choose a veterinarian before adding today’s arrival."); return; }
+    if(v.addToQueue && serviceCategory === 'vaccination') {
+      const error=vaccineChoiceError(vaccineId,canonicalSpecies);
+      if(error){setSaveError(error);return;}
+    }
     const finalBreed = showCustomBreed && v.customBreed.trim() ? v.customBreed.trim() : v.breed;
     const finalColor = showCustomColor && v.customColor.trim() ? v.customColor.trim() : v.color;
 
@@ -235,12 +240,13 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       notes: v.notes.trim(),
       addToQueue: v.addToQueue,
       vetId,
-      reason: v.reason.trim(),
+      reason: v.addToQueue && serviceCategory === "vaccination" ? vaccineReason(vaccineId) : v.reason.trim(),
       actorName: me?.name || "Vet Assistant",
       actorRole: me?.role || "assistant",
       ownerId: existingOwner?.id || "",
       serviceCategory,
       specificVaccine,
+      ...(v.addToQueue && serviceCategory === "vaccination" ? {vaccineId} : {}),
       priorVaccines: hasExternalHistory ? priorVaccines : [],
       externalClinicNotes: hasExternalHistory ? externalClinicNotes.trim() : ""
     };
@@ -261,6 +267,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
         ["Dental status",payload.dentalOcclusion],
         ["Patient notes",payload.notes],
         ["Today’s arrival",payload.addToQueue ? `${db.vets?.find(v=>v.id===vetId)?.name || "Veterinarian unavailable"}: ${payload.reason}` : "No arrival requested"],
+        ...(v.addToQueue && serviceCategory === "vaccination" ? [["Estimated vaccine price",vaccinePriceLabel(vaccineId,catalog)]] : []),
         ["Reported external vaccine history",payload.priorVaccines.join("\n") || "None reported"],
         ["External clinic notes",payload.externalClinicNotes]]
     })) return;
@@ -268,7 +275,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
     setLoading(true);
     let backendResult = null;
     try {
-      backendResult = savedWalkInRegistration(await api.post("/api/walk-in", payload));
+      backendResult = savedWalkInRegistration(await api.post("/api/walk-in", payload), payload);
     } catch (err) {
       setSaveError(err.message);
       inFlight.current = false;
@@ -689,50 +696,9 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                     </select>
                   </div>
 
-                  {serviceCategory === "vaccination" && (
-                    <div style={{ background: "#fff", padding: "10px 12px", borderRadius: "8px", border: "1.5px solid #60a5fa" }}>
-                      <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#1e40af", marginBottom: "4px" }}>
-                        Select Specific Vaccine Needed Today: *
-                      </label>
-                      <select
-                        value={specificVaccine}
-                        onChange={e => handleVaccineChange(e.target.value)}
-                        style={{ width: "100%", padding: "7px 10px", fontSize: "13px", borderRadius: "6px", border: "1px solid #93c5fd", fontWeight: 600 }}
-                      >
-                        {canonicalSpecies === "Canine" ? (
-                          <>
-                            <option value="DHPP (5-in-1 Core Vaccine)">DHPP (5-in-1 Core Vaccine - Standard)</option>
-                            <option value="Anti-Rabies (RA 9482 Compliance)">Anti-Rabies (Mandatory Core RA 9482)</option>
-                            <option value="6-in-1 Core Combination">6-in-1 Core Combination Vaccine</option>
-                            <option value="Bordetella (Kennel Cough Prophylaxis)">Bordetella (Kennel Cough Prophylaxis)</option>
-                            <option value="Puppy DHPP Dose 1">Puppy Foundation DHPP Dose 1</option>
-                            <option value="Puppy DHPP Dose 2">Puppy Foundation DHPP Dose 2</option>
-                            <option value="Puppy DHPP Dose 3">Puppy Foundation DHPP Dose 3</option>
-                            <option value="Annual 5-in-1 Core Booster">Annual 5-in-1 Adult Core Booster</option>
-                          </>
-                        ) : canonicalSpecies === "Feline" ? (
-                          <>
-                            <option value="FVRCP (4-in-1 Feline Core)">FVRCP (4-in-1 Feline Core)</option>
-                            <option value="Anti-Rabies (1-Year Feline Core)">Anti-Rabies (1-Year Feline Core)</option>
-                            <option value="Feline Leukemia (FeLV)">Feline Leukemia (FeLV)</option>
-                            <option value="FVRCP Dose 1">FVRCP Dose 1 (Kitten Foundation)</option>
-                            <option value="FVRCP Dose 2">FVRCP Dose 2 (Kitten Foundation)</option>
-                            <option value="FVRCP Annual Booster">FVRCP Annual Adult Booster</option>
-                          </>
-                        ) : (
-                          <>
-                            <option value="Routine Preventive Care">Species-Specific Routine Preventive</option>
-                            <option value="General Health Consultation">General Health Consultation &amp; Care</option>
-                          </>
-                        )}
-                      </select>
-                      <small style={{ color: "#0369a1", display: "block", marginTop: "4px", fontSize: "11.5px" }}>
-                        This will be set as today&rsquo;s clinical visit reason for the veterinarian to examine and administer.
-                      </small>
-                    </div>
-                  )}
+                  {serviceCategory === "vaccination" && <VaccinePicker id="registration-vaccine" value={vaccineId} onChange={handleVaccineChange} species={canonicalSpecies} />}
 
-                  <Field
+                  {serviceCategory !== "vaccination" && <Field
                     id="reason"
                     label="Arrival Reason for Queue &amp; Doctor Notes"
                     req
@@ -743,8 +709,8 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                     onBlur={() => f.blur("reason")}
                     error={f.show("reason")}
                     valid={f.ok("reason")}
-                    hint="Auto-filled from service selection; feel free to customize"
-                  />
+                    hint="Describe the care requested today"
+                  />}
                 </div>
               )}
             </div>

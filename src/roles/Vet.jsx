@@ -1,3 +1,4 @@
+import { VaccineEstimate } from "../components/VaccineBooking.jsx";
 import { PaginatedList } from "../components/Pagination.jsx";
 import HandoffModal from "./HandoffModal.jsx";
 import VaccinationCards from "./VaccinationCards.jsx";
@@ -121,7 +122,7 @@ function Dash({ db, setDb, me, go, say }) {
                           <span className={`sf-pill ${emergency ? "er" : "wa"}`}><AlertTriangle size={12} aria-hidden="true" />Triage: {iv.triageLevel}</span>
                         )}
                       </div>
-                      <div className="sf-reason"><b>Chief complaint:</b> {a.reason}</div>
+                      <div className="sf-reason"><b>Chief complaint:</b> {a.reason}</div><VaccineEstimate appointment={a} compact />
                       {(a.handoffs || []).map((h, i) => <p key={i} style={{whiteSpace: "pre-wrap"}}><b>Handoff: {h.from} → {h.to}</b> ({new Date(h.at).toLocaleString()})<br />{h.note}</p>)}
                       {iv ? (
                         <div className="sf-chips">

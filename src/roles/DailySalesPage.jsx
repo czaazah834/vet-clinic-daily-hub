@@ -84,7 +84,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
         boxShadow: "0 1px 3px rgba(0,0,0,0.03)"
       }}>
         {/* Date Selector */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div className="sales-date-controls" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <button
             type="button"
             className="btn ghost sm"
@@ -95,7 +95,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             <ChevronLeft size={16} />
           </button>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "#f8fafc", padding: "4px 10px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
+          <div className="sales-date-field" style={{ display: "flex", alignItems: "center", gap: "6px", background: "#f8fafc", padding: "4px 10px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
             <Calendar size={16} color="var(--navy)" />
             <input
               type="date"

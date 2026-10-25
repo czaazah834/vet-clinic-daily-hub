@@ -200,3 +200,15 @@ test('weight history validates measured facts, preserves newest weight and audit
  assert.equal(Number((await query('SELECT weight FROM pets WHERE id=$1',[petId])).rows[0].weight),5.25);
  await query('DROP TRIGGER reject_weight_audit ON audit_logs');
 });
+
+test('new customer vaccination arrivals validate species before inserts and persist the requested purpose',async()=>{
+ await user('request_vet','vet');await query("UPDATE users SET vet_id='request_vet' WHERE id='request_vet'");
+ const body={...walkIn,phone:'09175556677',petName:'Requested Cat',species:'Feline',weight:4,dentalOcclusion:'',addToQueue:true,vetId:'request_vet',serviceCategory:'vaccination',vaccineId:'feline-core',reason:'Wrong price and purpose'};
+ const before=(await query('SELECT COUNT(*)::int n FROM pets')).rows[0].n;
+ for(const vaccineId of ['canine-core','invented',''])assert.equal((await call(assistant,'POST','/walk-in',{...body,vaccineId})).status,400);
+ assert.equal((await query('SELECT COUNT(*)::int n FROM pets')).rows[0].n,before);
+ const saved=await call(assistant,'POST','/walk-in',body);assert.equal(saved.status,200,JSON.stringify(saved.data));
+ assert.equal(saved.data.appointment.reason,'Vaccination: Feline 4-in-1');assert.equal(saved.data.appointment.service,'vaccination');assert.equal(saved.data.appointment.bookingKind,'walk-in');
+ const row=(await query('SELECT reason,service FROM appointments WHERE id=$1',[saved.data.appointment.id])).rows[0];assert.equal(row.reason,saved.data.appointment.reason);assert.equal(row.service,'vaccination');
+ assert.equal((await query('SELECT COUNT(*)::int n FROM vaccinations WHERE pet_id=$1 AND done=true',[saved.data.pet.id])).rows[0].n,0);
+});

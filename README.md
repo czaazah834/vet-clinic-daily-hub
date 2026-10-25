@@ -930,3 +930,22 @@ server-confirmed saves remain authoritative.
 Checks: `node --test tests/owner-relationships.test.js`, `npm run test:ui`, and
 `npm run build`. Browser fixtures cover more than 10 records, page navigation,
 filter resets, owner/pet links, account failure/retry and responsive layouts.
+
+### Requested vaccines and admin activity
+
+Vaccination booking now asks owners or reception to choose a species-compatible
+vaccine (or ask the veterinarian for advice). The same selection is saved in the
+visit purpose and displayed in approvals, appointment details, intake, clinical
+queues and checkout. Known prices come from `/api/services/prices`; estimates
+exclude additional care, and unpriced products require clinic confirmation.
+The server validates explicit choices and species independently. Changing a
+confirmed vaccination request returns it to Scheduled for reception confirmation.
+Generic older bookings remain readable. A request never certifies an administered
+dose, sets a booster interval or creates a charge: the veterinarian confirms
+performed care and checkout retains the canonical invoice rules.
+
+Admin activity shows a derived activity category, saved action, actor, role,
+Manila time and record reference. Exact saved actions remain available in the
+expanded details. Search uses the saved audit history; role/type filters apply to
+loaded entries. Cursor loading retains older history and screens show at most
+10 entries per page. Failed reads retain the last loaded entries for retry.

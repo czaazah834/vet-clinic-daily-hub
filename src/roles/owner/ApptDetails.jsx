@@ -1,3 +1,4 @@
+import { VaccineEstimate } from "../../components/VaccineBooking.jsx";
 import { OwnerBillDetails } from "./Bills.jsx";
 import { today } from "../../booking.js";
 import { Badge } from "../../lib.jsx";
@@ -23,6 +24,7 @@ export default function ApptDetails({ a, db, note, onClose, onEdit, onCancel }) 
         <dl style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, margin: 0 }}>
           {rows.map(([k, x]) => <div key={k}><dt style={{ fontSize: 12.5, fontWeight: 700, color: "var(--mu)" }}>{k}</dt><dd style={{ margin: "2px 0 0", overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{x}</dd></div>)}
         </dl>
+        <VaccineEstimate appointment={a} />
         <OwnerBillDetails appointment={db.appts.find(x => x.id === a.id) || a} />
       </div>
       <div className="row end" style={{ marginTop: 14 }}>

@@ -1,3 +1,4 @@
+import { vaccineChoiceError } from './vaccineBooking.js';
 import { SERVICES, today, plus, nowHM, holidayName, addMin } from './booking.js';
 
 export const isBookingDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
@@ -10,6 +11,7 @@ export function bookingDayConflict(appointments, petId, date, excludeId) {
 // authoritative for ownership, concurrent bookings and current availability.
 export function validateOwnerBooking(v, { pets, vets, appointments, records, editing, date = today(), last = plus(90), time = nowHM() }) {
   const errors = {}, service = SERVICES[v.service];
+  if (v.service === 'vaccination') { const error = vaccineChoiceError(v.vaccineId, pets.find(p=>p.id===v.petId)?.species); if(error) errors.vaccineId=error; }
   if (!service) errors.service = 'Choose a service from the list.';
   if (!pets.some(p => p.id === v.petId)) errors.petId = 'Choose one of your pets.';
   if (!vets.some(vet => vet.id === v.vetId)) errors.vetId = 'Choose a current veterinarian.';

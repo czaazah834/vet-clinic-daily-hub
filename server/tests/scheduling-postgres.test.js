@@ -513,3 +513,23 @@ test('owner duplicate day bookings serialize across different vets and preserve 
   await query("UPDATE appointments SET status='No-show' WHERE id=$1",[rebooked.data.appointment.id]);
   assert.equal((await req('owner','POST','/appointments',body({time:'15:00'}))).status,200);
 });
+
+test('vaccine request saves are canonical, species checked and re-confirmed after changes',async()=>{
+ await query("INSERT INTO pets(id,owner_id,name,species,birth) VALUES('request-dog','o1','Request Dog','Canine','2020-01-01'),('request-cat','o1','Request Cat','Feline','2020-01-01')");
+ const nextDay=shiftDate(date,7);let vaccineDate=nextDay;while(holidayName(vaccineDate))vaccineDate=shiftDate(vaccineDate,1);
+ const body=booking({petId:'request-dog',date:vaccineDate,time:'14:00',service:'vaccination',vaccineId:'rabies',reason:'Spoofed free vaccine'});
+ for(const change of [{vaccineId:'feline-core'},{vaccineId:'invented'},{vaccineId:''},{service:'checkup'}]) {
+  const bad=await req('owner','POST','/appointments',{...body,...change});assert.equal(bad.status,400,JSON.stringify(bad));
+ }
+ assert.equal((await query("SELECT COUNT(*)::int n FROM appointments WHERE pet_id='request-dog'")).rows[0].n,0);
+ const saved=await req('owner','POST','/appointments',body);assert.equal(saved.status,200,JSON.stringify(saved));
+ const a=saved.data.appointment;assert.equal(a.reason,'Vaccination: Anti-rabies');assert.equal(a.service,'vaccination');
+ assert.equal((await query('SELECT reason FROM appointments WHERE id=$1',[a.id])).rows[0].reason,a.reason);
+ assert.equal((await query("SELECT COUNT(*)::int n FROM vaccinations WHERE pet_id='request-dog' AND done=true")).rows[0].n,0);
+ await query("UPDATE appointments SET status='Confirmed' WHERE id=$1",[a.id]);
+ const changed=await req('owner','PUT',`/appointments/${a.id}`,{...body,vaccineId:'canine-core'});
+ assert.equal(changed.status,200,JSON.stringify(changed));assert.equal(changed.data.appointment.status,'Scheduled');assert.equal(changed.data.appointment.reason,'Vaccination: 5-in-1');
+ const log=(await query("SELECT action FROM audit_logs WHERE action LIKE $1 ORDER BY created_at DESC",[`%${a.id}%`])).rows;assert.ok(log.some(l=>l.action.includes('Vaccination: 5-in-1')));
+ const cat=await req('assistant','POST','/appointments',{...body,petId:'request-cat',bookingKind:'walk-in',vaccineId:'canine-core'});assert.equal(cat.status,400);
+ const arrival=await req('assistant','POST','/appointments',{...body,petId:'request-cat',bookingKind:'walk-in',vaccineId:'feline-core'});assert.equal(arrival.status,200,JSON.stringify(arrival));assert.equal(arrival.data.appointment.reason,'Vaccination: Feline 4-in-1');assert.equal(arrival.data.appointment.bookingKind,'walk-in');
+});
