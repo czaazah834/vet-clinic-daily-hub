@@ -233,7 +233,7 @@ export default function ReportsPage({ db, me }) {
           .rep-print-footer { display: block !important; margin-top: 30px !important; }
           table { width: 100% !important; border-collapse: collapse !important; }
           th, td { border: 1px solid #cbd5e1 !important; padding: 6px 8px !important; font-size: 9.5pt !important; }
-          th { background: #f1f5f9 !important; font-weight: bold !important; }
+          th { background: #ffffff !important; font-weight: bold !important; }
         }
       `}</style>
 

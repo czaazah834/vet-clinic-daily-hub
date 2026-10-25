@@ -33,6 +33,22 @@ test('anonymous and other roles cannot read or mutate governance, even with spoo
  for(const token of [null,'owner','vet','assistant'])for(const [method,path,body]of [['GET','/admin/staff'],['GET','/admin/audit'],['POST','/admin/staff/vet/access',{action:'deactivate',revision:0,reason:'Spoofed',actorRole:'admin'}]])assert.equal((await call(token,method,path,body)).status,token?403:401);
  for(const id of ['owner','admin'])assert.equal((await change(id,'deactivate',0)).status,403);
 });
+test('staff email availability checks all roles privately and preserves invitation replacement',async()=>{
+ const path=email=>'/admin/staff/email-availability?email='+encodeURIComponent(email);
+ for(const token of [null,'owner','vet','assistant'])assert.equal((await call(token,'GET',path('admin@example.invalid'))).status,token?403:401);
+ for(const email of [' ADMIN@EXAMPLE.INVALID ','owner@example.invalid','vet@example.invalid','assistant@example.invalid']){
+  const result=await call('admin','GET',path(email));assert.equal(result.status,200);assert.equal(result.data.available,false);assert.deepEqual(Object.keys(result.data).sort(),['available','pendingInvitation']);
+ }
+ assert.equal((await call('admin','GET',path('invalid'))).status,400);
+ assert.equal((await call('admin','GET',path('unused@example.invalid'))).data.available,true);
+ const before=messages.length;
+ assert.equal((await call('admin','POST','/auth/staff/invite',{role:'assistant',name:'Duplicate Account',email:'OWNER@example.invalid'})).status,400);
+ assert.equal(messages.length,before);
+ await query("INSERT INTO staff_invitations(email,name,role,token_hash,invited_by,expired_at) VALUES('pending@example.invalid','Pending Staff','assistant','synthetic-pending','admin',NOW()+INTERVAL '1 day')");
+ const pending=await call('admin','GET',path('pending@example.invalid'));assert.deepEqual(pending.data,{available:true,pendingInvitation:true});
+ const replaced=await call('admin','POST','/auth/staff/invite',{role:'assistant',name:'Pending Staff',email:'pending@example.invalid'});assert.equal(replaced.status,200);assert.equal(replaced.data.status,'ok');
+ assert.equal(Number((await query("SELECT COUNT(*) FROM staff_invitations WHERE email='pending@example.invalid'")).rows[0].count),1);
+});
 test('deactivation revokes sessions and login, retains records, and removes doctor availability',async()=>{
  await query("INSERT INTO owners(id,name,email,phone,address) VALUES('client','Synthetic Owner','owner@example.invalid','+639170000001','Synthetic')");
  await query("INSERT INTO pets(id,owner_id,name,birth) VALUES('pet','client','Synthetic Luna','2020-01-01')");

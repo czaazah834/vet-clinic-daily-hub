@@ -5,7 +5,7 @@ import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import AdminStaff, { useAdminStaff, AdminAudit } from "./AdminStaff.jsx";
 import ReminderStatus from "./ReminderStatus.jsx";
 import { currentVaccinationDue } from "../vaccinationDue.js";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Send,
   Copy,
@@ -62,6 +62,26 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
   const [success, setSuccess] = useState(null);
   const [copied, setCopied] = useState(false);
   const inviting = useRef(false);
+  const [emailCheck,setEmailCheck]=useState({email:'',status:'idle'});
+  const [emailRetry,setEmailRetry]=useState(0);
+  const normalizedEmail=f.email.trim().toLowerCase();
+  useEffect(()=>{
+    if(!emOk(normalizedEmail) || normalizedEmail.length>255)return;
+    let active=true;
+    const timer=setTimeout(async()=>{
+      try {
+        const result=await auth.staffEmailAvailability(normalizedEmail);
+        if(typeof result.available!=='boolean')throw Error('Unable to check this email. Please retry.');
+        if(active)setEmailCheck({email:normalizedEmail,status:result.available?'available':'registered',pending:result.pendingInvitation===true});
+      } catch(error) {
+        if(active)setEmailCheck({email:normalizedEmail,status:'error',message:error.message});
+      }
+    },350);
+    return ()=>{active=false;clearTimeout(timer);};
+  },[normalizedEmail,emailRetry]);
+  // A result belongs only to the exact address checked; never reuse old success.
+  const availability=emailCheck.email===normalizedEmail?emailCheck:{status:'checking'};
+
 
   const review = useSubmissionReview(f);
 
@@ -77,11 +97,12 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
   const validateEmail = (email) => {
     const s = String(email || "").trim();
     if (!s) return "Staff email address is required.";
-    return emOk(s) ? "" : "Enter a valid email address (user@domain.com).";
+    return emOk(s) && s.length<=255 ? "" : "Enter a valid email address (user@domain.com).";
   };
 
   const nameError = touched.name ? validateName(f.name) : "";
-  const emailError = touched.email ? validateEmail(f.email) : "";
+  const emailError = touched.email ? validateEmail(f.email) || (availability.status==='registered'?'This email is already registered. Use a different email for a new staff account.':'') : "";
+  const emailReady=!validateEmail(f.email) && availability.status==='available';
 
   const submit = async (e) => {
     e.preventDefault();
@@ -93,6 +114,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
     if (nErr) return setErr(nErr);
     const emErr = validateEmail(f.email);
     if (emErr) return setErr(emErr);
+    if (!emailReady) return setErr("Check email availability before reviewing the invitation.");
 
     const formattedName = tc(f.name.trim());
 
@@ -103,6 +125,14 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
     inviting.current = true;
     setLoading(true);
     try {
+      // The recipient may have registered while the invitation was being reviewed.
+      let latest;
+      try {latest=await auth.staffEmailAvailability(normalizedEmail);}
+      catch(error){setEmailCheck({email:normalizedEmail,status:'error',message:error.message});throw error;}
+      if(latest.available!==true){
+        setEmailCheck({email:normalizedEmail,status:latest.available===false?'registered':'error'});
+        throw Error(latest.available===false?'This email is already registered. Use a different email.':'Unable to confirm email availability. Please retry.');
+      }
       const res = await auth.inviteStaff({
         email: f.email.trim().toLowerCase(),
         name: formattedName,
@@ -120,6 +150,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
         setErr(res.error || "Failed to dispatch staff invitation.");
       }
     } catch (err) {
+      if(/email.*(?:already|exists|registered)/i.test(err.message||''))setEmailCheck({email:normalizedEmail,status:'registered'});
       setErr(err.message || "Failed to connect to clinic server.");
     } finally {
       inviting.current = false;
@@ -218,10 +249,11 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
               <input
                 id="staff-invite-name"
                 type="text"
-                placeholder={f.role === "vet" ? "e.g. Dr. Roberto Santos" : "e.g. Liza Ramos"}
+                placeholder={f.role === "vet" ? "e.g. Roberto Santos" : "e.g. Liza Ramos"}
                 value={f.name}
                 className={nameError || numWarn ? "bad" : touched.name && !validateName(f.name) ? "ok" : ""}
                 onChange={e => {
+                  setTouched(p=>({...p,name:true}));
                   const raw = e.target.value;
                   if (/\d/.test(raw)) {
                     setNumWarn("Numbers are not allowed in names. Only letters, spaces, hyphens, and apostrophes are accepted.");
@@ -243,7 +275,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
                 </span>
               ) : touched.name && !validateName(f.name) ? (
                 <span style={{ display: "block", marginTop: "4px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>
-                  ✓ Valid name format (letters only, 2-50 characters)
+                  Valid name format (letters only, 2-50 characters)
                 </span>
               ) : (
                 <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
@@ -259,24 +291,17 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
                 type="email"
                 placeholder="staff@pawcare.com"
                 value={f.email}
-                className={emailError ? "bad" : touched.email && !validateEmail(f.email) ? "ok" : ""}
-                onChange={e => setF({ ...f, email: e.target.value.trim() })}
+                className={emailError || availability.status==='error' ? "bad" : emailReady ? "ok" : ""}
+                aria-invalid={!!emailError || availability.status==='error'}
+                aria-describedby="staff-email-feedback"
+                maxLength={255}
+                onChange={e => {setTouched(p=>({...p,email:true}));setEmailCheck({email:'',status:'idle'});setF({ ...f, email: e.target.value.trim() });setErr('');}}
                 onBlur={() => setTouched(p => ({ ...p, email: true }))}
                 required
               />
-              {emailError ? (
-                <span className="err" style={{ display: "block", marginTop: "4px", fontSize: "12px", color: "#dc2626" }}>
-                  {emailError}
-                </span>
-              ) : touched.email && !validateEmail(f.email) ? (
-                <span style={{ display: "block", marginTop: "4px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>
-                  ✓ Valid email address
-                </span>
-              ) : (
-                <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
-                  The email service sends a secure setup link to this address.
-                </span>
-              )}
+              <div id="staff-email-feedback" className={`staff-email-feedback ${emailError || availability.status==='error'?'is-error':emailReady?'is-ready':''}`} aria-live="polite" aria-atomic="true">
+                {emailError || (!validateEmail(f.email) ? availability.status==='error' ? <>{availability.message || 'Unable to check this email.'} <button type="button" className="staff-check-retry" onClick={()=>{setEmailCheck({email:'',status:'idle'});setEmailRetry(n=>n+1);}}>Retry email check</button></> : emailReady ? availability.pending ? 'Available for staff setup. Sending replaces the previous invitation link.' : 'Email is available for a new staff account.' : 'Checking whether this email is registered…' : 'Enter an unregistered email. We’ll check it before you send an invitation.')}
+              </div>
             </div>
 
             <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "10px 14px", fontSize: "12px", color: "#1e40af", marginTop: "14px", marginBottom: "18px", lineHeight: 1.5 }}>
@@ -288,7 +313,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
               <button
                 type="submit"
                 className="btn gold"
-                disabled={loading}
+                disabled={loading || !emailReady || !!validateName(f.name)}
                 style={{ display: "inline-flex", alignItems: "center", gap: "8px", padding: "10px 18px", fontWeight: 600 }}
               >
                 <Send size={15} />

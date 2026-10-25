@@ -1,3 +1,4 @@
+import DocumentHeader from "../components/DocumentHeader.jsx";
 import { VaccinePicker, useBookingCatalog } from '../components/VaccineBooking.jsx';
 import { vaccineChoiceError, vaccineReason, vaccinePriceLabel, VACCINE_CHOICES } from '../vaccineBooking.js';
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
@@ -303,10 +304,11 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
 
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
-      <div className="modal" style={{ width: "min(680px, 100%)", maxHeight: "94vh", overflowY: "auto", padding: "24px 28px" }}>
+      <div className={`modal ${successData?"print-document":""}`} style={{ width: "min(680px, 100%)", maxHeight: "94vh", overflowY: "auto", padding: "24px 28px" }}>
         
+        {successData&&<DocumentHeader title="Client and patient registration slip"/>}
         {/* Modal Title */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #f1f5f9", paddingBottom: "10px" }}>
+        <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #f1f5f9", paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <ClipboardList size={24} color="var(--navy)" />
             <div>

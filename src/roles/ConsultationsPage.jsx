@@ -1,3 +1,4 @@
+import DocumentHeader from "../components/DocumentHeader.jsx";
 import { PaginatedTable } from "../components/Pagination.jsx";
 import {HistoryControls,useHistoryComplete} from "../ClinicHistory.jsx";
 import { useState } from "react";
@@ -48,7 +49,8 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
 
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1060, display: "grid", placeItems: "center", padding: "16px" }}>
-      <div className="modal clinical-record-dialog" style={{ width: "min(780px, 100%)", maxHeight: "94vh", overflowY: "auto", padding: "26px 30px" }}>
+      <div className="modal clinical-record-dialog print-document" style={{ width: "min(780px, 100%)", maxHeight: "94vh", overflowY: "auto", padding: "26px 30px" }}>
+        <DocumentHeader title="Clinical consultation record" />
         <HistoryControls auto />
         
         {/* Top Header Toolbar */}

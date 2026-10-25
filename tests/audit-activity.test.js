@@ -9,7 +9,7 @@ test('audit activity preserves saved actions and supports API and state actor fo
  }
 });
 test('audit categories distinguish care, payments, accounts, staff and unknown activity',()=>{
- for(const [action,type] of [['Booked appointment a_1: General consultation','Appointments'],['Registered walk-in owner Jane & pet Max; arrival requested: Vaccination','Patients & owners'],['Finalized consultation note','Clinical care'],['Recorded payment for visit','Payments'],['Changed own password','Account & sign-in'],['Revoked staff access','Staff access'],['Registered walk-in owner Jane & pet Max','Patients & owners'],['Queued reminder for pet','Reminders'],['An unfamiliar saved event','Other activity']])assert.equal(auditActivity({action}).type,type);
+ for(const [action,type] of [['Signed in (u_123).','Account & sign-in'],['Logged in','Account & sign-in'],['Booked appointment a_1: General consultation','Appointments'],['Registered walk-in owner Jane & pet Max; arrival requested: Vaccination','Patients & owners'],['Finalized consultation note','Clinical care'],['Recorded payment for visit','Payments'],['Changed own password','Account & sign-in'],['Revoked staff access','Staff access'],['Registered walk-in owner Jane & pet Max','Patients & owners'],['Queued reminder for pet','Reminders'],['An unfamiliar saved event','Other activity']])assert.equal(auditActivity({action}).type,type);
 });
 test('audit timestamps use Manila and tolerate missing or malformed dates',()=>{
  const result=auditActivity({at:'2026-10-25T00:15:00Z'});assert.match(result.timestamp,/8:15/);assert.equal(result.dateTime,'2026-10-25T00:15:00.000Z');

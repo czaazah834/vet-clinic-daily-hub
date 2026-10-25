@@ -1,3 +1,4 @@
+import DocumentHeader from "../components/DocumentHeader.jsx";
 import { VaccineEstimate } from "../components/VaccineBooking.jsx";
 import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
@@ -166,15 +167,16 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !loading && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="billing-title" style={{ width: "min(620px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "22px 26px" }}>
+      <div className={`modal ${paid?"print-document receipt-document":""}`} role="dialog" aria-modal="true" aria-labelledby="billing-title" style={{ width: "min(620px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "22px 26px" }}>
         
+        {paid&&<DocumentHeader title="Payment receipt">Visit reference: {appt.id}</DocumentHeader>}
         {review.card}
         {!paid && me.role === "assistant" && !claim.ready && <div role={claim.error ? "alert" : "status"} style={{padding:12,background:"#fff7ed",marginBottom:12}}>
           {claim.error || "Reserving this checkout for you…"}
           {claim.error && <button className="btn ghost sm" onClick={claim.retry}>Retry checkout claim</button>}
         </div>}
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #f1f5f9", paddingBottom: "12px" }}>
+        <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #f1f5f9", paddingBottom: "12px" }}>
           <div>
             <h3 id="billing-title" style={{ margin: 0, color: "var(--navy)", fontSize: "1.25rem", display: "flex", alignItems: "center", gap: "8px" }}>
               <Receipt size={22} color="#0284c7" /> Front Desk Checkout &amp; Billing
@@ -188,10 +190,10 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
         {paid ? (
           <div style={{ textAlign: "center", padding: "16px 0" }}>
-            <div style={{ width: 54, height: 54, borderRadius: "50%", background: "#dcfce7", color: "#166534", display: "grid", placeItems: "center", margin: "0 auto 12px" }}>
+            <div className="no-print" style={{ width: 54, height: 54, borderRadius: "50%", background: "#dcfce7", color: "#166534", display: "grid", placeItems: "center", margin: "0 auto 12px" }}>
               <CheckCircle2 size={32} />
             </div>
-            <h4 style={{ margin: "0 0 6px", fontSize: "19px", color: "var(--navy)" }}>Payment Recorded Successfully!</h4>
+            <h4 className="no-print" style={{ margin: "0 0 6px", fontSize: "19px", color: "var(--navy)" }}>Payment Recorded Successfully!</h4>
             <p style={{ margin: 0, fontSize: "14px", color: "#475569" }}>
               Recorded payment: <b style={{ color: "#166534", fontSize: "18px" }}>{money(savedBill.amount)}</b>. Payment method: <b>{paymentRecord.paymentMethod?.trim() || "Not recorded"}</b>.
             </p>

@@ -192,7 +192,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
       )}
 
       {p && (
-        <section className="ow-vc vc-card-shell" style={{ border: "none", background: "transparent", overflow: "visible", width: "100%" }} aria-label={`${p.name}’s vaccination card`}>
+        <section className="ow-vc vc-card-shell print-document" style={{ border: "none", background: "transparent", overflow: "visible", width: "100%" }} aria-label={`${p.name}’s vaccination card`}>
           <div className="vc-toolbar vc-noprint">
             {/* Prominent Pet Navigation Toolbar: < PET NAME VACCINATION CARD > */}
             <div className="vc-pet-pager" role="group" aria-label="Pet card navigation">
@@ -401,7 +401,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                   {/* Passport Footer */}
                   <div style={{ background: "#f1f5f9", padding: "8px 24px", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "#64748b" }}>
                     <span>Official Document Compliant with Philippine Anti-Rabies Act (RA 9482)</span>
-                    <span>PAGE 1 OF 2 (PROFILE)</span>
+                    <span className="vc-noprint">PAGE 1 OF 2 (PROFILE)</span>
                   </div>
                 </div>
 
@@ -573,6 +573,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                 <MedProfile key={p.id} p={p} db={db} setDb={setDb} me={me} say={say} />
               ) : (
                 <>
+                  <div className="vc-only-print"><h2>Immunization record</h2><p>{filtered?`Filtered records · Status: ${st || 'All'} · Search: ${q.trim() || 'None'}`:'All saved vaccination records for this patient.'}</p></div>
                   {/* Filters */}
                   <div className="vc-bar vc-noprint" style={{ marginBottom: 10 }}>
                     <div>

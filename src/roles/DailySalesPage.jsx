@@ -1,3 +1,4 @@
+import DocumentHeader from "../components/DocumentHeader.jsx";
 import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
 import {useFollowingClinicDay} from "../useClinicDay.js";
 import { useState } from "react";
@@ -69,8 +70,9 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
 
   return (
     <div className="staff-sales">
+      <DocumentHeader title="Daily sales report">Date: {showUndated?"Payment date not recorded":selDate} · Prepared by: {me.name} · Payment method: {methodFilter}{search.trim()&&` · Search: ${search.trim()}`}</DocumentHeader>
       {/* Top Controls Toolbar */}
-      <div style={{
+      <div className="no-print" style={{
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
@@ -262,7 +264,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             </h3>
 
             {/* Method filter */}
-            <select
+            <select className="no-print"
               value={methodFilter}
               aria-label="Payment method filter"
               onChange={e => setMethodFilter(e.target.value)}
@@ -278,7 +280,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
             </select>
           </div>
 
-          <div style={{ position: "relative", width: "240px" }}>
+          <div className="no-print" style={{ position: "relative", width: "240px" }}>
             <Search size={15} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
             <input
               type="search" aria-label="Search payments"
@@ -300,7 +302,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                   <th style={{ padding: "12px 16px" }}>Services Rendered</th>
                   <th style={{ padding: "12px 16px" }}>Payment Method</th>
                   <th style={{ padding: "12px 16px", textAlign: "right" }}>Amount Collected</th>
-                  <th style={{ padding: "12px 16px", textAlign: "right" }}>Action</th>
+                  <th className="no-print" style={{ padding: "12px 16px", textAlign: "right" }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -371,7 +373,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                       </td>
 
                       {/* Action */}
-                      <td data-label="Action" style={{ padding: "12px 16px", textAlign: "right" }}>
+                      <td className="no-print" data-label="Action" style={{ padding: "12px 16px", textAlign: "right" }}>
                         <button
                           type="button"
                           className="btn sm ghost"
