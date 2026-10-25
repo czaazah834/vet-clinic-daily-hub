@@ -1,3 +1,4 @@
+import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
 import {useFollowingClinicDay} from "../useClinicDay.js";
 import { checkInDateError } from "../intakeVisit.js";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
@@ -499,7 +500,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
           {dayEvents.length === 0 && <div className="cc-empty" role="status"><Calendar size={22} /><div><b>No appointments for this day</b><span>{isDoctor ? "Choose another date to review your assigned visits. Reception manages bookings." : canBook ? "Choose an open slot below to book the first visit." : "There are no visits to review for this date."}</span></div></div>}
           {/* Timeline Table */}
           <div className="cc-timeline-scroll" role="region" aria-label="Daily doctor timetable" tabIndex={0}>
-            <table className="cc-timeline" style={{ minWidth: `${100 + visibleDoctors.length * 270}px` }}>
+            <PaginatedTable label="Doctor timeline" resetKey={[sel,vetFilter]} className="cc-timeline" style={{ minWidth: `${100 + visibleDoctors.length * 270}px` }}>
               <caption className="cc-sr-only">Appointments for {niceDate}</caption>
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
@@ -673,7 +674,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                   );
                 })}
               </tbody>
-            </table>
+            </PaginatedTable>
           </div>
         </div>
       ) : (
@@ -694,7 +695,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
           </div>
 
           {dayEvents.length ? (
-            <div style={{ display: "grid", gap: "10px" }}>
+            <PaginatedList label="Daily appointments" resetKey={[sel,vetFilter]} style={{ display: "grid", gap: "10px" }}>
               {dayEvents.map(e => {
                 const svc = getServiceCategory(e.reason);
                 const { Icon } = svc;
@@ -745,7 +746,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                   </div>
                 );
               })}
-            </div>
+            </PaginatedList>
           ) : (
             <div className="empty sm" style={{ padding: "28px" }}>
               No clinic visits scheduled on this date.
@@ -823,7 +824,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                 </div>
 
                 <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
+                  <PaginatedTable label="Appointments" resetKey={[search,statusFilter,vetFilter]} style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ textAlign: "left", color: "#64748b", borderBottom: "2px solid #e2e8f0", background: "#f8fafc" }}>
                         <th style={{ padding: "10px 10px" }}>Date &amp; Time</th>
@@ -924,7 +925,7 @@ export default function ClinicCalendar({ db, setDb, me, go, say }) {
                         );
                       })}
                     </tbody>
-                  </table>
+                  </PaginatedTable>
                 </div>
               </div>
             );

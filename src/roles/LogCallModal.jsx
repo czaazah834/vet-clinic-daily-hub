@@ -1,3 +1,4 @@
+import { PaginatedList } from "../components/Pagination.jsx";
 import {useEffect,useRef,useState} from 'react';
 import {Phone,X} from 'lucide-react';
 import {api} from '../api.js';
@@ -81,12 +82,12 @@ export default function LogCallModal({target,db,onClose,onLogged,me,setDb,say}) 
         {historyLoading&&<p>Loading saved calls…</p>}
         {historyError&&<p className="err" role="alert">{historyError} <button className="btn ghost sm" onClick={loadHistory}>Reload history</button></p>}
         {!historyLoading&&!historyError&&!calls.length&&<p>No call outcomes recorded.</p>}
-        {calls.map(call=><article key={call.id} className="sf-note" style={{marginBottom:10}}>
+        <PaginatedList label="Call history" resetKey={null}>{calls.map(call=><article key={call.id} className="sf-note" style={{marginBottom:10}}>
           <b>{call.outcome}</b> · {callTime(call.createdAt)}
           <p>{call.vaccine} · Due {call.dueDate} · {call.staffName}</p>
           <p>Phone: {call.phone || 'Not recorded'}</p>
           {call.notes&&<p style={{whiteSpace:'pre-wrap'}}>{call.notes}</p>}
-        </article>)}
+        </article>)}</PaginatedList>
       </section>
     </div>
   </div>;

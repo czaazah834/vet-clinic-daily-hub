@@ -1,3 +1,4 @@
+import { PaginatedList } from "../components/Pagination.jsx";
 import FrontDeskApprovals from "./FrontDeskApprovals.jsx";
 import ExistingPatientCheckInModal from "./ExistingPatientCheckInModal.jsx";
 import { assistantQueue, dailyCollections, pendingCheckout, money } from "../assistantWorkflow.js";
@@ -132,7 +133,7 @@ function Dash({ db, setDb, me, go, say }) {
           </div>
           {queueStage === "waiting" && <p className="sf-sub">Emergency and priority patients appear first. The veterinarian decides the clinical response.</p>}
           {q.length ? (
-            <div className="sf-grid">
+            <PaginatedList label="Patient flow" resetKey={queueStage} className="sf-grid">
               {q.map(a => {
                 const pet = db.pets.find(p => p.id === a.petId) || {};
                 const owner = db.owners.find(o => o.id === a.ownerId || sameOwner(o, pet.ownerId)) || {};
@@ -186,7 +187,7 @@ function Dash({ db, setDb, me, go, say }) {
                   </div>
                 );
               })}
-            </div>
+            </PaginatedList>
           ) : (
             <div className="empty sm">No patients in this stage today.</div>
           )}
@@ -200,7 +201,7 @@ function Dash({ db, setDb, me, go, say }) {
           </div>
 
           {calls.length ? (
-            <div className="sf-grid">
+            <PaginatedList label="Vaccine reminders" resetKey={null} className="sf-grid">
               {calls.map(v => {
                 const p = db.pets.find(x => x.id === v.petId) || {};
                 const o = db.owners.find(x => sameOwner(x, p.ownerId)) || {};
@@ -233,7 +234,7 @@ function Dash({ db, setDb, me, go, say }) {
                   </div>
                 );
               })}
-            </div>
+            </PaginatedList>
           ) : (
             <div className="empty sm">No certified booster recalls due within 30 days.</div>
           )}

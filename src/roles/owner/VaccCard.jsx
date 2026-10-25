@@ -1,3 +1,4 @@
+import { PaginatedTable } from "../../components/Pagination.jsx";
 import PetPortrait from "../PetPortrait.jsx";
 import {useHistoryComplete} from "../../ClinicHistory.jsx";
 import { useState, useEffect, useRef } from "react";
@@ -446,7 +447,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                   {/* Immunization Log Table */}
                   <div style={{ padding: "16px 24px", flex: 1, overflowY: "auto", maxHeight: "380px" }}>
                     {mine.length ? (
-                      <table className="vc-table-interactive" style={{ width: "100%", fontSize: "12.5px", borderCollapse: "collapse" }}>
+                      <PaginatedTable label="Vaccine overview" resetKey={sel} className="vc-table-interactive" style={{ width: "100%", fontSize: "12.5px", borderCollapse: "collapse" }}>
                         <thead>
                           <tr style={{ textAlign: "left", background: "#e2e8f0", color: "#334155", borderBottom: "2px solid #cbd5e1" }}>
                             <th style={{ padding: "8px" }}>Vaccine / Care Protocol</th>
@@ -529,7 +530,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                             );
                           })}
                         </tbody>
-                      </table>
+                      </PaginatedTable>
                     ) : (
                       <div className="empty sm" style={{ padding: "30px 10px" }}>
                         No vaccine records found for {p.name}. Standard protocols will be populated upon initial clinical visit.
@@ -598,7 +599,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                   {/* Interactive Table with Single-Click Open */}
                   {list.length ? (
                     <div className="tw">
-                      <table className="vc-tbl">
+                      <PaginatedTable label="Immunization log" resetKey={[sel,st,q]} className="vc-tbl">
                         <thead>
                           <tr>
                             <th>Vaccine</th>
@@ -712,7 +713,7 @@ export function OwnerVacc({ db, setDb, me, go, say }) {
                             );
                           })}
                         </tbody>
-                      </table>
+                      </PaginatedTable>
                     </div>
                   ) : (
                     <div className="empty sm">

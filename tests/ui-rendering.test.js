@@ -14,6 +14,7 @@ const bundle = join(directory, 'ui.cjs');
 buildSync({
   stdin: {
     contents: `
+      export { PaginatedTable, PaginatedList, pageBounds } from './src/components/Pagination.jsx';
       export { createElement } from 'react';
       export { renderToStaticMarkup } from 'react-dom/server';
       export { owner } from './src/roles/Owner.jsx';
@@ -158,4 +159,23 @@ test('assistant masterlist uses certified latest-dose recalls without implying c
   const html = render(Component, props('assistant', db));
   assert.doesNotMatch(html, /1 Overdue|Up to date/);
   assert.match(html, /No active recall/);
+});
+
+
+test('data tables show ten rows while keeping the complete filtered record for print', () => {
+  const rows = Array.from({length:23}, (_,i) => ui.createElement('tr',{key:i},ui.createElement('td',{},`Patient ${i+1}`)));
+  const html = render(ui.PaginatedTable,{label:'Patients',children:[ui.createElement('thead',{key:'head'},ui.createElement('tr',{},ui.createElement('th',{},'Patient'))),ui.createElement('tbody',{key:'body'},rows),ui.createElement('tfoot',{key:'total'},ui.createElement('tr',{},ui.createElement('td',{},'Total: 23')))]});
+  assert.equal((html.match(/class="pagination-hidden-row"/g)||[]).length,13);
+  assert.match(html,/Patient 23/);
+  assert.match(html,/Total: 23/);
+  assert.match(html,/1–10/);
+  assert.match(html,/Patients pagination/);
+  assert.match(html,/Go to page 3/);
+});
+test('pagination clamps invalid or removed pages and represents empty results honestly', () => {
+  assert.deepEqual(ui.pageBounds(0,99),{page:1,pages:1,start:0,end:0,total:0});
+  assert.deepEqual(ui.pageBounds(23,3),{page:3,pages:3,start:20,end:23,total:23});
+  assert.equal(ui.pageBounds(10,2).page,1);
+  assert.equal(ui.pageBounds(23,-1).page,1);
+  assert.equal(ui.pageBounds(23,Infinity).page,3);
 });

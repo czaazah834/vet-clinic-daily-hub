@@ -1,3 +1,4 @@
+import { PaginatedList } from "../components/Pagination.jsx";
 import {HistoryControls} from "../ClinicHistory.jsx";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { validateSoapFields } from "../soapValidation.js";
@@ -263,7 +264,7 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
           <div style={{ maxHeight: "55vh", overflowY: "auto", paddingRight: "4px" }}>
             <h4 style={{ margin: "0 0 10px", fontSize: "15px", color: "var(--navy)" }}>Past Consultation History</h4>
             {prevRecords.length ? (
-              <div style={{ display: "grid", gap: "12px", marginBottom: "20px" }}>
+              <PaginatedList label="Previous consultations" resetKey={pet.id} style={{ display: "grid", gap: "12px", marginBottom: "20px" }}>
                 {prevRecords.map(r => (
                   <div key={r.id} className="card" style={{ padding: "14px", border: "1px solid #e2e8f0" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
@@ -276,21 +277,21 @@ export default function SoapConsultationModal({ appt, pet, db, setDb, me, onClos
                     {r.prescription && <p style={{ margin: "0 0 4px", fontSize: "12.5px", color: "#1d4ed8" }}><b>Prescription:</b> {r.prescription}</p>}
                   </div>
                 ))}
-              </div>
+              </PaginatedList>
             ) : (
               <p style={{ color: "#64748b", fontSize: "13px", marginBottom: "20px" }}>No past consultation records on file.</p>
             )}
 
             <h4 style={{ margin: "0 0 10px", fontSize: "15px", color: "var(--navy)" }}>Vaccination History</h4>
             {prevVaccs.length ? (
-              <div style={{ display: "grid", gap: "8px" }}>
+              <PaginatedList label="Previous vaccines" resetKey={pet.id} style={{ display: "grid", gap: "8px" }}>
                 {prevVaccs.map(v => (
                   <div key={v.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "13px" }}>
                     <span><b>{v.vaccine}</b> {v.brand ? `(${v.brand})` : ""}</span>
                     <span>Administered: {v.date} &bull; Next Booster: <b>{v.nextDue || "—"}</b></span>
                   </div>
                 ))}
-              </div>
+              </PaginatedList>
             ) : (
               <p style={{ color: "#64748b", fontSize: "13px" }}>No vaccinations logged.</p>
             )}

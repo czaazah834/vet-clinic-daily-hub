@@ -1,3 +1,4 @@
+import { PaginatedTable } from "../components/Pagination.jsx";
 import PetPortrait from "./PetPortrait.jsx";
 import {HistoryControls,useHistoryComplete} from "../ClinicHistory.jsx";
 import { today as bookingToday } from "../booking.js";
@@ -454,7 +455,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               {/* Table of Vaccinations */}
               <div style={{ padding: "16px 20px", maxHeight: "360px", overflowY: "auto" }}>
                 {vaccs.length ? (
-                  <table style={{ width: "100%", fontSize: "12.5px", borderCollapse: "collapse" }}>
+                  <PaginatedTable label="Patient immunizations" resetKey={petId} style={{ width: "100%", fontSize: "12.5px", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ textAlign: "left", color: "#64748b", borderBottom: "2px solid #e2e8f0" }}>
                         <th style={{ padding: "8px 6px" }}>Vaccine / Prevention</th>
@@ -506,7 +507,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                         );
                       })}
                     </tbody>
-                  </table>
+                  </PaginatedTable>
                 ) : (
                   <p style={{ textAlign: "center", color: "#64748b", padding: "20px 0" }}>No vaccination records yet.</p>
                 )}

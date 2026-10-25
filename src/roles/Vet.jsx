@@ -1,3 +1,4 @@
+import { PaginatedList } from "../components/Pagination.jsx";
 import HandoffModal from "./HandoffModal.jsx";
 import VaccinationCards from "./VaccinationCards.jsx";
 import { useRef, useState } from "react";
@@ -99,7 +100,7 @@ function Dash({ db, setDb, me, go, say }) {
         </div>
         {stage === "waiting" && <p>Emergency and priority patients appear first, followed by appointment date and time.</p>}
         {stages[stage].length ? (
-          <div className="sf-grid">
+          <PaginatedList label="Patient queue" resetKey={stage} className="sf-grid">
             {stages[stage].map(a => {
               const p = db.pets.find(x => x.id === a.petId) || {};
               const o = db.owners.find(x => x.id === p.ownerId) || {};
@@ -144,7 +145,7 @@ function Dash({ db, setDb, me, go, say }) {
                 </div>
               );
             })}
-          </div>
+          </PaginatedList>
         ) : (
           <div className="empty sm">No patients in this stage.</div>
         )}

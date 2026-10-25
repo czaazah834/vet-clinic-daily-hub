@@ -1,3 +1,4 @@
+import { PaginatedList } from "../../components/Pagination.jsx";
 import {HistoryControls,useHistoryComplete} from "../../ClinicHistory.jsx";
 import { useSubmissionReview } from "../../components/SubmissionReview.jsx";
 import { useRef, useState } from "react";
@@ -525,7 +526,7 @@ export function RequestList({ db, setDb, me, say, onEdit }) {
   return (
     <section className="op-reqs" aria-label="Pet requests">
       <h3>Pet requests</h3>
-      {list.map(r => {
+      <PaginatedList label="Pet registration requests" resetKey={null}>{list.map(r => {
         const no = r.status === "Declined";
         return (
           <div className="op-req" key={r.id}>
@@ -549,7 +550,7 @@ export function RequestList({ db, setDb, me, say, onEdit }) {
             </div>
           </div>
         );
-      })}
+      })}</PaginatedList>
     </section>
   );
 }

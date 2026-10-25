@@ -1,3 +1,4 @@
+import { PaginatedTable } from "../components/Pagination.jsx";
 import { useEffect, useState } from 'react';
 import { clinicRequest } from '../clinicApi.js';
 import {
@@ -215,7 +216,7 @@ export default function ReminderStatus() {
             <span>Reminders Requiring Manual Staff Review ({data.attention.length})</span>
           </h4>
           <div style={{ overflowX: "auto", border: "1px solid #fed7aa", borderRadius: "12px" }}>
-            <table className="tbl" style={{ margin: 0, fontSize: "12.5px" }}>
+            <PaginatedTable label="Reminder delivery issues" className="tbl" style={{ margin: 0, fontSize: "12.5px" }}>
               <thead>
                 <tr style={{ background: "#fff7ed" }}>
                   <th style={{ padding: "8px 12px" }}>Patient</th>
@@ -229,7 +230,7 @@ export default function ReminderStatus() {
                 {data.attention.map((r) => (
                   <tr key={r.id}>
                     <td style={{ padding: "8px 12px", fontWeight: 700, color: "#1e3a8a" }}>
-                      🐾 {r.petName}
+                      {r.petName}
                     </td>
                     <td style={{ padding: "8px 12px" }}>
                       <b>{r.vaccine}</b> &bull; {r.dueDate}
@@ -253,7 +254,7 @@ export default function ReminderStatus() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </PaginatedTable>
           </div>
         </div>
       ) : (

@@ -1,3 +1,4 @@
+import { PaginatedList } from "../components/Pagination.jsx";
 import { useEffect, useRef } from 'react';
 import { useClinicRead } from '../useClinicRead.js';
 
@@ -20,11 +21,11 @@ export default function CheckoutInbox({ me, blocked, onOpen }) {
     {error && <p role="alert">{error} {data && "Showing the last loaded inbox."} <button className="btn ghost sm" disabled={loading} onClick={()=>load()}>Retry inbox</button></p>}
     {(!data || loading) && !error && <p role="status">{data ? "Refreshing checkout inbox…" : "Loading checkout inbox…"}</p>}
     <div aria-live="polite">{data && !error && !tasks.length && <p>No visits waiting for checkout.</p>}</div>
-    {tasks.map(t=><div className="sf-row" key={t.appointmentId}>
+    <PaginatedList label="Checkout inbox" resetKey={null}>{tasks.map(t=><div className="sf-row" key={t.appointmentId}>
       <div className="sf-body"><b>{t.petName}</b><div>{t.ownerName} · {t.date} {t.time}</div>
         <small>{t.status==='claimed' ? t.claimedBy===me.id ? 'Open in another checkout window for your account.' : `Being handled by ${t.claimedName || 'reception'}.` : 'Consultation signed. Prepare invoice and collect payment.'}</small>
       </div>
       <button className="btn sm gold" disabled={blocked || !!error || t.status==='claimed'} onClick={()=>open(t)}>Open checkout</button>
-    </div>)}
+    </div>)}</PaginatedList>
   </section>;
 }

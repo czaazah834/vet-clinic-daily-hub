@@ -1,3 +1,4 @@
+import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
 import {useFollowingClinicDay} from "../useClinicDay.js";
 import { useState } from "react";
 import {
@@ -231,7 +232,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                 </p>
               </div>
             </div>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <PaginatedList label="Awaiting checkout" resetKey={selDate} style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
               {unbilledCompleted.map(a => {
                 const p = (db.pets || []).find(pt => pt.id === a.petId) || {};
                 return (
@@ -247,7 +248,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                   </button>
                 );
               })}
-            </div>
+            </PaginatedList>
           </div>
         </div>
       )}
@@ -291,7 +292,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
 
         {filteredPaid.length ? (
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
+            <PaginatedTable label="Payment ledger" resetKey={[selDate,showUndated,methodFilter,search]} style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ textAlign: "left", background: "#f8fafc", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>
                   <th style={{ padding: "12px 16px" }}>Payment time &bull; Visit reference</th>
@@ -387,7 +388,7 @@ export default function DailySalesPage({ db, setDb, me, go, say }) {
                   );
                 })}
               </tbody>
-            </table>
+            </PaginatedTable>
           </div>
         ) : (
           <div className="empty sm" style={{ padding: "36px 20px", textAlign: "center" }}>

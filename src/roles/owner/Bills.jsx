@@ -1,3 +1,4 @@
+import { PaginatedList } from "../../components/Pagination.jsx";
 import { useState } from "react";
 import { scope, petName } from "../../lib.jsx";
 import { ownerBill } from "../../ownerBilling.js";
@@ -17,7 +18,7 @@ export function OwnerBillDetails({ appointment }) {
     <p><b>{bill.status}</b></p>
     {!bill.paid && <p className="ow-hint">{bill.status === "No bill yet" ? "Booking a visit does not issue a bill. Charges appear after the veterinarian records the care provided." : "Reception will confirm the services and products supplied at checkout. The itemization below is a draft, and quantities or discounts may change before payment."}</p>}
     {bill.items.length ? <>
-      <ul className="ow-bill-lines">{bill.items.map((item, index) => <li key={index}><div><b>{item.name}</b><small>{item.qty} × {money(item.price)}</small></div><strong>{money(item.qty * item.price)}</strong></li>)}</ul>
+      <PaginatedList as="ul" label="Invoice items" resetKey={appointment.id} className="ow-bill-lines">{bill.items.map((item, index) => <li key={index}><div><b>{item.name}</b><small>{item.qty} × {money(item.price)}</small></div><strong>{money(item.qty * item.price)}</strong></li>)}</PaginatedList>
       <dl className="ow-bill-totals"><div><dt>Item subtotal</dt><dd>{money(bill.subtotal)}</dd></div>{bill.discount !== null && <div><dt>Recorded discount</dt><dd>{money(bill.discount)}</dd></div>}</dl>
     </> : bill.status !== "No bill yet" && <p>Itemized charges are not available. Please ask reception for the breakdown.</p>}
     {bill.amount !== null && <p className="ow-bill-total">{bill.paid ? "Paid amount" : "Draft total"}<strong>{money(bill.amount)}</strong></p>}
@@ -50,10 +51,10 @@ export default function OwnerBills({db, me, go}) {
     </div>
     {filtered && <button className="btn sm ghost" onClick={() => {setPet("");setStatus("");setSearch("");}}>Clear filters</button>}
     <p role="status">{list.length} {list.length === 1 ? "visit" : "visits"}</p>
-    {!list.length ? <p className="empty">{all.length ? "No visits match these filters." : "No visits yet. Charges and payments will appear here as your pets receive care."}</p> : <ul className="ow-bill-list">{list.map(a=>{
+    {!list.length ? <p className="empty">{all.length ? "No visits match these filters." : "No visits yet. Charges and payments will appear here as your pets receive care."}</p> : <PaginatedList as="ul" label="Bills and payments" resetKey={[pet,status,search]} className="ow-bill-list">{list.map(a=>{
       const bill=ownerBill(a);
       return <li key={a.id}><div><h4>{petName(db,a.petId)} · {dateLabel(a.date)}</h4><p>{a.reason}</p><b>{bill.status}</b>{bill.amount !== null && <p>{bill.paid ? "Paid" : "Draft"}: {money(bill.amount)}</p>}</div><button className="btn sm ghost" aria-label={`View ${bill.paid ? "payment" : "bill"} for ${petName(db,a.petId)} on ${dateLabel(a.date)}`} onClick={()=>setOpenId(a.id)}>{bill.paid ? "View payment" : "View bill"}</button></li>;
-    })}</ul>}
+    })}</PaginatedList>}
     {selected && <Modal title={`${petName(db,selected.petId)} · ${dateLabel(selected.date)}`} onClose={()=>setOpenId(null)}><div className="ow-bill-scroll"><OwnerBillDetails appointment={selected} /></div><div className="row end"><button className="btn" onClick={()=>setOpenId(null)}>Close</button></div></Modal>}
   </section>;
 }

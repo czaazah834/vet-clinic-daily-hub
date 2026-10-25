@@ -1,3 +1,7 @@
+import { ownerForPet, petsForOwner } from "../ownerRelationships.js";
+import { Modal } from "./owner/ui.jsx";
+import "./households.css";
+import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
 import { currentVaccinationDue, vaccinationStatus } from "../ownerVaccination.js";
 import { today as bookingToday } from "../booking.js";
 import { canBookAppointments } from "../appointmentPermissions.js";
@@ -72,6 +76,8 @@ function getPetVaccState(petId, vaccList) {
 }
 
 export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
+  const [ownerFilter, setOwnerFilter] = useState("");
+  const [householdId, setHouseholdId] = useState(null);
   const [tab, setTab] = useState("patients"); // 'patients' | 'owners'
   const [search, setSearch] = useState("");
   const [speciesFilter, setSpeciesFilter] = useState("all");
@@ -95,11 +101,15 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
     .forEach(a => { if (!todayApptByPet[a.petId]) todayApptByPet[a.petId] = a; });
   const isArrivable = a => !!a && ["Scheduled", "Confirmed"].includes(a.status);
 
+  const household = owners.find(o => o.id === householdId);
+  const householdPets = petsForOwner(pets, household);
+
   // Filtered Pets (patients with an appointment today first, in time order)
   const filteredPets = pets.filter(p => {
-    const o = owners.find(x => x.id === p.ownerId || x.userId === p.ownerId) || {};
+    const o = ownerForPet(owners, p) || {};
     const norm = normalizeSpecies(p.species);
 
+    if (ownerFilter && o.id !== ownerFilter) return false;
     if (speciesFilter !== "all" && norm !== speciesFilter) return false;
 
     const vs = getPetVaccState(p.id, vaccs);
@@ -128,7 +138,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
   const filteredOwners = owners.filter(o => {
     if (!search.trim()) return true;
     const q = search.trim().toLowerCase();
-    const ownerPets = pets.filter(p => p.ownerId === o.id || p.ownerId === o.userId);
+    const ownerPets = petsForOwner(pets, o);
     return (
       (o.name && o.name.toLowerCase().includes(q)) ||
       (o.phone && o.phone.includes(q)) ||
@@ -255,6 +265,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
               </select>
             </label>
 
+            <select aria-label="Filter patients by owner" value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)}><option value="">All owners</option>{owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
             <select
               aria-label="Vaccination status" value={vaccFilter}
               onChange={e => setVaccFilter(e.target.value)}
@@ -283,7 +294,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
 
           {filteredPets.length ? (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
+              <PaginatedTable label="Patients" resetKey={[tab,search,speciesFilter,vaccFilter,ownerFilter]} style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ textAlign: "left", background: "#f8fafc", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>
                     <th style={{ padding: "12px 14px" }}>Patient Profile</th>
@@ -295,7 +306,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                 </thead>
                 <tbody>
                   {filteredPets.map(p => {
-                    const o = owners.find(x => x.id === p.ownerId || x.userId === p.ownerId) || {};
+                    const o = ownerForPet(owners, p) || {};
                     const age = p.birth ? petAge(p.birth) : "";
                     const vs = getPetVaccState(p.id, vaccs);
                     const rowBg = isArrivable(todayApptByPet[p.id]) ? "#fffbea" : "transparent";
@@ -338,7 +349,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
 
                         {/* Owner info */}
                         <td data-label="Registered Owner & Contact" style={{ padding: "12px 14px" }}>
-                          <b style={{ color: "#1e293b" }}>{o.name || "Walk-in Client"}</b>
+                          <button type="button" className="household-owner-trigger" disabled={!o.id} onClick={e => { e.stopPropagation(); setHouseholdId(o.id); }} aria-label={`View owner ${o.name || "not recorded"} and pets`}>{o.name || "Owner not recorded"}</button>
                           <div style={{ fontSize: "12px", color: "#64748b", display: "flex", alignItems: "center", gap: "6px" }}>
                             <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Phone size={12} /> {o.phone || "No phone"}</span>
                             {o.address && <span>&bull; {o.address}</span>}
@@ -440,7 +451,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                     );
                   })}
                 </tbody>
-              </table>
+              </PaginatedTable>
             </div>
           ) : (
             <div className="empty sm" style={{ padding: "32px 16px", textAlign: "center" }}>
@@ -462,7 +473,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
 
           {filteredOwners.length ? (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
+              <PaginatedTable label="Households" resetKey={[tab,search]} style={{ width: "100%", fontSize: "13px", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ textAlign: "left", background: "#f8fafc", color: "#475569", borderBottom: "2px solid #e2e8f0" }}>
                     <th style={{ padding: "12px 14px" }}>Client Name &amp; Contact</th>
@@ -473,25 +484,25 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                 </thead>
                 <tbody>
                   {filteredOwners.map(o => {
-                    const ownerPets = pets.filter(p => p.ownerId === o.id || p.ownerId === o.userId);
+                    const ownerPets = petsForOwner(pets, o);
 
                     return (
                       <tr key={o.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                         <td data-label="Client Name & Contact" style={{ padding: "12px 14px" }}>
-                          <b style={{ color: "var(--navy)", fontSize: "14px" }}>{o.name}</b>
+                          <button type="button" className="household-owner-trigger" onClick={() => setHouseholdId(o.id)} aria-label={`View household for ${o.name}`}>{o.name}</button><small className="household-pet-count">{ownerPets.length} registered {ownerPets.length === 1 ? "pet" : "pets"}</small>
                           <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px", display: "flex", alignItems: "center", gap: "8px" }}>
                             <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Phone size={12} /> {o.phone || "No phone"}</span> &bull; <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}><Mail size={12} /> {o.email || "No email"}</span>
                           </div>
                         </td>
 
                         <td data-label="Address / Location" style={{ padding: "12px 14px", color: "#475569" }}>
-                          {o.address || "Metro Manila, PH"}
+                          {o.address || "Address not recorded"}
                         </td>
 
                         <td data-label="Registered Pets" style={{ padding: "12px 14px" }}>
                           {ownerPets.length ? (
                             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                              {ownerPets.map(p => (
+                              {ownerPets.slice(0,3).map(p => (
                                 <button
                                   key={p.id}
                                   type="button"
@@ -515,6 +526,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                                   <small style={{ fontWeight: 400, color: "#64748b" }}>({p.species})</small>
                                 </button>
                               ))}
+                              {ownerPets.length > 3 && <button type="button" className="household-owner-trigger" onClick={() => setHouseholdId(o.id)}>View all {ownerPets.length} pets</button>}
                             </div>
                           ) : (
                             <span style={{ color: "#94a3b8", fontSize: "12px" }}>No registered pets</span>
@@ -522,7 +534,8 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                         </td>
 
                         <td data-label="Quick Access" style={{ padding: "12px 14px", textAlign: "right" }}>
-                          <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
+                          <div style={{ display: "inline-flex", flexWrap:"wrap", gap: "8px", alignItems: "center" }}>
+                            <button type="button" className="btn sm ghost" onClick={() => setHouseholdId(o.id)}>View household</button>
                             {canCheckIn && <button
                               type="button"
                               className="btn sm gold"
@@ -565,7 +578,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                     );
                   })}
                 </tbody>
-              </table>
+              </PaginatedTable>
             </div>
           ) : (
             <div className="empty sm" style={{ padding: "32px 16px", textAlign: "center" }}>
@@ -574,6 +587,24 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
           )}
         </section>
       )}
+
+      {household && <Modal title="Owner & pets" onClose={() => setHouseholdId(null)} className="household-dialog" closeButton>
+        <section className="household-summary">
+          <span className="household-avatar"><User size={28} aria-hidden="true" /></span>
+          <div><span className="household-eyebrow">Registered owner</span><h3>{household.name}</h3><p>{householdPets.length} linked {householdPets.length === 1 ? "patient" : "patients"}</p></div>
+        </section>
+        <dl className="household-contact">
+          <div><dt><Phone size={15} aria-hidden="true" />Mobile</dt><dd>{household.phone || "Not recorded"}</dd></div>
+          <div><dt><Mail size={15} aria-hidden="true" />Email</dt><dd>{household.email || "Not recorded"}</dd></div>
+          <div><dt><MapPin size={15} aria-hidden="true" />Address</dt><dd>{household.address || "Not recorded"}</dd></div>
+        </dl>
+        <div className="household-pets-heading"><h4>Pets in this household</h4><span>Open a pet to view its digital card and care records.</span></div>
+        {householdPets.length ? <PaginatedList className="household-pets" label="Household pets" resetKey={household.id}>{householdPets.map(p => <article key={p.id}>
+          <span className="household-species"><I e={ICON[p.species] || "paw"} size={24} /></span>
+          <div><h4>{p.name}</h4><p>{p.species}{p.breed ? ` · ${p.breed}` : ""}</p><small>{p.sex || "Sex not recorded"}{p.birth ? ` · ${petAge(p.birth)}` : ""}</small></div>
+          <button type="button" className="btn sm" onClick={() => { setHouseholdId(null); setCardPetId(p.id); }} aria-label={`Open pet record for ${p.name}`}>View pet<ArrowUpRight size={15} aria-hidden="true" /></button>
+        </article>)}</PaginatedList> : <div className="empty sm">No registered pets are linked to this owner yet.</div>}
+      </Modal>}
 
       {/* Pet Card Modal Popup */}
       {cardPetId && (

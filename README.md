@@ -907,3 +907,26 @@ the latest certified vaccine dose; no active recall does not imply vaccine cover
 Checks: `node --test tests/owner-booking.test.js`, `npm run test:ui`,
 `TEST_DATABASE_URL=postgresql://localhost/disposable_test_database npm run test:scheduling:postgres`
 and `npm run build`.
+
+### Paginated records and account settings
+
+Record tables and lists show at most 10 entries per screen page. Filters return
+to page 1; removing records clamps the current page to the last available page.
+Pagination changes the screen only: totals, CSV exports and printed tables use
+all filtered loaded records. History still loads in server cursor batches;
+use Load older history to include earlier records in searches and pages.
+Complete-history print/export requirements remain in place.
+
+Clients & Patients supports an owner filter and an Owner & pets dialog with
+contact details, linked patients and links to each pet's existing record. Links
+use explicit owner or account IDs, including when two clients share a name.
+The dialog respects the patient data already available to the current role.
+
+All four roles share Profile and Change Password layouts, with grouped contact
+and address fields, verification status, password requirements and strength
+feedback. Existing verified contact proposals, current-password checks and
+server-confirmed saves remain authoritative.
+
+Checks: `node --test tests/owner-relationships.test.js`, `npm run test:ui`, and
+`npm run build`. Browser fixtures cover more than 10 records, page navigation,
+filter resets, owner/pet links, account failure/retry and responsive layouts.

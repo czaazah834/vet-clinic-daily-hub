@@ -1,3 +1,4 @@
+import { PaginatedList } from "../components/Pagination.jsx";
 import OwnerBills from "./owner/Bills.jsx";
 import { today as bookingToday } from "../booking.js";
 import { currentVaccinationDue, nextVaccination, vaccinationStatus } from "../ownerVaccination.js";
@@ -75,7 +76,7 @@ function Dash({ db, setDb, me, go, say }) {
     {over.length > 0 && <div className="ow-banner"><Icon n="alert" size={20} /><span><b>Vaccine overdue:</b> {over.map(v => `${petName(db, v.petId)} (${v.vaccine})`).join(", ")}</span><button className="btn sm" onClick={() => go("vacc")}>View records</button></div>}
     <CareFollowUps db={db} go={go} owner />
     <RequestList db={db} setDb={setDb} me={me} say={say} onEdit={r => setModal({ form: true, editing: r })} />
-    {pets.length ? <div className="petgrid">{pets.map(p => {
+    {pets.length ? <PaginatedList label="My pets" resetKey={null} className="petgrid">{pets.map(p => {
       const { recall: nv, appointment: nvAppt, matched } = nextVaccination(p.id, V, A, TODAY);
       const na = A.filter(a => a.petId === p.id && LIVE.includes(a.status) && a.date >= TODAY).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
       return <article className="petcard" key={p.id} role="button" tabIndex={0} aria-label={`${p.name}, open pet details`} onClick={() => setModal({ profile: p })} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModal({ profile: p }); } }}>
@@ -96,7 +97,7 @@ function Dash({ db, setDb, me, go, say }) {
         </div>
         <div className="kv"><span>Next visit</span><b>{na ? <>{na.date} {fmt12(na.time)} <Badge v={na.status} /></> : "None booked"}</b></div>
         <small className="pc-more">View details <Icon n="chevron" size={14} /></small></article>;
-    })}</div> : null}
+    })}</PaginatedList> : null}
     {!pets.length && reqs.length > 0 && <div className="empty sm">Your pet will appear here once the clinic approves the request.</div>}
     {modal && modal.form && <PetFormModal db={db} setDb={setDb} me={me} say={say} editing={modal.editing} onClose={() => setModal(null)} />}
     {modal && modal.profile && <PetProfileModal pet={modal.profile} db={db} me={me} onClose={() => setModal(null)} onVacc={() => { pick.petId = modal.profile.id; go("vacc"); }} onBook={(pid, rsn) => book(pid || modal.profile.id, rsn)} />}

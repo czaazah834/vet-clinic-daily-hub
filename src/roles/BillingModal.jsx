@@ -1,3 +1,4 @@
+import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { confirmedPayment } from "../receptionSaves.js";
 import { ownerBill } from "../ownerBilling.js";
@@ -204,12 +205,12 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
               <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px", marginTop: "8px" }}>
                 <b>Itemized Services &amp; Products:</b>
                 {savedBill.items.length === 0 && <p>Itemized charges not recorded.</p>}
-                {savedBill.items.map((it, idx) => (
+                <PaginatedList label="Receipt items" resetKey={appt.id}>{savedBill.items.map((it, idx) => (
                   <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#475569", marginTop: "3px" }}>
                     <span>{it.qty}x {it.name}</span>
                     <b>₱{(it.price * it.qty).toLocaleString()}</b>
                   </div>
-                ))}
+                ))}</PaginatedList>
               </div>
               {savedBill.discount > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#b91c1c", marginTop: "6px" }}>
@@ -346,7 +347,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
             {!!prescribed.length && <div style={{padding:12,background:"#eff6ff",borderRadius:8,marginBottom:12}}><b>Veterinarian-prescribed products loaded</b><p>Confirm the actual product form, package size and supply before dispensing. Reduce or remove items that are not dispensed; the signed prescription is retained.</p>{prescribed.map(p => <p key={p.catalogId}><b>{p.name}</b> · {p.quantity} item(s)/package(s)<br />{p.instructions}</p>)}</div>}
             {/* Bill Line Items Table */}
             <div style={{ border: "1px solid #cbd5e1", borderRadius: "10px", overflow: "hidden", marginBottom: "16px" }}>
-              <table style={{ width: "100%", fontSize: "12.5px", borderCollapse: "collapse" }}>
+              <PaginatedTable label="Invoice items" resetKey={appt.id} style={{ width: "100%", fontSize: "12.5px", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", textAlign: "left", color: "#64748b", borderBottom: "1px solid #e2e8f0" }}>
                     <th style={{ padding: "8px 10px" }}>Service / Product</th>
@@ -407,7 +408,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </PaginatedTable>
 
               <div style={{ padding: "8px 12px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ fontSize: "13px" }}>

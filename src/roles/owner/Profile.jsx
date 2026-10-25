@@ -1,3 +1,5 @@
+import { UserRound, Mail, MapPin, ShieldCheck, AlertCircle, KeyRound, Check, Circle } from "lucide-react";
+import { ROLES } from "../../lib.jsx";
 import { useRef, useState } from "react";
 import "./account.css";
 import { accountProfile, saveAccountProfile, formatAccountAddress } from "../../accountProfile.js";
@@ -35,9 +37,15 @@ export function ProfileBody({ db, setDb, me, say }) {
 
   return (<div className="ow-profile-layout">
     <div className="ow-card ow-profile-photo">
-      <h3>Profile picture</h3>
-      <p>Choose a clear photo for your account.</p>
+      <span className="account-eyebrow">Your account</span>
+      <h3 className="account-name">{o.name || me.name}</h3>
+      <span className="account-role">{ROLES[me.role]?.[0] || me.role}</span>
+      <div className="account-photo-area"><h4>Profile picture</h4><p>Choose a clear photo for your account.</p></div>
       <PhotoUpload src={o.photo} fallback={(o.name || "U")[0]} size={112} label="Upload picture" onSave={savePhoto} onRemove={() => savePhoto("")} />
+      <div className="account-verification" aria-label="Contact verification">
+        {[['Email',o.emailVerified],['Mobile',o.mobileVerified]].map(([label,verified]) => <div key={label} className={verified ? "verified" : "unverified"}>{verified ? <ShieldCheck size={17} aria-hidden="true" /> : <AlertCircle size={17} aria-hidden="true" />}<span>{label}<b>{verified ? "Verified" : "Not verified"}</b></span></div>)}
+      </div>
+      <p className="account-photo-note">Your contact details are used for clinic updates and account verification.</p>
     </div>
     <Contact o={o} me={me} setDb={setDb} say={say} />
   </div>);
@@ -124,10 +132,9 @@ function Contact({ o, me, setDb, say }) {
   const formattedBirthday = o.birthday ? new Date(o.birthday + "T00:00:00").toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "Not recorded";
 
   return (
-    <form className="ow-card" onSubmit={save} noValidate>
+    <form className="ow-card account-contact-form" onSubmit={save} noValidate>
       <fieldset disabled={busy || !!pending} style={{border:0,padding:0,margin:0,minWidth:0}}>
-      <h3>Registration & Account Details</h3>
-      <p>Verified profile information from your registration.</p>
+      <div className="account-section-heading"><span><UserRound size={19} aria-hidden="true" /></span><div><h3>Personal details</h3><p>Your registered identity. Contact the clinic to correct these details.</p></div><small>Read only</small></div>
 
       <div className="ow-account-fields">
         <Field id="pfn" label="First name" value={o.firstName || o.name?.split(" ")[0] || ""} readOnly hint="Official name on record" />
@@ -139,22 +146,13 @@ function Contact({ o, me, setDb, say }) {
         <Field id="pbday" label="Date of birth" value={formattedBirthday} readOnly hint="Birthdate from registration" />
       </div>
 
-      <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
-        <span style={{ background: "#dcfce7", color: "#166534", padding: "4px 10px", borderRadius: "12px", fontSize: "0.82rem", fontWeight: 600 }}>
-          {o.emailVerified ? "✓ Email verified" : "Email not verified"}
-        </span>
-        <span style={{ background: "#dbeafe", color: "#1e40af", padding: "4px 10px", borderRadius: "12px", fontSize: "0.82rem", fontWeight: 600 }}>
-          {o.mobileVerified ? "✓ Mobile verified" : "Mobile not verified"}
-        </span>
-      </div>
-
-      <h4 style={{ marginTop: 20, marginBottom: 8, fontSize: "1rem", color: "#0b3a5b" }}>Contact Information</h4>
+      <div className="account-section-heading"><span><Mail size={19} aria-hidden="true" /></span><div><h3>Contact information</h3><p>Changes to your email or mobile require verification.</p></div></div>
       <div className="ow-account-fields">
         <Field id="pemail" label="Email address" req type="email" value={email} filter={noSpaces} filterMsg="Spaces aren’t allowed in an email" maxLen={100} onChange={v => { setEmail(v); setSrv(s => ({ ...s, email: "" })); }} onBlur={() => touch("email")} error={srv.email || (touched.email ? emailErr : "")} valid={touched.email && !emailErr && !srv.email} hint="Used for appointment confirmations & notifications" autoComplete="email" />
         <Field id="pphone" label="Mobile number" req type="tel" value={phone} onChange={v => { setPhone(v); setSrv(s => ({ ...s, phone: "" })); }} onBlur={() => touch("phone")} filter={onlyDigitsPlus} filterMsg="Numbers only" inputMode="tel" maxLen={13} error={srv.phone || (touched.phone ? phoneErr : "")} valid={touched.phone && !phoneErr && !srv.phone} hint="SMS notifications and verification number" autoComplete="tel" />
       </div>
 
-      <h4 style={{ marginTop: 20, marginBottom: 8, fontSize: "1rem", color: "#0b3a5b" }}>Registered Address</h4>
+      <div className="account-section-heading"><span><MapPin size={19} aria-hidden="true" /></span><div><h3>Address</h3><p>Keep your clinic contact record up to date.</p></div></div>
       <Field id="phouse" label="House number & street" value={houseStreet} maxLen={120} onChange={setHouseStreet} hint="From registration form" />
       <div className="ow-account-fields">
         <Field id="pcity" label="City / Municipality" value={city} maxLen={60} onChange={setCity} hint="City / Municipality" />
@@ -165,13 +163,13 @@ function Contact({ o, me, setDb, say }) {
         <Field id="pzip" label="ZIP / Postal code" value={zipCode} maxLen={20} onChange={setZipCode} hint="ZIP code" />
       </div>
 
-      <div style={{ marginTop: 8, padding: "8px 12px", background: "#f8fafc", borderRadius: "6px", fontSize: "0.85rem", color: "#475569" }}>
+      <div className="account-address-preview">
         <b>Full Address: </b>
         {formatAccountAddress({ houseStreet, city, state, zipCode, country }) || "No address on file"}
       </div>
 
       </fieldset>
-      {pending && <section aria-label="Verify new contact details" style={{marginTop:16}}>
+      {pending && <section className="account-verify-panel" aria-label="Verify new contact details">
         <h4>Verify your new contact details</h4>
         <p>Your current email and mobile stay active until you verify and save. Codes expire in 10 minutes.</p>
         <p><b>Email:</b> {pending.email}<br/><b>Mobile:</b> {pending.phone}</p>
@@ -183,7 +181,7 @@ function Contact({ o, me, setDb, say }) {
         </fieldset>
       </section>}
       {top && <p className="err" role="alert" style={{ marginTop: 12 }}>{top}</p>}
-      <div className="row end" style={{ marginTop: 16 }}>
+      <div className="row end account-save-bar">
         <button className="btn gold" disabled={busy || (pending ? !pending.emailSent || !pending.phoneSent || pending.requireEmail && emailCode.length!==6 || pending.requirePhone && phoneCode.length!==6 : !dirty)}>
           {busy ? "Saving…" : pending ? "Verify and save changes" : dirty ? "Save changes" : "No changes yet"}
         </button>
@@ -208,16 +206,23 @@ function Password({ me, say, onDone }) {
   };
   return (
     <form className="ow-card ow-pw" onSubmit={save} noValidate>
-      <h3>Change password</h3><p>Pick something you don’t use anywhere else.</p>
-      <Field id="pcur" label="Current password" req type={t} value={v.cur} onChange={x => set("cur", x)} onBlur={() => f.blur("cur")} error={f.show("cur", false) || srv.cur || ""} valid={f.ok("cur") && !srv.cur} hint="The password you use to log in" autoComplete="current-password" />
-      <Field id="pnext" label="New password" req type={t} value={v.next} filter={noSpaces} filterMsg="Spaces aren’t allowed in passwords" maxLen={72} onChange={x => set("next", x)} onBlur={() => f.blur("next")} error="" valid={f.ok("next")} autoComplete="new-password" />
-      <ul className="ow-req" aria-label="Password requirements">{PW_RULES.map(([r, l]) => <li key={l} className={r(v.next) ? "y" : "n"}>{r(v.next) ? "✓" : "○"} {l}</li>)}</ul>
-      {v.next && <><div className="ow-meter"><i style={{ width: `${s * 20}%`, background: COLOR[s] }} /></div><span className="ow-hint">Strength: {LABEL[s]}</span></>}
-      {rulesOk && (f.show("next") || srv.next) && <span className="err">{f.show("next") || srv.next}</span>}
-      <Field id="pconf" label="Retype new password" req type={t} value={v.conf} filter={noSpaces} filterMsg="Spaces aren’t allowed in passwords" maxLen={72} onChange={x => set("conf", x)} onBlur={() => f.blur("conf")} error={f.show("conf", !v.next.startsWith(v.conf) || v.conf.length > v.next.length) || srv.conf || ""} valid={f.ok("conf")} hint="Type the new password again" autoComplete="new-password" />
-      <label className="chk"><input type="checkbox" checked={show} onChange={e => setShow(e.target.checked)} /> Show passwords</label>
+      <div className="account-security-intro"><span><KeyRound size={24} aria-hidden="true" /></span><div><span className="account-eyebrow">Account security</span><h3>Update your password</h3><p>Use a unique password that you don’t use for another account.</p></div></div>
+      <div className="account-password-layout">
+        <fieldset className="account-password-fields" disabled={busy}>
+          <Field id="pcur" label="Current password" req type={t} value={v.cur} onChange={x => set("cur", x)} onBlur={() => f.blur("cur")} error={f.show("cur", false) || srv.cur || ""} valid={f.ok("cur") && !srv.cur} hint="The password you use to log in" autoComplete="current-password" />
+          <Field id="pnext" label="New password" req type={t} value={v.next} filter={noSpaces} filterMsg="Spaces aren’t allowed in passwords" maxLen={72} onChange={x => set("next", x)} onBlur={() => f.blur("next")} error={rulesOk ? f.show("next") || srv.next || "" : srv.next || ""} valid={f.ok("next")} autoComplete="new-password" />
+          <Field id="pconf" label="Confirm new password" req type={t} value={v.conf} filter={noSpaces} filterMsg="Spaces aren’t allowed in passwords" maxLen={72} onChange={x => set("conf", x)} onBlur={() => f.blur("conf")} error={f.show("conf", !v.next.startsWith(v.conf) || v.conf.length > v.next.length) || srv.conf || ""} valid={f.ok("conf")} hint="Enter your new password again" autoComplete="new-password" />
+          <label className="chk"><input type="checkbox" checked={show} onChange={e => setShow(e.target.checked)} /> Show passwords</label>
+        </fieldset>
+        <aside className="account-password-guide">
+          <h4>Password requirements</h4><p>Your new password needs all five.</p>
+          <ul className="ow-req" aria-label="Password requirements">{PW_RULES.map(([r, l]) => <li key={l} className={r(v.next) ? "y" : "n"}>{r(v.next) ? <Check size={16} aria-hidden="true" /> : <Circle size={13} aria-hidden="true" />}<span>{l}</span></li>)}</ul>
+          <div className="ow-meter" role="meter" aria-label="Password strength" aria-valuemin={0} aria-valuemax={5} aria-valuenow={s} aria-valuetext={v.next ? LABEL[s] : "Not entered"}><i style={{ width: `${s * 20}%`, background: COLOR[s] }} /></div><span className="ow-hint">{v.next ? `Strength: ${LABEL[s]}` : "Start typing to check strength"}</span>
+        </aside>
+      </div>
+      <p className="account-security-note"><ShieldCheck size={18} aria-hidden="true" /><span>After saving, your other sessions are signed out. You stay signed in on this device.</span></p>
       {top && <p className="err" role="alert">{top}</p>}
-      <div className="row end"><button className="btn" disabled={busy}>{busy ? "Saving…" : "Change password"}</button></div>
+      <div className="row end account-save-bar"><button className="btn" disabled={busy}>{busy ? "Saving…" : "Change password"}</button></div>
     </form>
   );
 }

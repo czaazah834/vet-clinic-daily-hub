@@ -1,3 +1,4 @@
+import { PaginatedTable } from "../components/Pagination.jsx";
 import ReminderStatus from "./ReminderStatus.jsx";
 import { currentVaccinationDue } from "../vaccinationDue.js";
 import { useState } from "react";
@@ -419,7 +420,7 @@ export default function AssistantVaccinationManager({ db, setDb, me, say }) {
 
               {petVaccs.length ? (
                 <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                  <PaginatedTable label="Vaccination records" resetKey={selectedPetId} style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                     <thead>
                       <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0", textAlign: "left" }}>
                         <th style={{ padding: "10px 12px" }}>Vaccine &amp; Prophylaxis</th>
@@ -543,7 +544,7 @@ export default function AssistantVaccinationManager({ db, setDb, me, say }) {
                         );
                       })}
                     </tbody>
-                  </table>
+                  </PaginatedTable>
                 </div>
               ) : (
                 <div className="empty sm" style={{ padding: "28px" }}>
