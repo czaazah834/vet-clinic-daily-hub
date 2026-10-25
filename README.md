@@ -1311,3 +1311,15 @@ Checks:
 ```bash
 TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/pawcare_test node --experimental-test-module-mocks --test --test-concurrency=1 server/tests/digital-vet-card-postgres.test.js server/tests/connected-workflow-postgres.test.js tests/vet-card.test.js
 ```
+
+### Safe workflow rollout
+
+For existing clinic databases, use `npm run db:migrate:check` followed by
+`npm run db:migrate` with the intended `DATABASE_URL` and migration role. Check
+mode rolls back; apply commits all pending migrations together without demo
+seeding. Existing migration markers are respected and applied file hashes are
+recorded. Never run the demo-seeding `db:init` against a live clinic.
+
+See [workflow rollout](docs/workflow-rollout.md) for backup/staging steps, verified
+clinic configuration, Vercel release settings, and acceptance checks. Real clinic
+identity and hosting/database access are required to finish a live rollout.

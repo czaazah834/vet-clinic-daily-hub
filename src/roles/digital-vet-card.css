@@ -8,3 +8,31 @@
 .vet-card-notes{white-space:pre-wrap;overflow-wrap:anywhere}.vet-card-notes dt{font-weight:700}.vet-card-notes dd{margin:4px 0 12px}.vet-card-correction{color:#92400e;background:#fffbeb;padding:8px}
 .clinic-document-fields{display:grid;gap:14px;max-width:650px}.clinic-document-fields .clinic-confirm{display:block}
 @media(max-width:600px){.digital-vet-card{padding:12px}.vet-card-heading .row{flex-wrap:wrap}.vet-card-filters{grid-template-columns:1fr}}
+
+.clinic-document-settings{max-width:1120px;padding:28px;min-width:0}
+.clinic-document-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.clinic-document-heading h2{font-size:22px;line-height:1.35;margin:6px 0 10px}.clinic-document-heading p{margin:0;color:#52647e;line-height:1.7}
+.clinic-document-eyebrow{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#52647e}
+.clinic-document-status{display:inline-flex;border:1px solid #f1d58b;background:#fffbeb;color:#854d0e;padding:7px 11px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.clinic-document-status.is-verified{border-color:#b7dfcb;background:#effaf4;color:#166534}
+.clinic-document-notice{background:#f1f6ff;border:1px solid #d8e5f7;border-radius:10px;padding:13px 16px;font-size:13px;line-height:1.7;margin:20px 0;color:#345477}
+.clinic-document-audit{font-size:12px;color:#52647e;overflow-wrap:anywhere}
+.clinic-document-settings .clinic-document-fields{display:block;max-width:none;min-width:0;border:0;border-top:1px solid #e2e8f0;margin:24px 0 0;padding:20px 0 0}
+.clinic-document-fields legend{padding:0 12px 0 0;font-weight:700;font-size:15px;color:#203c63}
+.clinic-document-section-note{font-size:12px;color:#52647e;margin:0 0 18px;line-height:1.6}
+.clinic-document-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+.clinic-document-field{min-width:0}.clinic-document-field-wide{grid-column:1/-1}
+.clinic-document-settings .clinic-document-field label{display:block;font-size:13px;font-weight:600;margin-bottom:7px}
+.clinic-document-field label>span{color:#a42c32}.clinic-document-field small{display:block;color:#52647e;font-size:11px;line-height:1.6;margin-top:6px}
+.clinic-document-field textarea{resize:vertical;min-height:74px}
+.clinic-document-settings [aria-invalid=true]{border-color:#c43d46;background:#fffafb}
+.clinic-document-settings :is(input,textarea):focus-visible{outline:3px solid #a9c3f5;outline-offset:2px}
+.clinic-document-settings .field-feedback:empty{display:none}.clinic-document-settings .field-feedback{margin-top:6px}
+.clinic-document-confirmation{padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin-top:20px}
+.clinic-document-settings .clinic-confirm{display:flex;flex-direction:row;align-items:flex-start;gap:10px;font-size:13px;line-height:1.6;cursor:pointer}
+.clinic-document-settings .clinic-confirm input{width:18px;height:18px;flex:0 0 18px;margin:2px 0 0;padding:0;accent-color:#285aa5}
+.clinic-confirm small{display:block;font-size:11px;color:#52647e;margin-top:4px}
+.clinic-document-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid #e2e8f0;margin-top:24px;padding-top:20px}
+.clinic-document-actions>span{font-size:12px;color:#854d0e}.clinic-document-actions .btn{white-space:normal}
+.clinic-document-error{background:#fff4f4;border-color:#f0c4c7;color:#a42c32}.clinic-document-success{background:#effaf4;border-color:#b7dfcb;color:#166534}
+@media(max-width:640px){.clinic-document-settings{padding:18px}.clinic-document-heading h2{font-size:19px}.clinic-document-grid{grid-template-columns:minmax(0,1fr)}.clinic-document-actions .btn{width:100%}}
