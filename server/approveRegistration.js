@@ -5,7 +5,7 @@ import { lockRegistrationOwner, checkRequestRevision, validatePetRegistration, r
 export async function approveRegistration(client, reqId, user, revision) {
   const actorName = user.name;
   const today = new Date().toISOString().slice(0, 10);
-  const cardId = "VACC-" + crypto.randomUUID();
+  let cardId = "VACC-" + crypto.randomUUID();
   let newPetId = "p_" + crypto.randomUUID();
   const ownerId = (await client.query("SELECT owner_id FROM pet_requests WHERE id = $1",[reqId])).rows[0]?.owner_id;
   await lockRegistrationOwner(client,ownerId);
@@ -19,8 +19,9 @@ export async function approveRegistration(client, reqId, user, revision) {
   // Preserve the patient identity already used by pending appointment requests.
   if(r.pet_id) {
     newPetId=r.pet_id;
-    const verified=await client.query("UPDATE pets SET registration_status='Verified',vaccination_card_id=$2 WHERE id=$1 AND owner_id=$3 AND registration_status='Pending' RETURNING id",[newPetId,cardId,r.owner_id]);
+    const verified=await client.query("UPDATE pets SET registration_status='Verified',vaccination_card_id=COALESCE(NULLIF(vaccination_card_id,''),$2) WHERE id=$1 AND owner_id=$3 AND registration_status='Pending' RETURNING id,vaccination_card_id",[newPetId,cardId,r.owner_id]);
     if(!verified.rows.length) throw registrationError('The pending patient changed. Refresh before approving.',409);
+    cardId=verified.rows[0].vaccination_card_id || cardId;
   } else await client.query(
     `INSERT INTO pets (id, owner_id, name, species, species_other, breed, sex, birth, weight, color, neutered, vaccination_card_id, notes, photo, dental_occlusion)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,

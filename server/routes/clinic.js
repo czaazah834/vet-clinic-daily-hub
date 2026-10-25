@@ -1,3 +1,5 @@
+import {digitalVetCardRouter} from './digitalVetCard.js';
+import {ensureDigitalVetCardSchema,internalCardReference,refreshDigitalVetCard} from '../digitalVetCard.js';
 import {ensureVitalsSchema} from '../vitals.js';
 import {vitalsRouter} from './vitals.js';
 import { approveRegistration } from '../approveRegistration.js';
@@ -38,6 +40,7 @@ import { clinicAccess, assignedTo, validateStatusChange } from "../clinicAccess.
 
 export const clinicRouter = express.Router();
 clinicRouter.use(requireAuth, clinicAccess);
+clinicRouter.use(digitalVetCardRouter);
 clinicRouter.use("/checkout-inbox", checkoutRouter);
 clinicRouter.use("/pets/:petId/vitals",vitalsRouter);
 clinicRouter.use("/admin", adminRouter);
@@ -1303,6 +1306,7 @@ clinicRouter.post("/appointments/:id/billing", async (req, res) => {
   }
   if (paymentMethod === "Cash" ? (typeof req.body.cashTendered !== "number" || !Number.isFinite(req.body.cashTendered) || req.body.cashTendered < total) : (typeof req.body.paymentReference !== "string" || req.body.paymentReference.trim().length < 4 || req.body.paymentReference.length > 100)) return res.status(400).json({ error: "Enter sufficient cash received or the confirmed payment reference." });
   try {
+    await ensureDigitalVetCardSchema();
     await ensureCheckoutSchema();
     await ensureCheckoutInboxSchema();
     await ensurePrescriptionSchema();
@@ -1332,6 +1336,7 @@ clinicRouter.post("/appointments/:id/billing", async (req, res) => {
       );
       await client.query("INSERT INTO audit_logs (user_name, user_role, action) VALUES ($1,$2,$3)", [req.user.name, req.user.role, `Processed payment ₱${total} (${paymentMethod}) for visit ${apptId}`]);
       await finishCheckoutTask(client, apptId, req.user.id);
+      await refreshDigitalVetCard(client, current.pet_id);
       return updated;
     });
 
@@ -1783,7 +1788,7 @@ clinicRouter.post("/consultations", async (req, res) => {
   if (vaccination?.nextDue && (!/^\d{4}-\d{2}-\d{2}$/.test(vaccination.nextDue) || vaccination.nextDue <= date)) return res.status(400).json({ error: "The booster date must follow the vaccination date." });
   if (weight !== undefined && (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0 || weight > 120)) return res.status(400).json({ error: "Enter a valid weight." });
   try {
-    await ensureVitalsSchema();
+    await ensureDigitalVetCardSchema();
     const rx = normalizePrescription(req.body.prescriptionItems, prescription);
     const services = clinicalCharges(req.body.performedServices, vaccination);
     if (!validDate(date) || date > clinicClock().date) throw bookingError("Enter a valid administration / consultation date that is not in the future.");
@@ -1799,8 +1804,9 @@ clinicRouter.post("/consultations", async (req, res) => {
       if (!appt || appt.pet_id !== petId || !assignedTo(appt, req.user)) throw Object.assign(new Error("An assigned visit is required."), { status: 403 });
       if (req.body.expectedVisit !== undefined && !sameIntakeVisit(appt, req.body.expectedVisit)) throw bookingError("This visit has changed. Refresh clinic records and reopen the consultation.",409);
       if (appt.status !== "In consultation") throw Object.assign(new Error("Start the consultation before finalizing. This visit may already be complete."), { status: 409 });
-      const patient = (await client.query("SELECT birth, vaccination_card_id FROM pets WHERE id = $1 FOR SHARE", [petId])).rows[0];
+      const patient = (await client.query("SELECT birth, vaccination_card_id FROM pets WHERE id = $1 FOR UPDATE", [petId])).rows[0];
       if (!patient) throw bookingError("Patient record not found.",404);
+      patient.vaccination_card_id=await internalCardReference(client,petId,patient.vaccination_card_id);
       if (patient.birth && date < toDateStr(patient.birth)) throw bookingError("The consultation date cannot be before the patient's birth.");
       const inserted = await client.query(
         `INSERT INTO consultations (id, pet_id, vet_id, appt_id, date, symptoms, objective, diagnosis, treatment, prescription)
@@ -1814,13 +1820,13 @@ clinicRouter.post("/consultations", async (req, res) => {
       let savedVaccination = null;
       if (vaccination) {
         const pet = patient;
-        if (!pet?.vaccination_card_id) throw Object.assign(new Error("The patient needs a clinic-issued vaccination card."), { status: 409 });
         const saved = await client.query(
           `INSERT INTO vaccinations (id, pet_id, card_id, vaccine, brand, batch, date, next_due, done, notes, vet_id, recorded_by, protocol_type, dose_no, dose_of)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12,$13,$14) RETURNING *`,
           [vaccination.id || "v_" + crypto.randomUUID(), petId, pet.vaccination_card_id, vaccination.vaccine.trim(), vaccination.brand.trim(), vaccination.batch.trim(), date, vaccination.nextDue || null, vaccination.notes || "", vetId, req.user.name, `Vet-approved interval: ${vaccination.intervalDays} days`, vaccination.doseNo, vaccination.doseOf]
         );
         savedVaccination = saved.rows[0];
+        await client.query("UPDATE vaccinations SET appt_id=$2,consultation_id=$3 WHERE id=$1",[savedVaccination.id,apptId,consultId]);
         await client.query("DELETE FROM vaccinations WHERE pet_id = $1 AND done = false AND LOWER(vaccine) = LOWER($2)", [petId, vaccination.vaccine]);
       }
       if (weight !== undefined) {
