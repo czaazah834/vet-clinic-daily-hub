@@ -47,13 +47,13 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
 
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 1060, display: "grid", placeItems: "center", padding: "16px" }}>
-      <div className="modal" style={{ width: "min(780px, 100%)", maxHeight: "94vh", overflowY: "auto", padding: "26px 30px" }}>
+      <div className="modal clinical-record-dialog" style={{ width: "min(780px, 100%)", maxHeight: "94vh", overflowY: "auto", padding: "26px 30px" }}>
         <HistoryControls auto />
         
         {/* Top Header Toolbar */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #e2e8f0", paddingBottom: "14px", marginBottom: "18px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #e2e8f0", paddingBottom: "14px", marginBottom: "18px" }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
               <span style={{ background: "#dbeafe", color: "#1e40af", padding: "3px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase" }}>
                 Official Medical EMR Record
               </span>
@@ -103,7 +103,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
           padding: "14px 18px",
           marginBottom: "18px",
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))",
           gap: "12px"
         }}>
           <div>
@@ -163,7 +163,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
             </div>
 
             {/* Vitals summary cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "10px", marginBottom: "10px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 140px), 1fr))", gap: "10px", marginBottom: "10px" }}>
               <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
                 <span style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>Weight</span>
                 <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--navy)" }}>
@@ -213,7 +213,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
 
           {/* Rx - Official Prescription Pad */}
           <div style={{ border: "1.5px solid #86efac", borderRadius: "12px", padding: "16px", background: "#f0fdf4" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", borderBottom: "1px solid #bbf7d0", paddingBottom: "6px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", borderBottom: "1px solid #bbf7d0", paddingBottom: "6px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <span style={{ fontFamily: "serif", fontSize: "22px", fontWeight: 800, color: "#166534" }}>Rx</span>
                 <b style={{ color: "#166534", fontSize: "14px" }}>Veterinary Prescription &amp; Home Administration</b>
@@ -249,7 +249,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
               </b>
               <div style={{ display: "grid", gap: "6px" }}>
                 {vaccsGiven.map(v => (
-                  <div key={v.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0", fontSize: "12.5px" }}>
+                  <div key={v.id} style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0", fontSize: "12.5px" }}>
                     <div>
                       <b>{v.vaccine}</b> <span style={{ color: "#64748b" }}>({v.brand || "Brand not recorded"} &bull; Lot: {v.batch || "Not recorded"})</span>
                     </div>
@@ -265,7 +265,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
         </div>
 
         {/* Footer Actions */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "22px", paddingTop: "14px", borderTop: "1px solid #e2e8f0" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", justifyContent: "space-between", alignItems: "center", marginTop: "22px", paddingTop: "14px", borderTop: "1px solid #e2e8f0" }}>
           <div style={{ fontSize: "12px", color: "#64748b" }}>
             Recorded veterinarian: <b>{vetName}</b>
           </div>
@@ -334,7 +334,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
   }).sort((a, b) => b.date.localeCompare(a.date));
 
   return (
-    <div>
+    <div className="staff-records">
       {/* Top Banner Toolbar */}
       <div style={{
         display: "flex",
@@ -382,7 +382,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
         <div style={{ position: "relative", flex: "1 1 260px", maxWidth: "420px" }}>
           <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
           <input
-            type="search"
+            type="search" aria-label="Search consultations"
             placeholder="Search diagnosis, medication, patient, owner..."
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -451,12 +451,12 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
                       title="Click to open Medical EMR & Prescription details"
                     >
                       {/* Date */}
-                      <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
+                      <td data-label="Date & Time" style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
                         <b style={{ color: "#1e293b" }}>{r.date}</b>
                       </td>
 
                       {/* Patient */}
-                      <td style={{ padding: "12px 14px" }}>
+                      <td data-label="Patient Profile" style={{ padding: "12px 14px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                           <span style={{ color: "var(--navy)" }}><I e={ICON[pet.species] || "paw"} size={16} /></span>
                           <div>
@@ -469,13 +469,13 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
                       </td>
 
                       {/* Owner */}
-                      <td style={{ padding: "12px 14px" }}>
+                      <td data-label="Registered Owner" style={{ padding: "12px 14px" }}>
                         <span style={{ color: "#334155", fontWeight: 600 }}>{owner.name || "Walk-in Client"}</span>
                         <div style={{ fontSize: "11.5px", color: "#64748b" }}>{owner.phone || "No phone"}</div>
                       </td>
 
                       {/* Diagnosis */}
-                      <td style={{ padding: "12px 14px", maxWidth: "260px" }}>
+                      <td data-label="Assessment / Diagnosis" style={{ padding: "12px 14px", maxWidth: "260px" }}>
                         <div style={{
                           display: "inline-block",
                           background: "#eff6ff",
@@ -496,7 +496,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
                       </td>
 
                       {/* Prescription badge */}
-                      <td style={{ padding: "12px 14px" }}>
+                      <td data-label="Medications (Rx)" style={{ padding: "12px 14px" }}>
                         {hasRx ? (
                           <span style={{
                             display: "inline-flex",
@@ -518,12 +518,12 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
                       </td>
 
                       {/* Attending Vet */}
-                      <td style={{ padding: "12px 14px", color: "#475569", whiteSpace: "nowrap" }}>
+                      <td data-label="Attending Doctor" style={{ padding: "12px 14px", color: "#475569", whiteSpace: "nowrap" }}>
                         {vetInfo[1]}
                       </td>
 
                       {/* Action */}
-                      <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                      <td data-label="Action" style={{ padding: "12px 14px", textAlign: "right" }}>
                         <button
                           type="button"
                           className="btn sm ghost"

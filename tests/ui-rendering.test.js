@@ -147,3 +147,15 @@ test('front desk surfaces a future booking before its arrival date', () => {
   assert.match(html, /Please call before the visit/);
   assert.match(html, /Approve visit/);
 });
+
+
+test('assistant masterlist uses certified latest-dose recalls without implying coverage', () => {
+  const db = populated();
+  db.vacc = [{ id: 'old-dose', petId: db.pets[0].id, vaccine: 'Anti-rabies', done: true, vetId: 'v1', date: '2020-01-01', nextDue: '2021-01-01' }];
+  const Component = ui.assistant.menu.find(page => page.k === 'clients-patients').Page;
+  assert.match(render(Component, props('assistant', db)), /1 Overdue/);
+  db.vacc.push({ id: 'latest-dose', petId: db.pets[0].id, vaccine: 'Anti-rabies', done: true, vetId: 'v1', date: '2026-01-01', nextDue: null });
+  const html = render(Component, props('assistant', db));
+  assert.doesNotMatch(html, /1 Overdue|Up to date/);
+  assert.match(html, /No active recall/);
+});

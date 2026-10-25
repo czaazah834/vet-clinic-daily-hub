@@ -31,6 +31,7 @@ export function OwnerVisits({ db, me, go }) {
   const cell = { flex: "1 1 150px", minWidth: 0, width: "auto" };
   const wrap = { overflowWrap: "anywhere", whiteSpace: "pre-wrap" };
   return (<div className="vh">
+    <div className="portal-metrics" aria-label="Visit history summary"><div><b>{all.length}</b><span>Saved visit records</span></div><div><b>{all.filter(r => ownerFollowUp(r, appointments)?.status === "Needs booking").length}</b><span>Follow-ups to book</span></div><div><b>{all.filter(r => ownerFollowUp(r, appointments)?.status === "Booked").length}</b><span>Follow-ups booked</span></div></div>
     <div className="vh-filters" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
       <div className="vh-f vh-search" style={{ ...cell, flex: "2 1 260px" }}>
         <label htmlFor="vh-q">Search visits</label>

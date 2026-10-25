@@ -1,3 +1,4 @@
+import { bookingDayConflict, validateOwnerBooking } from "../../ownerBooking.js";
 import { CalendarDays, Plus, Syringe } from "lucide-react";
 import { useSubmissionReview } from "../../components/SubmissionReview.jsx";
 import { confirmedBooking, confirmedCancellation } from "../../receptionSaves.js";
@@ -19,33 +20,11 @@ const OPEN = ["Scheduled", "Confirmed"], BUSY = ["Cancelled", "No-show"];
 const NOTE_IDEAS = ["My pet is nervous around other animals.", "Please call me before the visit.", "My pet hasn’t eaten today.", "My pet is on medication.", "Bringing vaccine card."];
 const CANCEL_WHY = ["Schedule conflict", "My pet is feeling better", "Booked by mistake", "Need a different date", "Other"];
 const STATUS_NOTE = { Scheduled: "Waiting for the clinic to confirm", Confirmed: "Confirmed. Please arrive 10 minutes early", "Checked-in": "You’re checked in. The vet will call you in", "In consultation": "The vet is seeing your pet now", Completed: "Done. See Visit History for notes", Cancelled: "This visit was cancelled", "No-show": "Marked as missed" };
-const mkRules = (db, me, editing) => v => {
-  const TODAY = bookingToday(), LAST = lastDay();
-  const e = {}, mine = scope(db, me, "pets").map(p => p.id), S = SERVICES[v.service];
-  if (!v.service) e.service = "Choose a service"; else if (!S) e.service = "Pick a service from the list";
-  if (v.followUpId && !db.records.some(r => r.id === v.followUpId && r.petId === v.petId)) e.followUpId = "Select a follow-up request for this pet";
-  if (!v.petId) e.petId = "Choose which pet is visiting"; else if (!mine.includes(v.petId)) e.petId = "Pick one of your own pets";
-  if (!v.vetId) e.vetId = "Choose a veterinarian"; else if (!liveDoctors(db).some(x => x[0] === v.vetId)) e.vetId = "Pick a veterinarian from the list";
-  const sameDay = editing && editing.date === v.date;
-  if (!v.date) e.date = "Choose a date";
-  else if (isNaN(new Date(v.date + "T00:00:00"))) e.date = "Enter a valid date";
-  else if (v.date < TODAY && !sameDay) e.date = "Date can’t be in the past";
-  else if (v.date > LAST) e.date = `You can book up to ${MAX_DAYS} days ahead (until ${LAST})`;
-  else if ((() => {
-    const yr = parseInt(v.date.slice(0, 4), 10);
-    const curYr = new Date().getFullYear();
-    return isNaN(yr) || yr < curYr || yr > curYr + 1;
-  })()) e.date = `Please select a valid date in ${new Date().getFullYear()} or ${new Date().getFullYear() + 1}`;
-  else if (holidayName(v.date) && !sameDay) e.date = `The clinic is closed on ${holidayName(v.date)} (holiday). Please pick another day`;
-  const others = db.appts.filter(a => (!editing || a.id !== editing.id) && !BUSY.includes(a.status));
-  if (!v.time) e.time = !v.service ? "Choose a service first" : v.date && v.vetId ? "Choose a time" : "Choose a veterinarian and date first";
+const mkRules = (db, me, editing) => v => validateOwnerBooking(v, {
+  pets: scope(db, me, "pets"), vets: db.vets || [], appointments: db.appts, records: db.records, editing
+});
 
-  if (!e.petId && v.date && !e.date) { const x = others.find(a => a.petId === v.petId && a.date === v.date); if (x) e.date = `${petName(db, v.petId)} already has a visit that day at ${fmt12(x.time)}`; }
-  const nt = (v.notes || "").trim(); if (nt.length > 200) e.notes = "Keep notes under 200 characters"; else if (nt && !/[A-Za-zÀ-ÿ]/.test(nt)) e.notes = "Write a few words, not only numbers or symbols";
-  return e;
-};
-
-function BookForm({ db, setDb, me, say, editing, start, onClose }) {
+function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
   const TODAY = bookingToday(), LAST = lastDay();
   const pets = scope(db, me, "pets"), owner = db.owners.find(o => o.id === me.ownerId) || {};
   const prev = editing ? serviceOf(editing) : "", svc0 = editing ? prev : start?.service || (start?.reason ? inferService(start.reason) : "");
@@ -59,12 +38,13 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
   const [changingDate, setChangingDate] = useState(!start?.date || !!editing);
   const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const { v } = f, S = SERVICES[v.service];
+  const conflict = bookingDayConflict(db.appts, v.petId, v.date, editing?.id);
   const followUp = db.records.find(r => r.id === v.followUpId && r.petId === v.petId);
   const availability = useAvailability({ ...v, excludeId: editing?.id });
-  const times = availability.slots, vetName = (liveDoctors(db).find(x => x[0] === v.vetId) || [])[1];
+  const times = conflict ? [] : availability.slots, vetName = (liveDoctors(db).find(x => x[0] === v.vetId) || [])[1];
   const ready = S && v.vetId && v.date;
   const nextDay = null;
-  const timeHint = availability.error || (availability.loading && !times.length ? "Checking available times…" : "") || (!S ? "Choose a service first" : !ready ? "Choose a veterinarian and date to see open times" : times.length ? `${times.length} open time${times.length > 1 ? "s" : ""} for ${S.label.toLowerCase()} (${durText(S.dur)}) with ${vetName}` : holidayName(v.date) ? `Closed for ${holidayName(v.date)}.` : `No open times for ${S.label.toLowerCase()} (${durText(S.dur)}) that day.`);
+  const timeHint = conflict ? "This pet already has a visit that day. Review it or choose another date." : availability.error || (availability.loading && !times.length ? "Checking available times…" : "") || (!S ? "Choose a service first" : !ready ? "Choose a veterinarian and date to see open times" : times.length ? `${times.length} open time${times.length > 1 ? "s" : ""} for ${S.label.toLowerCase()} (${durText(S.dur)}) with ${vetName}` : holidayName(v.date) ? `Closed for ${holidayName(v.date)}.` : `No open times for ${S.label.toLowerCase()} (${durText(S.dur)}) that day.`);
   const review = useSubmissionReview([v, editing, db.appts.find(a => a.id === editing?.id), db.vets, pets]);
   const moved = editing && editing.status === "Confirmed" && (editing.date !== v.date || editing.time !== v.time || editing.vetId !== v.vetId || editing.petId !== v.petId || editing.service !== v.service);
   const submit = async e => {
@@ -143,6 +123,8 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
           <div><small>Your selected visit date</small><strong>{new Date(v.date + "T00:00:00").toLocaleDateString("en-PH", {weekday:"long",month:"long",day:"numeric",year:"numeric"})}</strong><span>Complete the details to request this visit.</span></div>
           <button type="button" className="btn ghost sm" onClick={() => setChangingDate(true)}>Change date</button>
         </section> : <Field id="date" label="Date" req type="date" min={TODAY} maxDate={LAST} value={v.date} onChange={x => f.patch({ date: x, time: "" })} onBlur={() => f.blur("date")} error={f.show("date")} valid={f.ok("date")} hint={holidayName(v.date) ? `${holidayName(v.date)} is a holiday. The clinic is closed` : `Pick a day within the next ${MAX_DAYS} days (closed on Philippine holidays)`} />}
+        <p className="ow-book-policy"><CalendarDays size={16} aria-hidden="true" />One visit per pet, per day. To change plans, edit your existing visit. Different pets can have separate bookings.</p>
+        {conflict && <section className="ow-book-conflict" role="alert"><b>A visit is already on this pet’s calendar</b><p>{conflict.date} · {conflict.time ? fmt12(conflict.time) : "Time not recorded"} · {conflict.status}</p><p>{conflict.reason}</p><button type="button" className="btn ghost sm" onClick={() => onExisting(conflict)}>View existing visit</button></section>}
         <ServicePicker value={v.service} onChange={x => { if (x === v.service) return; f.set("service", x); f.quiet({ time: "" }); }} error={f.show("service")} />
         <div className="ow-book-patient">
         <Field id="petId" label="Pet" req type="select" disabled={!!editing?.followUpId} value={v.petId} onChange={x => f.patch({petId:x, followUpId:""})} onBlur={() => f.blur("petId")} options={pets.map(p => [p.id, `${p.name} (${p.species})`])} error={f.show("petId")} valid={f.ok("petId")} hint="Which pet is coming in?" />
@@ -153,13 +135,14 @@ function BookForm({ db, setDb, me, say, editing, start, onClose }) {
         <SlotPicker times={times} value={v.time} onChange={x => f.set("time", x)} error={f.show("time")} hint={timeHint} dur={S ? S.dur : 30} suggest={nextDay} onSuggest={() => f.patch({ date: nextDay, time: "" })} />
         {S && v.time && times.includes(v.time) && <p className="ow-note info">{S.label}: {fmt12(v.time)} to {fmt12(addMin(v.time, S.dur))} with {vetName}</p>}
         <label>Follow-up request (optional)<select value={v.followUpId} disabled={!!editing?.followUpId} onChange={e => f.set("followUpId", e.target.value)}><option value="">Regular visit</option>{db.records.filter(r => r.id === v.followUpId || openFollowUps(db,v.petId).some(x => x.id === r.id)).filter(r => r.petId === v.petId).map(r => <option key={r.id} value={r.id}>{r.followUpDate} · {r.followUpReason}</option>)}</select></label>
+        {f.show("followUpId") && <p className="err" role="alert">{f.show("followUpId")}</p>}
         {followUp && <section className="ow-note" aria-label="Selected follow-up instructions"><b>{followUp.careStatus} · Target: {followUp.followUpDate}</b><p style={{whiteSpace:"pre-wrap"}}>{followUp.followUpReason}</p><small>The target is a recommended date. Select an available visit time above.</small></section>}
         <Field id="notes" label="Note for the clinic (optional)" type="textarea" rows={2} max={200} value={v.notes} onChange={x => f.set("notes", x)} onBlur={() => f.blur("notes")} error={f.show("notes")} hint="Symptoms, behavior or anything the clinic should know" />
         <Suggest items={NOTE_IDEAS} onPick={s => f.set("notes", addNote(v.notes, s, 200))} />
         <p className="ow-hint" style={{ marginTop: 10 }}>The clinic will reach you at {owner.phone || "your number on file"}. You can update it in My Profile.</p>
         {saveError && <p className="err" role="alert">{saveError}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
-        <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Close</button><button className="btn" disabled={!pets.length || saving}>{saving ? "Saving…" : editing ? "Review changes" : "Review booking"}</button></div>
+        <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Close</button><button className="btn" disabled={!pets.length || saving || !!conflict}>{saving ? "Saving…" : editing ? "Review changes" : "Review booking"}</button></div>
         </fieldset>
       </form>
     </Modal>
@@ -406,7 +389,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
         ))}
       </div>
     </div>
-    {modal && modal.book && <BookForm db={db} setDb={setDb} me={me} say={say} editing={modal.editing} start={modal.start} onClose={() => setModal(null)} />}
+    {modal && modal.book && <BookForm db={db} setDb={setDb} me={me} say={say} editing={modal.editing} start={modal.start} onExisting={visit => setModal({view:visit})} onClose={() => setModal(null)} />}
     {modal && modal.view && selectedVisit && <ApptDetails a={selectedVisit} db={db} note={STATUS_NOTE[selectedVisit.status]} onClose={() => setModal(null)} onEdit={() => setModal({ book: true, editing: selectedVisit })} onCancel={() => setModal({ cancel: selectedVisit })} />}
     {modal && modal.cancel && selectedVisit && <CancelDialog a={selectedVisit} db={db} setDb={setDb} me={me} say={say} onClose={() => setModal(null)} />}
   </>);

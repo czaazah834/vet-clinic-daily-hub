@@ -23,7 +23,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
   });
 
   return (
-    <div style={{ padding: "0 0 24px" }}>
+    <div className="staff-requests" style={{ padding: "0 0 24px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
         <div>
           <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "var(--navy)" }}>
@@ -46,6 +46,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
                   key={status}
                   type="button"
                   className={`btn sm ${filter === status ? "gold" : "ghost"}`}
+                  aria-pressed={filter === status}
                   onClick={() => setFilter(status)}
                 >
                   {status} ({count})
@@ -56,7 +57,7 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
 
           <div style={{ minWidth: "220px" }}>
             <input
-              type="search"
+              type="search" aria-label="Search pet registrations"
               placeholder="Search pet, breed, owner..."
               value={search}
               onChange={e => setSearch(e.target.value)}
