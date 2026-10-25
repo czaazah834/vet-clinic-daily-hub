@@ -4,7 +4,7 @@ export function auditActivity(entry) {
   const actor=entry.actor || entry.by || entry.user_name || entry.user?.name || 'System';
   const role=entry.role || entry.user_role || entry.user?.role || 'system';
   const type=/staff access|invitation|invite.*staff/i.test(action)?'Staff access'
-    :/sign.?in|log.?in|password|own profile|own contact|contact details|profile photo|verified (email|mobile)|session/i.test(action)?'Account & sign-in'
+    :/sign(?:ed)?[ -]?in|log(?:ged)?[ -]?in|password|own profile|own contact|contact details|profile photo|verified (email|mobile)|session/i.test(action)?'Account & sign-in'
     :/payment|billing|checkout|invoice/i.test(action)?'Payments'
     :/reminder|phone call|call outcome/i.test(action)?'Reminders'
     :/^registered|^(approved|declined|updated) pet request/i.test(action)?'Patients & owners'

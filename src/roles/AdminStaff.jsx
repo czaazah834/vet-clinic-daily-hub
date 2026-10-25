@@ -1,7 +1,7 @@
 import AuditActivity from "../components/AuditActivity.jsx";
 import { AUDIT_TYPES, auditActivity } from "../auditActivity.js";
 import { PaginatedList, PaginatedTable } from "../components/Pagination.jsx";
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useClinicRead } from '../useClinicRead.js';
 import { api } from '../api.js';
 import {
@@ -34,6 +34,7 @@ export default function AdminStaff({ onInvite }) {
   const [filter, setFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [target, setTarget] = useState(null);
+  const [selected,setSelected]=useState(null);
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -79,6 +80,9 @@ export default function AdminStaff({ onInvite }) {
   });
 
   const invitations = data?.invitations || [];
+  const detail=selected && (selected.kind==='staff'?data?.staff:invitations)?.find(p=>p.id===selected.id);
+  const openDetails=(person,kind)=>setSelected({id:person.id,kind});
+  const rowClick=(event,person,kind)=>{if(!event.target.closest('button,a,input,select'))openDetails(person,kind);};
 
   return (
     <>
@@ -199,7 +203,8 @@ export default function AdminStaff({ onInvite }) {
                 const initials = (u.name || "U").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
                 return (
                   <article
-                    className="staff-account-card"
+                    className="staff-account-card staff-clickable"
+                    onClick={event=>rowClick(event,u,'staff')}
                     key={u.id}
                     style={{
                       background: "#ffffff",
@@ -234,7 +239,7 @@ export default function AdminStaff({ onInvite }) {
                           </div>
                           <div>
                             <h3 style={{ margin: 0, fontSize: "15.5px", color: "var(--navy, #0f172a)", fontWeight: 700 }}>
-                              {u.name}
+                              <button type="button" className="staff-detail-link" aria-label={`View staff details for ${u.name}`} onClick={()=>openDetails(u,'staff')}>{u.name}</button>
                             </h3>
                             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
                               <span style={{
@@ -367,9 +372,9 @@ export default function AdminStaff({ onInvite }) {
                   const isPending = i.status === 'Pending';
                   const isAccepted = i.status === 'Accepted';
                   return (
-                    <tr key={i.id}>
+                    <tr key={i.id} className="staff-clickable" onClick={event=>rowClick(event,i,'invitation')}>
                       <td style={{ padding: "10px 14px" }}>
-                        <b style={{ color: "#0f172a" }}>{i.name}</b>
+                        <button type="button" className="staff-detail-link" aria-label={`View invitation for ${i.name || i.email}`} onClick={()=>openDetails(i,'invitation')}>{i.name || i.email}</button>
                         <div style={{ fontSize: "11.5px", color: "#64748b" }}>{i.email}</div>
                       </td>
                       <td style={{ padding: "10px 14px" }}>
@@ -427,6 +432,7 @@ export default function AdminStaff({ onInvite }) {
         )}
       </section>
 
+      {detail && <StaffDetails person={detail} kind={selected.kind} onClose={()=>setSelected(null)} onAction={action=>{setSelected(null);choose(detail,action);}} />}
       {/* Access Action Modal Dialog */}
       {target && (
         <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !saving && setTarget(null)}>
@@ -496,6 +502,39 @@ export default function AdminStaff({ onInvite }) {
       )}
     </>
   );
+}
+
+function StaffDetails({person,kind,onClose,onAction}) {
+  const dialog=useRef(null);
+  useEffect(()=>{
+    const element=dialog.current,previous=document.activeElement;
+    element.showModal();
+    return ()=>{element.close();if(previous?.isConnected)previous.focus({preventScroll:true});};
+  },[]);
+  const invitation=kind==='invitation';
+  const status=invitation?person.status:!person.active?'Inactive':person.locked?'Locked':'Active';
+  return <dialog ref={dialog} className="staff-details-dialog" aria-labelledby="staff-details-title" onCancel={onClose} onClick={e=>{if(e.target===e.currentTarget){const b=e.currentTarget.getBoundingClientRect();if(e.clientX<b.left||e.clientX>b.right||e.clientY<b.top||e.clientY>b.bottom)onClose();}}}>
+    <header><span className="admin-eyebrow">{invitation?'Staff invitation':'Staff account'}</span><h2 id="staff-details-title">{person.name || person.email}</h2><p>Review {invitation?'invitation status and activation expiry':'account access and verification'}.</p></header>
+    <dl className="staff-detail-fields">
+      <div><dt>Email address</dt><dd>{person.email}</dd></div>
+      <div><dt>Role</dt><dd>{person.role==='vet'?'Veterinarian':'Vet assistant'}</dd></div>
+      <div><dt>Status</dt><dd><span className={`staff-status-chip ${status==='Active'||status==='Accepted'?'is-active':status==='Locked'?'is-locked':'is-pending'}`}>{status}</span></dd></div>
+      {invitation?<div><dt>Activation link expires</dt><dd>{new Date(person.expiresAt).toLocaleString('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'})} · Manila</dd></div>:<>
+        {person.vetId&&<div><dt>Doctor ID</dt><dd>{person.vetId}</dd></div>}
+        <div><dt>Mobile verification</dt><dd>{person.mobileVerified?'Verified':'Pending SMS verification'}</dd></div>
+        {person.lockedUntil&&<div><dt>Lock expires</dt><dd>{new Date(person.lockedUntil).toLocaleString('en-PH',{timeZone:'Asia/Manila'})} · Manila</dd></div>}
+        <div><dt>Last access note</dt><dd>{person.reason || 'No access note recorded.'}</dd></div>
+      </>}
+    </dl>
+    {invitation&&<p className="staff-detail-note">{status==='Pending'?'The recipient must open their emailed activation link to set a password and verify their mobile number.':status==='Accepted'?'This invitation has already been accepted.':'This link cannot be used. Create a new invitation if access is still needed.'}</p>}
+    <footer className="row end">
+      <button type="button" className="btn ghost" autoFocus onClick={onClose}>Close details</button>
+      {invitation?status==='Pending'&&<button type="button" className="btn danger" onClick={()=>onAction('revoke')}>Revoke link</button>:<>
+        {person.active&&person.locked&&<button type="button" className="btn ghost" onClick={()=>onAction('unlock')}>Unlock account</button>}
+        <button type="button" className={`btn ${person.active?'danger':'gold'}`} onClick={()=>onAction(person.active?'deactivate':'reactivate')}>{person.active?'Deactivate':'Reactivate'}</button>
+      </>}
+    </footer>
+  </dialog>;
 }
 
 export function AdminAudit() {

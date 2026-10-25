@@ -27,7 +27,7 @@ export async function clinicAccess(req, res, next) {
   };
   const appointment = async id => (await query('SELECT * FROM appointments WHERE id = $1', [id])).rows[0];
   try {
-    if ((req.method === 'GET' && ['/admin/staff','/admin/audit'].includes(path)) || (req.method === 'POST' && /^\/admin\/(?:staff\/[^/]+\/access|invitations\/[^/]+\/revoke)$/.test(path))) return allow('admin') ? next() : denied();
+    if ((req.method === 'GET' && ['/admin/staff','/admin/staff/email-availability','/admin/audit'].includes(path)) || (req.method === 'POST' && /^\/admin\/(?:staff\/[^/]+\/access|invitations\/[^/]+\/revoke)$/.test(path))) return allow('admin') ? next() : denied();
     if (path === '/checkout-inbox' && req.method === 'GET' || /^\/checkout-inbox\/[^/]+\/(claim|renew|release)$/.test(path) && req.method === 'POST') return allow('assistant') ? next() : denied();
     if (key === 'GET /reminders/calls') return allow('assistant', 'admin') ? next() : denied();
     if (key === 'GET /reminders/status') return allow('assistant', 'admin') ? next() : denied();

@@ -24,6 +24,7 @@ export const auth = {
   petAllergy: (id, d) => api.post(`/api/owner/pets/${id}/allergies`, d),
   petWeight: (id, d) => api.post(`/api/owner/pets/${id}/weights`, d),
   petNotes: (id, notes) => api.post(`/api/owner/pets/${id}/notes`, { notes }),
+  staffEmailAvailability: (email) => api.get(`/api/admin/staff/email-availability?email=${encodeURIComponent(email)}`),
   inviteStaff: (d) => api.post("/api/auth/staff/invite", d),
   staffInviteInfo: (token) => api.get(`/api/auth/staff/invite-info?token=${encodeURIComponent(token)}`),
   staffAcceptInvite: (d) => api.post("/api/auth/staff/accept-invite", d),

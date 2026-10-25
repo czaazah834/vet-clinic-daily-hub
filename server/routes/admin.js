@@ -10,6 +10,16 @@ adminRouter.use(async(req,res,next)=>{
   catch {res.status(500).json({error:'Unable to load administrator controls. Please retry.'});}
 });
 const audit = (client,user,action) => client.query('INSERT INTO audit_logs (user_name,user_role,action) VALUES ($1,$2,$3)',[user.name,user.role,action]);
+// Account availability is private to administrators and checks every user role.
+adminRouter.get('/staff/email-availability',async(req,res)=>{
+ const email=String(req.query.email||'').trim().toLowerCase();
+ if(email.length>255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:'Enter a valid staff email address.'});
+ try {
+  const account=await query('SELECT 1 FROM users WHERE LOWER(email)=$1 LIMIT 1',[email]);
+  const pending=await query('SELECT 1 FROM staff_invitations WHERE LOWER(email)=$1 AND accepted_at IS NULL AND expired_at>NOW() LIMIT 1',[email]);
+  res.set('Cache-Control','no-store').json({available:account.rows.length===0,pendingInvitation:pending.rows.length>0});
+ } catch {res.status(500).json({error:'Unable to check this email. Please retry.'});}
+});
 adminRouter.get('/staff',async(req,res)=>{
  try {
   const [staff,invitations,count]=await Promise.all([
