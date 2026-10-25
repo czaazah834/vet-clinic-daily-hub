@@ -10,8 +10,8 @@ export function boosterDate(date, intervalDays) {
 export const VACCINE_SERVICE = {'Anti-rabies':'srv_rabies','5-in-1':'srv_dhpp','Feline 4-in-1':'srv_fvrcp','Deworming':'srv_deworm'};
 export function followUpVisit(record, appts) {
   const linked = appts.filter(a => a.followUpId === record.id);
-  return linked.find(a => a.status === 'Completed') || linked.find(a => !['Cancelled','No-show'].includes(a.status)) || linked.sort((a,b) => (b.date+b.time).localeCompare(a.date+a.time))[0];
+  return linked.find(a => a.status === 'Completed') || linked.find(a => !['Cancelled','Rejected','No-show'].includes(a.status)) || linked.sort((a,b) => (b.date+b.time).localeCompare(a.date+a.time))[0];
 }
 export function openFollowUps(db, petId) {
-  return db.records.filter(r => r.followUpDate && r.careStatus !== 'Routine care' && (!petId || r.petId === petId) && !['Completed','Scheduled','Confirmed','Checked-in','In consultation'].includes(followUpVisit(r, db.appts)?.status));
+  return db.records.filter(r => r.followUpDate && r.careStatus !== 'Routine care' && (!petId || r.petId === petId) && !['Completed','Pending Approval','Scheduled','Checked-in','In consultation'].includes(followUpVisit(r, db.appts)?.status));
 }

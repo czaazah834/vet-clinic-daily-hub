@@ -565,7 +565,7 @@ export function PetProfileModal({ pet, db, me, onClose, onVacc, onBook }) {
   const over = current.filter(v => vaccinationStatus(v, current) === "Overdue").length;
   const soon = current.filter(v => vaccinationStatus(v, current) === "Due soon").length;
   const pending = V.filter(v => !v.done || !v.vetId).length;
-  const next = A.filter(a => ["Scheduled", "Confirmed", "Checked-in", "In consultation"].includes(a.status) && a.date >= clinicToday()).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
+  const next = A.filter(a => ["Pending Approval", "Scheduled", "Checked-in", "In consultation"].includes(a.status) && a.date >= clinicToday()).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
   
   const petAgeDetails = p.birth ? computeAgeDetails(p.birth) : null;
   const rows = [

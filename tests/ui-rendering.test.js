@@ -129,7 +129,7 @@ test('root recovery only resets the remembered screen and preserves stored data'
 test('owner dashboard explains a booked vaccine with no booster due date', () => {
   const db = populated();
   db.vacc = [];
-  db.appts = [{ id: 'vaccine-visit', petId: 'p1', ownerId: 'o1', service: 'vaccination', reason: 'Vaccination – Anti-rabies', date: '2099-01-05', time: '10:00', status: 'Confirmed' }];
+  db.appts = [{ id: 'vaccine-visit', petId: 'p1', ownerId: 'o1', service: 'vaccination', reason: 'Vaccination – Anti-rabies', date: '2099-01-05', time: '10:00', status: 'Scheduled' }];
   const html = render(ui.owner.Dash, props('owner', db));
   assert.match(html, /Anti-rabies/);
   assert.match(html, /Visit: 2099-01-05/);
@@ -138,7 +138,7 @@ test('owner dashboard explains a booked vaccine with no booster due date', () =>
 
 test('front desk surfaces a future booking before its arrival date', () => {
   const db = populated();
-  db.appts = [{id:'future-approval',petId:'p1',vetId:'v1',date:'2099-01-05',time:'10:00',status:'Scheduled',reason:'Future vaccination request',notes:'Please call before the visit.'}];
+  db.appts = [{id:'future-approval',petId:'p1',vetId:'v1',date:'2099-01-05',time:'10:00',status:'Pending Approval',reason:'Future vaccination request',notes:'Please call before the visit.'}];
   const html = render(ui.assistant.Dash, props('assistant', db));
   assert.match(html, /Needs clinic approval/);
   assert.match(html, /Visit requests \(1\)/);

@@ -1,9 +1,9 @@
 /** Client-side workflow validation. No database, API, or payment gateway. */
-export const VISIT_STATES = Object.freeze(['Scheduled','Pending','Confirmed','Checked-in','In consultation','In Progress','Completed','Cancelled','No-show']);
-export const BILLING_STATES = Object.freeze(['Unbilled','Unpaid','Partially Paid','Paid','Voided','Refunded']);
+export const VISIT_STATES = Object.freeze(['Pending Approval','Scheduled','Checked-in','In consultation','Completed','Cancelled','Rejected','No-show']);
+export const BILLING_STATES = Object.freeze(['Unbilled','Unpaid','Paid']);
 const permitted = {
-  Scheduled: ['Confirmed','Checked-in','Cancelled','No-show'], Pending: ['Confirmed','Cancelled'], Confirmed: ['Checked-in','Cancelled','No-show'],
-  'Checked-in': ['In consultation','In Progress'], 'In consultation': ['Completed'], 'In Progress': ['Completed'],
+  'Pending Approval': ['Scheduled','Cancelled','Rejected'], Scheduled: ['Checked-in','Cancelled','No-show'],
+  'Checked-in': ['In consultation'], 'In consultation': ['Completed'],
   Completed: [], Cancelled: [], 'No-show': [],
 };
 const roleName = role => String(role ?? '').toLowerCase().replace(/[^a-z]/g,'');
@@ -28,7 +28,7 @@ export function validateAppointment({petId,ownerId,date,reason,existing=[],exclu
   if (!ownerId) errors.ownerId='Choose the pet owner.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date||'')) || !Number.isFinite(Date.parse(`${date}T00:00:00`))) errors.date='Enter a valid appointment date.';
   if (!String(reason||'').trim()) errors.reason='Enter the reason for the visit.';
-  if (existing.some(a=>a.id!==excludeId && a.petId===petId && a.date===date && !['Cancelled','No-show'].includes(a.status))) errors.date='This pet already has an active appointment on the selected date.';
+  if (existing.some(a=>a.id!==excludeId && a.petId===petId && a.date===date && !['Cancelled','Rejected','No-show'].includes(a.status))) errors.date='This pet already has an active appointment on the selected date.';
   return errors;
 }
 export function validateIntake({weight,temp,notes}={}) {

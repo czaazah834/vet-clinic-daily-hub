@@ -10,7 +10,7 @@ test('waiting queue prioritizes triage, then date/time and stable IDs without ch
   assert.deepEqual(rows.map(a=>a.id), ['routine','p2','p1','er','old']);
 });
 test('separate stages preserve unfinished prior-day visits and respect doctor scope', () => {
-  const rows = [visit('wait'), visit('active','In consultation'), visit('done','Completed'), visit('expected','Confirmed'), visit('scheduled','Scheduled'), visit('cancelled','Cancelled'), visit('missed','No-show'), visit('old-active','In consultation',undefined,undefined,{date:'2026-10-24'}), visit('old-done','Completed',undefined,undefined,{date:'2026-10-24'}), visit('other',undefined,undefined,undefined,{vetId:'v2'})];
+  const rows = [visit('wait'), visit('active','In consultation'), visit('done','Completed'), visit('expected','Scheduled'), visit('scheduled','Pending Approval'), visit('cancelled','Cancelled'), visit('missed','No-show'), visit('old-active','In consultation',undefined,undefined,{date:'2026-10-24'}), visit('old-done','Completed',undefined,undefined,{date:'2026-10-24'}), visit('other',undefined,undefined,undefined,{vetId:'v2'})];
   const q = vetQueue(rows,date,['v1']);
   assert.deepEqual(q.waiting.map(a=>a.id),['wait']);
   assert.deepEqual(q.active.map(a=>a.id),['old-active','active']);

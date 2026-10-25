@@ -858,7 +858,7 @@ clinicRouter.post("/owner/pets", async (req, res) => {
         const apptId = "a_pre_" + Math.random().toString(36).slice(2, 8);
         const insAppt = await client.query(
           `INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount)
-           VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', 'Pending', 0) RETURNING *`,
+           VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled', 'Unbilled', 0) RETURNING *`,
           [apptId, petId, "vet_cruz", earliestDue.next_due, "10:00", `${earliestDue.vaccine} (Pre-scheduled)`]
         );
         preAppt = insAppt.rows[0];
@@ -997,7 +997,7 @@ async function savePetRequest(req, res) {
         : await client.query(`INSERT INTO pet_requests (name,species,species_other,breed,sex,birth,weight,color,neutered,notes,photo,dental_occlusion,id,owner_id)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,[...values,submissionId,req.user.ownerId]);
       if(saved.rows[0].pet_id) {
-        const visits=(await client.query("SELECT to_jsonb(a)->>'service' AS service,a.reason FROM appointments a WHERE pet_id=$1 AND status IN ('Scheduled','Confirmed')",[saved.rows[0].pet_id])).rows;
+        const visits=(await client.query("SELECT to_jsonb(a)->>'service' AS service,a.reason FROM appointments a WHERE pet_id=$1 AND status IN ('Pending Approval','Scheduled')",[saved.rows[0].pet_id])).rows;
         for(const visit of visits) if(visit.service==='vaccination' && vaccineIdFromReason(visit.reason)) requestedVaccineReason({...visit,species:data.species});
       }
       const pet=await savePendingPatient(client,saved.rows[0]);
@@ -1511,7 +1511,7 @@ async function saveBooking(req, res, editing = false) {
       await lockSchedule(client);
       const previous = editing ? (await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE", [req.params.id])).rows[0] : null;
       if (editing && !previous) throw bookingError("Appointment not found.", 404);
-      if (previous && !["Scheduled", "Confirmed"].includes(previous.status)) throw bookingError("Only upcoming appointments can be edited.", 409);
+      if (previous && !["Pending Approval", "Scheduled"].includes(previous.status)) throw bookingError("Only upcoming appointments can be edited.", 409);
       const b = req.body;
       const v = { petId: b.petId ?? previous?.pet_id, vetId: b.vetId ?? previous?.vet_id, date: b.date ?? previous?.date, time: b.time ?? previous?.time, reason: b.reason ?? previous?.reason, notes: b.notes ?? previous?.notes ?? "" };
       v.service = b.service ?? previous?.service ?? inferBookingService(v.reason);
@@ -1527,6 +1527,18 @@ async function saveBooking(req, res, editing = false) {
           if (!(await client.query("SELECT id FROM pets WHERE id = $1 AND owner_id = $2", [id, req.user.ownerId])).rows.length) throw bookingError("Pet not found.", 404);
         }
       }
+      // Stable client IDs make an acknowledged-lost create safe to retry.
+      if (!editing && b.id) {
+        if (typeof b.id !== 'string' || b.id.length > 50) throw bookingError('Invalid booking identifier.');
+        const existing=(await client.query("SELECT * FROM appointments WHERE id = $1 FOR UPDATE",[b.id])).rows[0];
+        if (existing) {
+          if (existing.pet_id !== v.petId || existing.vet_id !== v.vetId || toDateStr(existing.date) !== v.date || existing.time !== v.time || existing.service !== v.service || existing.reason !== v.reason.trim() || (existing.notes || '') !== v.notes || (existing.follow_up_id || null) !== (b.followUpId || null))
+            throw bookingError('This booking identifier has already been used. Refresh appointments before retrying.',409);
+          return existing;
+        }
+      }
+      if (previous && b.expectedVisit && !sameIntakeVisit(previous,b.expectedVisit))
+        throw bookingError('This appointment has changed. Refresh and review its current schedule.',409);
       if (b.vaccineId !== undefined || (v.service === 'vaccination' && vaccineIdFromReason(v.reason))) {
         const pet = (await client.query("SELECT species FROM pets WHERE id = $1", [v.petId])).rows[0];
         if (!pet) throw bookingError("Pet not found.", 404);
@@ -1538,7 +1550,7 @@ async function saveBooking(req, res, editing = false) {
       if (followUpId) {
         const request = (await client.query("SELECT * FROM consultations WHERE id = $1 FOR UPDATE", [followUpId])).rows[0];
         if (!request || request.pet_id !== v.petId || !request.follow_up_date || request.care_status === 'Routine care') throw bookingError("Choose an outstanding follow-up for this pet.");
-        const linked = await client.query("SELECT id FROM appointments WHERE follow_up_id=$1 AND status NOT IN ('Cancelled','No-show') AND id <> $2", [followUpId, previous?.id || '']);
+        const linked = await client.query("SELECT id FROM appointments WHERE follow_up_id=$1 AND status NOT IN ('Cancelled','Rejected','No-show') AND id <> $2", [followUpId, previous?.id || '']);
         if (linked.rows.length) throw bookingError("This follow-up already has a booked or completed visit.", 409);
       }
       const walkIn = !editing && b.bookingKind === "walk-in" && req.user.role === "assistant";
@@ -1546,17 +1558,18 @@ async function saveBooking(req, res, editing = false) {
       if (walkIn) {
         const clock = clinicClock(); v.date = clock.date; v.time = clock.time;
         const existing = (await client.query("SELECT * FROM appointments WHERE date = $1 AND (vet_id = $2 OR pet_id = $3)", [v.date, v.vetId, v.petId])).rows;
-        if (existing.some(a => a.pet_id === v.petId && !["Cancelled", "No-show", "Completed"].includes(a.status))) throw bookingError("This pet already has an active visit today. Check in that visit.", 409);
+        if (existing.some(a => a.pet_id === v.petId && !["Cancelled", "Rejected", "No-show", "Completed"].includes(a.status))) throw bookingError("This pet already has an active visit today. Check in that visit.", 409);
         duration = 30;
       } else {
         duration = await assertAvailable(client, v, previous?.id);
       }
       const changedSlot = previous && (v.petId !== previous.pet_id || v.vetId !== previous.vet_id || v.date !== previous.date || v.time !== previous.time || v.service !== previous.service || (v.service === "vaccination" && v.reason !== previous.reason));
       const values = [editing ? previous.id : b.id || `a_${crypto.randomUUID()}`, v.petId, v.vetId, v.date, v.time, v.reason.trim(), req.user.role === "owner" ? previous?.amount ?? 600 : Number(b.amount) || previous?.amount || 600, v.service, duration, walkIn ? "walk-in" : "reservation", v.notes];
-      const sql = editing ? `UPDATE appointments SET pet_id=$2,vet_id=$3,date=$4,time=$5,reason=$6,amount=$7,status=$12,service=$8,duration_minutes=$9,booking_kind=$10,notes=$11 WHERE id=$1 RETURNING *` : `INSERT INTO appointments (id,pet_id,vet_id,date,time,reason,amount,service,duration_minutes,booking_kind,notes,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Scheduled') RETURNING *`;
-      if (editing) values.push(changedSlot ? "Scheduled" : previous.status);
+      const sql = editing ? `UPDATE appointments SET pet_id=$2,vet_id=$3,date=$4,time=$5,reason=$6,amount=$7,status=$12,service=$8,duration_minutes=$9,booking_kind=$10,notes=$11 WHERE id=$1 RETURNING *` : `INSERT INTO appointments (id,pet_id,vet_id,date,time,reason,amount,service,duration_minutes,booking_kind,notes,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Pending Approval') RETURNING *`;
+      if (editing) values.push(changedSlot ? "Pending Approval" : previous.status);
       // UPDATE uses the same parameter positions as INSERT.
       const saved = await client.query(sql, values);
+      if (walkIn) { await client.query("UPDATE appointments SET status='Scheduled' WHERE id=$1",[values[0]]); saved.rows[0].status="Scheduled"; }
       if (followUpId) {
         await client.query("UPDATE appointments SET follow_up_id=$1 WHERE id=$2", [followUpId, values[0]]);
         saved.rows[0].follow_up_id = followUpId;
@@ -1589,7 +1602,7 @@ clinicRouter.patch("/appointments/:id/status", async (req, res) => {
       }
       const invalid = validateStatusChange(current, req.body, req.user);
       if (invalid) throw Object.assign(new Error(invalid), { status: 409 });
-      if (['Confirmed','Checked-in','In consultation'].includes(status) && (await client.query("SELECT id FROM pets WHERE id=$1 AND registration_status<>'Verified'",[current.pet_id])).rows.length) throw bookingError('Review and approve this pet registration in Online Pet Requests before confirming or starting the visit.',409);
+      if (['Scheduled','Checked-in','In consultation'].includes(status) && (await client.query("SELECT id FROM pets WHERE id=$1 AND registration_status<>'Verified'",[current.pet_id])).rows.length) throw bookingError('Review and approve this pet registration in Online Pet Requests before confirming or starting the visit.',409);
       if (status === 'Checked-in' || status === 'In consultation') {
         const doctor=(await client.query("SELECT id, vet_id FROM users WHERE role = 'vet' AND (id=$1 OR vet_id=$1) AND COALESCE(to_jsonb(users)->>'is_active','true') <> 'false'",[current.vet_id])).rows[0];
         if(!doctor)throw bookingError("The assigned veterinarian is inactive. Reception must reassign an upcoming visit before check-in; active care requires a veterinarian handoff.",409);
@@ -2206,7 +2219,7 @@ clinicRouter.post("/consultations", async (req, res) => {
         await client.query("INSERT INTO pet_weights (pet_id, date, kg, recorded_by) VALUES ($1,$2,$3,$4)", [petId, date, weight, req.user.name]);
       }
       const invoice = [...services, ...prescriptionInvoice(rx.items)];
-      const savedAppointment = (await client.query("UPDATE appointments SET status = 'Completed', billing_status = 'Unbilled', invoice_items=$2 WHERE id = $1 RETURNING *", [apptId, JSON.stringify(invoice)])).rows[0];
+      const savedAppointment = (await client.query("UPDATE appointments SET status = 'Completed', billing_status = 'Unpaid', invoice_items=$2 WHERE id = $1 RETURNING *", [apptId, JSON.stringify(invoice)])).rows[0];
       await createCheckoutTask(client, apptId);
       await client.query("INSERT INTO audit_logs (user_name, user_role, action) VALUES ($1,$2,$3)", [req.user.name, req.user.role, `Finalized consultation ${consultId} for visit ${apptId}`]);
       return { consultation: savedConsultation, appointment: savedAppointment, vaccination: savedVaccination, weight: weight === undefined ? null : {petId,date,kg:weight,by:req.user.name}, prescriptionItems: rx.items, prescription: rx.text, invoiceItems: invoice };

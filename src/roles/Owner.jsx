@@ -17,7 +17,7 @@ import { setPrefill, petAge, fmt12, Avatar, pick, Icon } from "./owner/ui.jsx";
 import "./owner/owner.css";
 import "./owner/owner-modern.css";   // keep AFTER owner.css so the refreshed look wins
 
-const LIVE = ["Scheduled", "Confirmed", "Checked-in", "In consultation"];
+const LIVE = ["Pending Approval", "Scheduled", "Checked-in", "In consultation"];
 function Dash({ db, setDb, me, go, say }) {
   const TODAY = bookingToday();
   const [modal, setModal] = useState(null);   // { form, editing } or { profile }

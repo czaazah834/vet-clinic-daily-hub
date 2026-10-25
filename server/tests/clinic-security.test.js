@@ -20,7 +20,7 @@ const fakeQuery = async (sql, params = []) => {
   if (sql==='SELECT registration_status FROM pets WHERE id=$1') return rows(db.pets.filter(p=>p.id===params[0]).map(p=>({registration_status:p.registration_status || 'Verified'})));
   if (sql==="SELECT id FROM pets WHERE id=$1 AND registration_status<>'Verified'") return rows(db.pets.filter(p=>p.id===params[0] && p.registration_status && p.registration_status!=='Verified'));
   if (sql.startsWith('SELECT to_regclass')) return rows([]);
-  if (sql.startsWith('-- Preserve owner-submitted') || sql.startsWith('-- Durable reception') || sql.startsWith('-- Idempotent migration') || sql.startsWith('SELECT pg_advisory_xact_lock')) return rows([]);
+  if (sql.startsWith('-- Rename legacy states') || sql.startsWith('-- Preserve owner-submitted') || sql.startsWith('-- Durable reception') || sql.startsWith('-- Idempotent migration') || sql.startsWith('SELECT pg_advisory_xact_lock')) return rows([]);
   if (sql.startsWith("SELECT version FROM pawcare_schema_migrations WHERE version='admission-care-v1'")) return rows([{version:'admission-care-v1'}]);
   if (sql.startsWith('-- Admission is separate') || sql.startsWith('-- Extend existing stays')) return rows([]);
   if (sql.includes('FROM admissions WHERE appt_id') || sql.includes('FROM admission_updates e JOIN admissions')) return rows([]);
@@ -55,7 +55,7 @@ const fakeQuery = async (sql, params = []) => {
   if (sql.startsWith('INSERT INTO checkout_tasks')) { if (!db.tasks.some(t=>t.appointment_id===params[0])) db.tasks.push({appointment_id:params[0],status:'pending'}); return rows([]); }
   if (sql.startsWith('UPDATE checkout_tasks')) { const t=db.tasks.find(t=>t.appointment_id===params[0]);t.status='completed';t.completed_by=params[1];return rows([t]); }
   if (sql.startsWith('INSERT INTO audit_logs')) { const row = { user_name: params[0], user_role: params[1], action: params[2] }; db.logs.push(row); return rows([row]); }
-  if (sql.startsWith('INSERT INTO appointments')) { const row = { id: params[0], pet_id: params[1], vet_id: params[2], date: params[3], time: params[4], reason: params[5], status: 'Scheduled', amount: params[6], service:params[7],duration_minutes:params[8],booking_kind:params[9],notes:params[10],billing_status:'Unbilled' }; db.appts.push(row); return rows([row]); }
+  if (sql.startsWith('INSERT INTO appointments')) { const row = { id: params[0], pet_id: params[1], vet_id: params[2], date: params[3], time: params[4], reason: params[5], status: 'Pending Approval', amount: params[6], service:params[7],duration_minutes:params[8],booking_kind:params[9],notes:params[10],billing_status:'Unbilled' }; db.appts.push(row); return rows([row]); }
   if (sql.startsWith('INSERT INTO consultations')) { const row = Object.fromEntries(['id', 'pet_id', 'vet_id', 'appt_id', 'date', 'symptoms', 'objective', 'diagnosis', 'treatment', 'prescription'].map((k, i) => [k, params[i]])); db.consults.push(row); return rows([row]); }
   if (sql.startsWith('UPDATE consultations SET care_status')) { const row = db.consults.find(c => c.id === params[3]); Object.assign(row, {care_status:params[0], follow_up_date:params[1], follow_up_reason:params[2]}); return rows([row]); }
   if (sql.startsWith('UPDATE consultations SET performed_services')) { const row = db.consults.find(c => c.id === params[1]); row.performed_services=JSON.parse(params[0]); return rows([row]); }
@@ -72,7 +72,7 @@ const fakeQuery = async (sql, params = []) => {
       for(const [i,key] of ['id','pet_id','vet_id','date','time','reason','amount','service','duration_minutes','booking_kind','notes','status'].entries())row[key]=params[i];
       return rows([row]);
     }
-    if (sql.includes("status = 'Completed'")) { const row = db.appts.find(a => a.id === params[0]); row.status = 'Completed'; row.billing_status = 'Unbilled'; if(params[1]) row.invoice_items=JSON.parse(params[1]); return rows([row]); }
+    if (sql.includes("status = 'Completed'")) { const row = db.appts.find(a => a.id === params[0]); row.status = 'Completed'; row.billing_status = 'Unpaid'; if(params[1]) row.invoice_items=JSON.parse(params[1]); return rows([row]); }
     if (sql.includes('paid_at')) { const row = db.appts.find(a => a.id === params[4]); Object.assign(row, { amount: params[0], payment_method: params[1], invoice_items: JSON.parse(params[2]), payment_details: JSON.parse(params[3]), billing_status: 'Paid', paid_at:'2026-10-24T10:30:00Z' }); return rows([row]); }
     const row = db.appts.find(a => a.id === params.at(-1));
     if(sql.includes("booking_kind = 'walk-in'"))row.booking_kind='walk-in';
@@ -97,7 +97,7 @@ const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.o
 after(() => new Promise(resolve => server.close(resolve)));
 beforeEach(() => {
   calls = []; failSql = null; rollbacks = 0;
-  db = { owners: [{ id: 'o1', name: 'Own owner' }, { id: 'o2', name: 'Other owner' }], pets: [{ id: 'p1', owner_id: 'o1', name: 'Own pet', weight: 5, vaccination_card_id: 'VACC-SYNTHETIC' }, { id: 'p2', owner_id: 'o2', name: 'Other pet', weight: 7 }], appts: [{ id: 'a1', pet_id: 'p1', vet_id: 'v1', date: clinicClock().date, time: '09:00', reason:'Examination', status: 'Scheduled', amount: 600, billing_status: 'Unbilled' }, { id: 'a2', pet_id: 'p2', vet_id: 'v2', date: clinicClock().date, time: '10:00', status: 'Scheduled' }], requests: [{ id: 'r1', owner_id: 'o1', name:'Request One', status: 'Pending',revision:0 }, { id: 'r2', owner_id: 'o2', name:'Request Two',status: 'Pending',revision:0 }], consults: [], vaccs: [], logs: [], tasks: [] };
+  db = { owners: [{ id: 'o1', name: 'Own owner' }, { id: 'o2', name: 'Other owner' }], pets: [{ id: 'p1', owner_id: 'o1', name: 'Own pet', weight: 5, vaccination_card_id: 'VACC-SYNTHETIC' }, { id: 'p2', owner_id: 'o2', name: 'Other pet', weight: 7 }], appts: [{ id: 'a1', pet_id: 'p1', vet_id: 'v1', date: clinicClock().date, time: '09:00', reason:'Examination', status: 'Pending Approval', amount: 600, billing_status: 'Unbilled' }, { id: 'a2', pet_id: 'p2', vet_id: 'v2', date: clinicClock().date, time: '10:00', status: 'Pending Approval' }], requests: [{ id: 'r1', owner_id: 'o1', name:'Request One', status: 'Pending',revision:0 }, { id: 'r2', owner_id: 'o2', name:'Request Two',status: 'Pending',revision:0 }], consults: [], vaccs: [], logs: [], tasks: [] };
 });
 const request = async (role, method, path, body) => {
   const res = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer session-${role}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -142,7 +142,7 @@ test('doctors cannot manage bookings even for assigned patients or by spoofing r
     const body = method === 'GET' ? undefined : { actorRole: 'assistant', petId: 'p1', vetId: 'v1', date: futureDate(), time: '11:00' };
     assert.equal((await request('vet', method, path, body)).status, 403, `${method} ${path}`);
   }
-  for (const status of ['Confirmed', 'Checked-in', 'Cancelled', 'No-show']) {
+  for (const status of ['Scheduled', 'Checked-in', 'Cancelled', 'Rejected', 'No-show']) {
     assert.equal((await request('vet', 'PATCH', '/appointments/a1/status', { actorRole: 'assistant', status })).status, 409, status);
   }
   assert.deepEqual(db, before);
@@ -170,6 +170,7 @@ test('owner can cancel own upcoming visit but cannot inject vitals, billing or c
   assert.equal(db.appts[0].status, 'Cancelled');
 });
 test('assistant check-in persists reason and measured vitals without the previous ReferenceError', async () => {
+  db.appts[0].status = 'Scheduled';
   const result = await request('assistant', 'PATCH', '/appointments/a1/status', { status: 'Checked-in', reason: 'Exam', intakeVitals: { weight: 5.1, temp: 38.6 }, actorName: 'Forged', actorRole: 'vet' });
   assert.equal(result.status, 200); assert.equal(db.appts[0].status, 'Checked-in'); assert.equal(db.appts[0].intake_vitals.weight, 5.1);
   const update = calls.find(c => c.sql.startsWith('UPDATE appointments')); assert.match(update.sql, /reason =/); assert.ok(update.params.includes('Exam'));
@@ -177,7 +178,7 @@ test('assistant check-in persists reason and measured vitals without the previou
 });
 test('initial check-in requires the saved Manila day and cannot rewrite a reserved slot', async () => {
   const body = {status:'Checked-in',intakeVitals:{weight:5.2,temp:38.6}};
-  for (const status of ['Scheduled','Confirmed']) {
+  for (const status of ['Scheduled']) {
     for (const offset of [-1,1]) {
       Object.assign(db.appts[0],{status,date:shiftDate(clinicClock().date,offset)});
       const before=structuredClone(db);
@@ -191,7 +192,7 @@ test('initial check-in requires the saved Manila day and cannot rewrite a reserv
       }
     }
   }
-  Object.assign(db.appts[0],{status:'Confirmed',date:clinicClock().date,booking_kind:'scheduled'});
+  Object.assign(db.appts[0],{status:'Scheduled',date:clinicClock().date,booking_kind:'scheduled'});
   for (const override of [{date:clinicClock().date},{time:'12:00'}]) {
     assert.equal((await request('assistant','PATCH','/appointments/a1/status',{...body,...override})).status,409);
   }
@@ -209,6 +210,7 @@ test('already checked-in patients retain prior-day intake and ongoing care', asy
   assert.equal((await request('vet','PATCH','/appointments/a1/status',{status:'In consultation'})).status,200);
 });
 test('initial arrival follows the Manila day across UTC midnight boundaries', async (t) => {
+  db.appts[0].status = 'Scheduled';
   t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-24T16:05:00Z')});
   db.appts[0].date='2026-10-24';
   const body={status:'Checked-in',intakeVitals:{weight:5,temp:38.5}};
@@ -223,6 +225,7 @@ test('check-in rejects missing/nonfinite/out-of-range vitals and invalid state t
   assert.equal(calls.some(c => c.sql.startsWith('UPDATE appointments')), false);
 });
 test('failed check-in rolls back and returns failure', async () => {
+  db.appts[0].status = 'Scheduled';
   failSql = /^UPDATE appointments/;
   assert.equal((await request('assistant', 'PATCH', '/appointments/a1/status', { status: 'Checked-in', intakeVitals: { weight: 5, temp: 38.5 } })).status, 500);
   assert.equal(db.appts[0].status, 'Scheduled'); assert.equal(rollbacks, 1);
@@ -295,7 +298,7 @@ test('checkout rolls back payment if its durable audit write fails', async () =>
 
 test('availability reveals only open slot strings and accounts for another owner reservation', async () => {
   const date=futureDate();
-  db.appts.push({id:'other-reservation',pet_id:'p2',vet_id:'v1',date,time:'10:00',duration_minutes:120,status:'Scheduled'});
+  db.appts.push({id:'other-reservation',pet_id:'p2',vet_id:'v1',date,time:'10:00',duration_minutes:120,status:'Pending Approval'});
   const r=await request('owner','GET',`/appointments/availability?vetId=v1&date=${date}&service=checkup`);
   assert.equal(r.status,200); assert.deepEqual(Object.keys(r.data),['slots']);
   assert.ok(r.data.slots.every(s=>/^\d{2}:\d{2}$/.test(s))); assert.ok(!r.data.slots.includes('11:30')); assert.ok(r.data.slots.includes('12:00'));
@@ -308,7 +311,7 @@ test('server rejects invalid booking dates, slot grids and conflicting durations
     const r=await request('owner','POST','/appointments',{petId:'p1',vetId:'v1',date:futureDate(),time:'10:00',reason:'Annual checkup',...patch});
     assert.equal(r.status,400,JSON.stringify(patch));
   }
-  db.appts.push({id:'other',pet_id:'p2',vet_id:'v1',date:futureDate(),time:'09:30',duration_minutes:120,status:'Scheduled'});
+  db.appts.push({id:'other',pet_id:'p2',vet_id:'v1',date:futureDate(),time:'09:30',duration_minutes:120,status:'Pending Approval'});
   assert.equal((await request('owner','POST','/appointments',{petId:'p1',vetId:'v1',date:futureDate(),time:'10:30',reason:'Checkup'})).status,409);
 });
 test('owners cannot bypass reservation validation by calling a booking a walk-in',async()=>{
@@ -345,10 +348,10 @@ test('state tags never bypass session checks or current role scope', async () =>
 
 
 test('reception reassigns an upcoming visit to a live doctor, retaining ID and owner notes', async () => {
-  const date=futureDate();Object.assign(db.appts[0],{vet_id:'inactive-doctor',date,status:'Confirmed',service:'checkup',notes:'Call owner before visit'});
+  const date=futureDate();Object.assign(db.appts[0],{vet_id:'inactive-doctor',date,status:'Scheduled',service:'checkup',notes:'Call owner before visit'});
   const result=await request('assistant','PUT','/appointments/a1',{petId:'p1',vetId:'v1',date,time:'11:00',service:'checkup',reason:'Annual exam',notes:db.appts[0].notes});
   assert.equal(result.status,200);assert.equal(result.data.appointment.id,'a1');assert.equal(result.data.appointment.vetId,'v1');
-  assert.equal(result.data.appointment.status,'Scheduled');assert.equal(result.data.appointment.notes,'Call owner before visit');
+  assert.equal(result.data.appointment.status,'Pending Approval');assert.equal(result.data.appointment.notes,'Call owner before visit');
   const owner=await request('owner','GET','/state');assert.equal(owner.data.data.appts.find(a=>a.id==='a1').vetId,'v1');
   db.appts[0].status='Checked-in';
   assert.equal((await request('assistant','PUT','/appointments/a1',{vetId:'v1'})).status,409);
@@ -357,12 +360,12 @@ test('reception reassigns an upcoming visit to a live doctor, retaining ID and o
 test('one visit connects owner booking, reception intake, assigned vet care, checkout and admin audit', async (t) => {
   const date=futureDate(),id='connected-visit';
   const booking=await request('owner','POST','/appointments',{id,petId:'p1',vetId:'v1',date,time:'11:00',service:'checkup',reason:'Owner reports appetite change',notes:'Call before visit'});
-  assert.equal(booking.status,200);assert.equal(booking.data.appointment.id,id);assert.equal(booking.data.appointment.status,'Scheduled');
+  assert.equal(booking.status,200);assert.equal(booking.data.appointment.id,id);assert.equal(booking.data.appointment.status,'Pending Approval');
   const state=async role=>{const result=await request(role,'GET','/state');assert.equal(result.status,200);return applyClinicState(emptyClinicState(),result.data.data);};
   const visit=(data)=>data.appts.find(a=>a.id===id);
   assert.equal(visit(await state('assistant')).notes,'Call before visit');
-  assert.equal((await request('assistant','PATCH',`/appointments/${id}/status`,{status:'Confirmed'})).status,200);
-  assert.equal(visit(await state('owner')).status,'Confirmed');
+  assert.equal((await request('assistant','PATCH',`/appointments/${id}/status`,{status:'Scheduled'})).status,200);
+  assert.equal(visit(await state('owner')).status,'Scheduled');
   t.mock.timers.enable({apis:['Date'],now:new Date(`${date}T11:00:00+08:00`)});
   assert.equal((await request('assistant','PATCH',`/appointments/${id}/status`,{status:'Checked-in',intakeVitals:{weight:5.2,temp:38.6,triageLevel:'Priority'},reason:'Measured intake complaint'})).status,200);
   const queued=visit(await state('vet'));assert.equal(queued.status,'Checked-in');assert.equal(queued.date,clinicClock().date);assert.equal(queued.intakeVitals.weight,5.2);assert.equal(queued.reason,'Measured intake complaint');
@@ -392,7 +395,7 @@ test('obsolete registration and vaccine writes are retired without mutations',as
 test('no-show waits until the saved Manila time, accepts legacy times and fails closed on missing time', async t => {
  t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-24T01:00:00Z')});
  const {validateStatusChange}=await import('../clinicAccess.js');
- const row={status:'Confirmed',date:'2026-10-24',time:'09:01'};
+ const row={status:'Scheduled',date:'2026-10-24',time:'09:01'};
  const body={status:'No-show'},user={role:'assistant'};
  assert.match(validateStatusChange(row,body,user),/before/);
  for(const time of ['09:00','9:00 AM','08:59'])assert.equal(validateStatusChange({...row,time},body,user),null);

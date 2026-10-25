@@ -11,7 +11,7 @@ export function vetQueue(appointments, date, vetIds = null) {
     waiting: visits.filter(a => a.status === 'Checked-in').sort((a,b) => priority(a) - priority(b) || chronological(a,b)),
     active: visits.filter(a => a.status === 'In consultation').sort(chronological),
     completed: visits.filter(a => a.status === 'Completed').sort(chronological),
-    expected: visits.filter(a => ['Scheduled', 'Confirmed'].includes(a.status)).length,
+    expected: visits.filter(a => ['Pending Approval', 'Scheduled'].includes(a.status)).length,
   };
 }
 export const certifiedRecalls = (records, through) => currentVaccinationDue(records).filter(v => v.nextDue <= through);

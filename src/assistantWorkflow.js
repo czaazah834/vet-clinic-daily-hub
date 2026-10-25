@@ -55,7 +55,7 @@ export function assistantQueue(appointments, date = today()) {
   const byStatus = statuses => flow.filter(a => statuses.includes(a.status)).sort(chronological);
   return {
     visits,
-    arrivals:byStatus(['Scheduled','Confirmed']),
+    arrivals:byStatus(['Scheduled']),
     waiting:byStatus(['Checked-in']).sort((a,b) => priority(a)-priority(b) || chronological(a,b)),
     consultation:byStatus(['In consultation']),
     completed:byStatus(['Completed']),
@@ -65,6 +65,6 @@ export function assistantQueue(appointments, date = today()) {
 
 // Keep future requests visible independently of today's arrival/triage queue.
 export function pendingVisitApprovals(appointments, date = today()) {
-  return appointments.filter(a => a.status === 'Scheduled' && a.date >= date)
+  return appointments.filter(a => a.status === 'Pending Approval' && a.date >= date)
     .sort((a,b) => a.date.localeCompare(b.date) || String(a.time || '').localeCompare(String(b.time || '')) || a.id.localeCompare(b.id));
 }

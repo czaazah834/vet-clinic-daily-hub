@@ -11,6 +11,7 @@ if(!['localhost','127.0.0.1'].includes(url.hostname))throw Error('Local database
 const admin=new pg.Pool({connectionString:url.href}),schema=`test_contact_${crypto.randomUUID().replaceAll('-','')}`;
 await admin.query(`CREATE SCHEMA ${schema}`);url.searchParams.set('options',`-c search_path=${schema},public`);process.env.DATABASE_URL=url.href;
 const {query,pool}=await import('../db.js');await query(readFileSync(new URL('../database/schema.sql',import.meta.url),'utf8'));
+await query(readFileSync(new URL('../database/appointment-status.sql',import.meta.url),'utf8'));
 let messages=[],delivery='synthetic';
 mock.module('../services.js',{exports:{sendMail:async(to,subject,text)=>{messages.push({channel:'email',to,text});return {ok:true,via:delivery};},sendSms:async(to,text)=>{messages.push({channel:'phone',to,text});return {ok:true,via:delivery};},serverOutbox:[]}});
 const {sha256}=await import('../security.js');const {accountRouter}=await import('../routes/account.js');

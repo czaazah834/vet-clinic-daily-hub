@@ -21,7 +21,7 @@ test('performed services and administered vaccines are charged once at official 
 });
 test('each follow-up survives later notes, ignores unrelated visits and reopens after cancellation',()=>{
  const r={id:'r1',petId:'p1',careStatus:'Recheck required',followUpDate:'2026-11-01'};
- const unrelated={id:'a',petId:'p1',date:'2026-11-01',time:'10:00',status:'Scheduled'};
+ const unrelated={id:'a',petId:'p1',date:'2026-11-01',time:'10:00',status:'Pending Approval'};
  const db={records:[r,{id:'newer',petId:'p1',careStatus:'Routine care'}],appts:[unrelated]};
  assert.deepEqual(openFollowUps(db),[r]);
  const linked={...unrelated,id:'b',followUpId:'r1'};db.appts.push(linked);

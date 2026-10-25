@@ -32,7 +32,7 @@ test('server canonicalizes explicit vaccine requests and preserves legacy generi
  assert.throws(()=>requestedVaccineReason({service:'vaccination',species:'Feline',reason:'Vaccination: DHPP'}));
 });
 test('a booking acknowledgment must confirm the selected vaccine purpose',()=>{
- const expected={id:'a',petId:'p',vetId:'v',date:'2026-10-26',time:'10:00',service:'vaccination',status:'Scheduled',vaccineId:'rabies',reason:'Vaccination: Anti-rabies'};
+ const expected={id:'a',petId:'p',vetId:'v',date:'2026-10-26',time:'10:00',service:'vaccination',status:'Pending Approval',vaccineId:'rabies',reason:'Vaccination: Anti-rabies'};
  assert.equal(confirmedBooking({success:true,appointment:{...expected}},expected).reason,expected.reason);
  assert.throws(()=>confirmedBooking({success:true,appointment:{...expected,reason:'Generic vaccine'}},expected));
 });

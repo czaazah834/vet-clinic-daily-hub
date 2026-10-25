@@ -128,14 +128,14 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
             <b>Today's existing visit{activeVisits.length > 1 ? "s" : ""}</b>
             <p>Continue with the saved visit and assigned veterinarian.</p>
             {activeVisits.map(visit => {
-              const canIntake = ["Scheduled", "Confirmed", "Checked-in"].includes(visit.status);
+              const canIntake = ["Scheduled", "Checked-in"].includes(visit.status);
               const vet = (db.vets || []).find(v => v.id === visit.vetId);
               return <div key={visit.id} style={{marginBottom:12}}>
                 <div>{visit.time || "Time not recorded"} · {visit.status} · {vet?.name || "Veterinarian not found"}</div>
                 <p style={{whiteSpace:"pre-wrap"}}>{visit.reason || "Visit reason not recorded"}</p>
                 {canIntake ? <button type="button" className="btn gold sm" onClick={() => {
                   const current = (db.appts || []).find(a => a.id === visit.id);
-                  if (!current || !["Scheduled", "Confirmed", "Checked-in"].includes(current.status)) return;
+                  if (!current || !["Scheduled", "Checked-in"].includes(current.status)) return;
                   onClose(); onCheckIn(current);
                 }}>{visit.status === "Checked-in" ? "Review saved intake" : "Record vitals for this visit"}</button>
                   : <p>{visit.status === "In consultation" ? "The veterinarian is already seeing this patient." : "Open the visit in the calendar to check its status."}</p>}

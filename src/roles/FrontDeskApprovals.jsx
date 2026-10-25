@@ -5,7 +5,7 @@ import { CalendarCheck, CalendarDays, PawPrint } from "lucide-react";
 import { pendingVisitApprovals } from "../assistantWorkflow.js";
 import { fmt12 } from "../booking.js";
 
-export default function FrontDeskApprovals({ db, onReviewPet, onOpenCard, onCalendar, onConfirm, confirming, error }) {
+export default function FrontDeskApprovals({ db, onReviewPet, onOpenCard, onCalendar, onConfirm, onReject, confirming, error }) {
   const [view, setView] = useState("visits");
   const visits = pendingVisitApprovals(db.appts);
   const pets = (db.petRequests || []).filter(r => r.status === "Pending");
@@ -27,7 +27,7 @@ export default function FrontDeskApprovals({ db, onReviewPet, onOpenCard, onCale
         return <article className="sf-approval-item" key={a.id}>
           <div className="sf-approval-date"><CalendarDays size={18} aria-hidden="true" /><b>{a.date}</b><span>{a.time ? fmt12(a.time) : "Time not recorded"}</span></div>
           <div className="sf-body"><h3>{pet?.name || a.petName || "Patient"}</h3><p>{a.reason || a.service || "Visit request"}</p><VaccineEstimate appointment={a} compact /><p><b>Owner:</b> {owner?.name || a.ownerName || "Not recorded"} · {owner?.phone || owner?.email || "No contact on file"}</p><p><b>Veterinarian:</b> {vet?.name || "Not recorded"}</p>{a.notes && <p className="sf-approval-note">{a.notes}</p>}</div>
-          <div className="sf-approval-actions"><span className="sf-pill wa">Awaiting confirmation</span><button className="btn sm" disabled={!!confirming[a.id]} onClick={() => onConfirm(a)}>{confirming[a.id] ? "Approving…" : "Approve visit"}</button><button className="btn ghost sm" onClick={() => onOpenCard(a.petId, a)}>View patient</button></div>
+          <div className="sf-approval-actions"><span className="sf-pill wa">Pending Approval</span><button className="btn sm" disabled={!!confirming[a.id]} onClick={() => onConfirm(a)}>{confirming[a.id] ? "Approving…" : "Approve visit"}</button><button className="btn danger sm" disabled={!!confirming[a.id]} onClick={() => onReject(a)}>Reject request</button><button className="btn ghost sm" onClick={() => onOpenCard(a.petId, a)}>View patient</button></div>
         </article>;
       }) : <div className="sf-approval-empty"><CalendarCheck size={26} aria-hidden="true" /><b>No visit requests awaiting approval</b><span>New bookings appear here before the clinic confirms them.</span></div>
       : pets.length ? pets.map(p => {

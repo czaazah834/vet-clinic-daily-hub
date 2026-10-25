@@ -34,7 +34,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const currentVisit = (db.appts || []).find(a => a.id === appt?.id);
   const [conflict, setConflict] = useState(false);
   const stale = conflict || !currentVisit || !sameIntakeVisit(baseline.current, currentVisit)
-    || !sameIntakeVisit(baseline.current, appt) || !["Scheduled", "Confirmed", "Checked-in"].includes(currentVisit.status);
+    || !sameIntakeVisit(baseline.current, appt) || !["Scheduled", "Checked-in"].includes(currentVisit.status);
   const pet = (db.pets && appt ? db.pets.find(p => p.id === appt.petId) : null) || {};
   const owner = (db.owners && pet.ownerId ? db.owners.find(o => o.id === pet.ownerId) : null) || {};
 

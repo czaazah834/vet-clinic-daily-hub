@@ -15,6 +15,7 @@ url.searchParams.set('options',`-c search_path=${schema},public`);
 process.env.DATABASE_URL = url.href;
 const {query,pool} = await import('../db.js');
 await query(readFileSync(new URL('../database/schema.sql',import.meta.url),'utf8'));
+await query(readFileSync(new URL('../database/appointment-status.sql',import.meta.url),'utf8'));
 const {sha256} = await import('../security.js');
 const {clinicRouter} = await import('../routes/clinic.js');
 const app = express(); app.use(express.json({limit:'10mb'})); app.use(cookieParser()); app.use('/api',clinicRouter);
@@ -231,14 +232,14 @@ test('new owner saves once, reloads pending patient and books before review; app
  const booking={petId:pet.id,vetId:'onboarding-vet',date,time:'09:00',reason:'Routine examination',service:'checkup'};
  assert.equal((await call(other,'POST','/appointments',booking)).status,404);
  const booked=await call(owner,'POST','/appointments',booking);assert.equal(booked.status,200,JSON.stringify(booked));
- assert.equal(booked.data.appointment.status,'Scheduled');assert.equal(booked.data.appointment.petId,pet.id);
+ assert.equal(booked.data.appointment.status,'Pending Approval');assert.equal(booked.data.appointment.petId,pet.id);
  assert.equal((await query('SELECT registration_status FROM pets WHERE id=$1',[pet.id])).rows[0].registration_status,'Pending');
- assert.equal((await call(assistant,'PATCH',`/appointments/${booked.data.appointment.id}/status`,{status:'Confirmed'})).status,409,'staff must review registration before confirming visit');
+ assert.equal((await call(assistant,'PATCH',`/appointments/${booked.data.appointment.id}/status`,{status:'Scheduled'})).status,409,'staff must review registration before confirming visit');
  assert.equal((await call(owner,'DELETE',`/pet-requests/${request.id}`)).status,409,'cannot erase patient or appointment history');
  const approved=await review(request.id,'approve',0);assert.equal(approved.status,200,JSON.stringify(approved));assert.equal(approved.data.pet.id,pet.id);assert.equal(approved.data.pet.registration_status,'Verified');
  assert.equal((await query('SELECT pet_id FROM appointments WHERE id=$1',[booked.data.appointment.id])).rows[0].pet_id,pet.id);
  assert.equal((await query('SELECT count(*)::int n FROM pets WHERE owner_id=$1',[pet.owner_id])).rows[0].n,1);
- assert.equal((await call(assistant,'PATCH',`/appointments/${booked.data.appointment.id}/status`,{status:'Confirmed'})).status,200);
+ assert.equal((await call(assistant,'PATCH',`/appointments/${booked.data.appointment.id}/status`,{status:'Scheduled'})).status,200);
 });
 
 test('withdrawal removes an unused pending profile without resetting completed first-pet setup',async()=>{

@@ -32,6 +32,7 @@ async function main() {
     console.log("Executing schema DDL...");
     await query(schemaSql);
     await query(fs.readFileSync(path.join(__dirname, "../database/scheduling.sql"), "utf-8"));
+    await query(fs.readFileSync(path.join(__dirname, "../database/appointment-status.sql"), "utf8"));
     console.log("Tables and indexes successfully verified.");
 
     await query(fs.readFileSync(path.join(__dirname, "../database/checkout-inbox.sql"), "utf-8"));
@@ -149,8 +150,8 @@ async function main() {
       INSERT INTO appointments (id, pet_id, vet_id, date, time, reason, status, billing_status, amount, intake_vitals)
       VALUES
         ('a_1', 'p_1', 'u_vet_1', $1, '09:00', 'Annual Booster & Routine Checkup', 'Checked-in', 'Unbilled', 850.00, '{"weight": 24.5, "weightStatus": "healthy", "temp": 38.4, "tempStatus": "normal", "heartRate": 95, "checkedInBy": "Liza Ramos"}'),
-        ('a_2', 'p_2', 'u_vet_2', $1, '10:30', 'Skin Scratching / Allergy Consultation', 'Confirmed', 'Unbilled', 600.00, NULL),
-        ('a_3', 'p_3', 'u_vet_1', $1, '14:00', 'Rabies Booster Shot', 'Scheduled', 'Unbilled', 500.00, NULL)
+        ('a_2', 'p_2', 'u_vet_2', $1, '10:30', 'Skin Scratching / Allergy Consultation', 'Scheduled', 'Unbilled', 600.00, NULL),
+        ('a_3', 'p_3', 'u_vet_1', $1, '14:00', 'Rabies Booster Shot', 'Pending Approval', 'Unbilled', 500.00, NULL)
       ON CONFLICT (id) DO NOTHING
     `, [today]);
 

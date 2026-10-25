@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ownerBill } from '../src/ownerBilling.js';
-const visit={id:'visit1',status:'Scheduled',billingStatus:'Unpaid',amount:600,invoiceItems:[]};
+const visit={id:'visit1',status:'Pending Approval',billingStatus:'Unpaid',amount:600,invoiceItems:[]};
 const lines=[{name:'Consultation',price:500,qty:1},{name:'Prescribed product',price:125.35,qty:2}];
 
 test('booking defaults and unfinished checkout are never presented as actual debt',()=>{

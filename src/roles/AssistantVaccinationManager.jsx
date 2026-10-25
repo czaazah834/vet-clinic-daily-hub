@@ -322,12 +322,12 @@ export default function AssistantVaccinationManager({ db, setDb, me, say }) {
                       {(() => {
                         const hasAppt = (db.appts || []).find(a =>
                           a.petId === (p.id || v.petId) &&
-                          !["Cancelled", "No-show"].includes(a.status) &&
+                          !["Cancelled", "Rejected", "No-show"].includes(a.status) &&
                           (a.date === v.nextDue || (a.date >= TODAY && (a.reason || "").toLowerCase().includes((v.vaccine || "").toLowerCase())))
                         );
                         return hasAppt ? (
                           <div style={{ color: "#15803d", fontSize: "11px", fontWeight: 700, margin: "0 0 6px" }}>
-                            ✓ Scheduled on {hasAppt.date} {hasAppt.time ? `(${hasAppt.time})` : ""}
+                            {hasAppt.status} on {hasAppt.date} {hasAppt.time ? `(${hasAppt.time})` : ""}
                           </div>
                         ) : null;
                       })()}

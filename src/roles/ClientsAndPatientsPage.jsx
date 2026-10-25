@@ -96,10 +96,10 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
   const canCheckIn = me?.role === "assistant";
   const todayApptByPet = {};
   (db.appts || [])
-    .filter(a => a.date === bookingToday() && !["Cancelled", "No-show"].includes(a.status))
+    .filter(a => a.date === bookingToday() && !["Cancelled", "Rejected", "No-show"].includes(a.status))
     .sort((x, y) => (x.time || "").localeCompare(y.time || ""))
     .forEach(a => { if (!todayApptByPet[a.petId]) todayApptByPet[a.petId] = a; });
-  const isArrivable = a => !!a && ["Scheduled", "Confirmed"].includes(a.status);
+  const isArrivable = a => !!a && a.status === "Scheduled";
 
   const household = owners.find(o => o.id === householdId);
   const householdPets = petsForOwner(pets, household);

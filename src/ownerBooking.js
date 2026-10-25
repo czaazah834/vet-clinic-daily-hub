@@ -4,7 +4,7 @@ import { SERVICES, today, plus, nowHM, holidayName, addMin } from './booking.js'
 export const isBookingDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
 
 export function bookingDayConflict(appointments, petId, date, excludeId) {
-  return appointments.find(a => a.id !== excludeId && a.petId === petId && a.date === date && !['Cancelled','No-show'].includes(a.status));
+  return appointments.find(a => a.id !== excludeId && a.petId === petId && a.date === date && !['Cancelled','Rejected','No-show'].includes(a.status));
 }
 
 // Early feedback mirrors the server's reservation rules; the server remains
@@ -24,7 +24,7 @@ export function validateOwnerBooking(v, { pets, vets, appointments, records, edi
   else if (v.date === date && v.time <= time) errors.time = 'That time has passed. Choose a later slot.';
   if (v.followUpId) {
     const request = records.find(r => r.id === v.followUpId && r.petId === v.petId && r.followUpDate && r.careStatus !== 'Routine care');
-    const linked = appointments.some(a => a.id !== editing?.id && a.followUpId === v.followUpId && !['Cancelled','No-show'].includes(a.status));
+    const linked = appointments.some(a => a.id !== editing?.id && a.followUpId === v.followUpId && !['Cancelled','Rejected','No-show'].includes(a.status));
     if (!request || linked) errors.followUpId = linked ? 'This follow-up already has a visit. Review the existing booking.' : 'Choose an outstanding follow-up for this pet.';
   }
   const notes = (v.notes || '').trim();

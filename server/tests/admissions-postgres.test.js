@@ -15,6 +15,7 @@ await admin.query(`CREATE SCHEMA ${schema}`);
 url.searchParams.set('options',`-c search_path=${schema},public`); process.env.DATABASE_URL = url.href;
 const {query,pool} = await import('../db.js');
 await query(readFileSync(new URL('../database/schema.sql',import.meta.url),'utf8'));
+await query(readFileSync(new URL('../database/appointment-status.sql',import.meta.url),'utf8'));
 const {sha256} = await import('../security.js');
 const {clinicRouter} = await import('../routes/clinic.js');
 const app = express(); app.use(express.json()); app.use(cookieParser()); app.use('/api',clinicRouter);
@@ -53,7 +54,7 @@ test('admission creation enforces assigned veterinarian, active consultation, sn
   assert.equal((await call('vet','POST','',{...f.body,requestId:crypto.randomUUID()})).status,409,'duplicate visit rejected');
   const other = await fixture('In consultation',f.visit.pet_id);
   assert.equal((await call('vet','POST','',other.body)).status,409,'duplicate active pet rejected across visits');
-  const scheduled = await fixture('Scheduled');
+  const scheduled = await fixture('Pending Approval');
   assert.equal((await call('vet','POST','',scheduled.body)).status,409);
   const eligible = await call('vet','GET','/eligible'); assert.equal(eligible.status,200); assert.ok(!eligible.data.visits.some(row=>row.petId===f.visit.pet_id));
   assert.equal((await query('SELECT count(*)::int n FROM admission_updates WHERE admission_id=$1',[f.body.requestId])).rows[0].n,1);

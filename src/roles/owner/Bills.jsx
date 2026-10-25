@@ -15,7 +15,7 @@ export function OwnerBillDetails({ appointment }) {
   const bill = ownerBill(appointment);
   return <section className="ow-bill-details" aria-label="Bill and payment details">
     <h4>{bill.paid ? "Payment record" : "Checkout details"}</h4>
-    <p><b>{bill.status}</b></p>
+    <p><b>Payment: {appointment.billingStatus || "Unbilled"}</b> · {bill.status}</p>
     {!bill.paid && <p className="ow-hint">{bill.status === "Awaiting discharge approval" ? "Your pet is still admitted. The veterinarian must approve discharge before reception prepares final checkout. These draft lines may not include all care provided during the stay." : bill.status === "No bill yet" ? "Booking a visit does not issue a bill. Charges appear after the veterinarian records the care provided." : "Reception will confirm the services and products supplied at checkout. The itemization below is a draft, and quantities or discounts may change before payment."}</p>}
     {bill.items.length ? <>
       <PaginatedList as="ul" label="Invoice items" resetKey={appointment.id} className="ow-bill-lines">{bill.items.map((item, index) => <li key={index}><div><b>{item.name}{item.source === 'admission' && ' (clinic use)'}</b><small>{item.qty} × {money(item.price)}</small></div><strong>{money(item.qty * item.price)}</strong></li>)}</PaginatedList>
@@ -38,22 +38,22 @@ export default function OwnerBills({db, me, go}) {
   const all = scope(db,me,"appts").slice().sort((a,b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`));
   const selected = all.find(a => a.id === openId);
   const query = search.trim().toLowerCase();
-  const list = all.filter(a => (!pet || a.petId === pet) && (!status || ownerBill(a).status === status) && (!query || [petName(db,a.petId),a.date,a.id,a.reason,...ownerBill(a).items.map(p => p.name)].join(" ").toLowerCase().includes(query)));
+  const list = all.filter(a => (!pet || a.petId === pet) && (!status || (a.billingStatus || "Unbilled") === status) && (!query || [petName(db,a.petId),a.date,a.id,a.reason,...ownerBill(a).items.map(p => p.name)].join(" ").toLowerCase().includes(query)));
   const filtered = !!(pet || status || query);
   return <section className="card ow-bills" aria-label="Bills and payments">
     <h3>Bills & Payments</h3><p>View your pets’ saved charges and payments. Reception confirms and records payments at the clinic.</p>
     {go && <button className="btn sm ghost" onClick={() => go("prices")}>View clinic prices</button>}
-    <div className="portal-metrics" aria-label="Payment summary">{["Paid","Awaiting discharge approval","Awaiting checkout","No bill yet"].map(status => <div key={status}><b>{all.filter(a => ownerBill(a).status === status).length}</b><span>{status}</span></div>)}</div>
+    <div className="portal-metrics" aria-label="Payment summary">{["Unbilled","Unpaid","Paid"].map(status => <div key={status}><b>{all.filter(a => (a.billingStatus || "Unbilled") === status).length}</b><span>{status}</span></div>)}</div>
     <div className="ow-bill-filters">
       <label>Search visits or charges<input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Pet, date, product or visit reference" /></label>
       <label>Pet<select value={pet} onChange={e=>setPet(e.target.value)}><option value="">All my pets</option>{pets.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-      <label>Payment status<select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option>{["Paid","Awaiting discharge approval","Awaiting checkout","No bill yet"].map(s=><option key={s}>{s}</option>)}</select></label>
+      <label>Payment status<select value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option>{["Unbilled","Unpaid","Paid"].map(s=><option key={s}>{s}</option>)}</select></label>
     </div>
     {filtered && <button className="btn sm ghost" onClick={() => {setPet("");setStatus("");setSearch("");}}>Clear filters</button>}
     <p role="status">{list.length} {list.length === 1 ? "visit" : "visits"}</p>
     {!list.length ? <p className="empty">{all.length ? "No visits match these filters." : "No visits yet. Charges and payments will appear here as your pets receive care."}</p> : <PaginatedList as="ul" label="Bills and payments" resetKey={[pet,status,search]} className="ow-bill-list">{list.map(a=>{
       const bill=ownerBill(a);
-      return <li key={a.id}><div><h4>{petName(db,a.petId)} · {dateLabel(a.date)}</h4><p>{a.reason}</p><b>{bill.status}</b>{bill.amount !== null && <p>{bill.paid ? "Paid" : "Draft"}: {money(bill.amount)}</p>}</div><button className="btn sm ghost" aria-label={`View ${bill.paid ? "payment" : "bill"} for ${petName(db,a.petId)} on ${dateLabel(a.date)}`} onClick={()=>setOpenId(a.id)}>{bill.paid ? "View payment" : "View bill"}</button></li>;
+      return <li key={a.id}><div><h4>{petName(db,a.petId)} · {dateLabel(a.date)}</h4><p>{a.reason}</p><b>{a.billingStatus || "Unbilled"}</b><small>{bill.status}</small>{bill.amount !== null && <p>{bill.paid ? "Paid" : "Draft"}: {money(bill.amount)}</p>}</div><button className="btn sm ghost" aria-label={`View ${bill.paid ? "payment" : "bill"} for ${petName(db,a.petId)} on ${dateLabel(a.date)}`} onClick={()=>setOpenId(a.id)}>{bill.paid ? "View payment" : "View bill"}</button></li>;
     })}</PaginatedList>}
     {selected && <Modal title={`${petName(db,selected.petId)} · ${dateLabel(selected.date)}`} onClose={()=>setOpenId(null)}><div className="ow-bill-scroll"><OwnerBillDetails appointment={selected} /></div><div className="row end"><button className="btn" onClick={()=>setOpenId(null)}>Close</button></div></Modal>}
   </section>;

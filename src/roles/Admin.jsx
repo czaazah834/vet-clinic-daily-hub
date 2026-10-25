@@ -338,7 +338,7 @@ function Dash({ db, setDb, me, go, say }) {
   const locked = (staff.data?.staff || []).filter(u=>u.active && u.locked);
   const inactiveIds = (staff.data?.staff || []).filter(u=>!u.active).flatMap(u=>[u.id,u.vetId].filter(Boolean));
   const inactiveCare = unfinished.filter(a=>inactiveIds.includes(a.vetId));
-  const reassign = db.appts.filter(a=>a.date >= TODAY && ["Scheduled","Confirmed"].includes(a.status) && inactiveIds.includes(a.vetId));
+  const reassign = db.appts.filter(a=>a.date >= TODAY && ["Pending Approval","Scheduled"].includes(a.status) && inactiveIds.includes(a.vetId));
 
   const logs = (db.log || []).filter(l => {
     const text = (l.msg || l.action || "").toLowerCase();
