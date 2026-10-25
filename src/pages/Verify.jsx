@@ -1,6 +1,6 @@
 import {useResendTimer} from "../useResendTimer.js";
 import { useState, useEffect, useRef } from "react";
-import { Logo, I } from "../lib.jsx";
+import AuthShell, { AuthBrand } from "./AuthShell.jsx";
 import { validateCode } from "../validate.js";
 import { useLive } from "../roles/owner/ui.jsx";
 import { auth, OFFLINE_MSG } from "../authApi.js";
@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import "./auth.css";
 import "./brand.css";
+import "./auth-flow.css";
 
 /* ---------- 1. "Check your email" after registering ---------- */
 export function CheckEmail({ email, receipt, go }) {
@@ -32,11 +33,16 @@ export function CheckEmail({ email, receipt, go }) {
   const sending = useRef(false);
   const [copied, setCopied] = useState(false);
 
-  const copyEmail = () => {
+  const copyEmail = async () => {
     if (!email) return;
-    navigator.clipboard?.writeText(email);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+      setErr("Could not copy. Select the email address to copy it.");
+    }
   };
 
   const resend = async () => {
@@ -65,21 +71,10 @@ export function CheckEmail({ email, receipt, go }) {
   const isYahoo = domain.includes("yahoo");
 
   return (
-    <div className="lg auth cardl">
-      <aside className="lgl photo">
-        <div className="brandrow">
-          <Logo size={28} />
-          <span>PawCare</span>
-        </div>
-        <div className="cap">
-          <h1>
-            Almost <em>there!</em>
-          </h1>
-          <p>Verify your email address, then enter your mobile security code to activate your account.</p>
-        </div>
-      </aside>
+    <AuthShell title={<>One step closer to <em>connected care.</em></>} description="Verify your email, then your mobile number to finish setting up your account.">
 
-      <div className="auth-verify-card">
+      <div className="login-card auth-verify-card">
+          <AuthBrand />
         {/* Step Tracker */}
         <div className="verify-steps">
           <span className="verify-step-pill done">
@@ -101,7 +96,7 @@ export function CheckEmail({ email, receipt, go }) {
           <div className="envelope-icon-box">
             <Mail size={32} />
           </div>
-          <div className="envelope-paw-tag">🐾</div>
+          <div className="envelope-paw-tag"><CheckCircle2 size={15} aria-hidden="true" /></div>
         </div>
 
         <h2>Check your inbox</h2>
@@ -204,7 +199,7 @@ export function CheckEmail({ email, receipt, go }) {
           </button>
         </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }
 
@@ -287,21 +282,10 @@ export function Otp({ onDone, onBack, enabled = true }) {
   };
 
   return (
-    <div className="lg auth cardl">
-      <aside className="lgl photo">
-        <div className="brandrow">
-          <Logo size={28} />
-          <span>PawCare</span>
-        </div>
-        <div className="cap">
-          <h1>
-            Security <em>Verification</em>
-          </h1>
-          <p>Verify your registered mobile number to finish setting up your account.</p>
-        </div>
-      </aside>
+    <AuthShell title={<>A little protection for <em>the ones you love.</em></>} description="Confirm your registered mobile number to securely activate your account.">
 
-      <form className="auth-verify-card" onSubmit={submit} noValidate>
+      <form className="login-card auth-verify-card" onSubmit={submit} noValidate>
+          <AuthBrand />
         {/* Step Tracker */}
         <div className="verify-steps">
           <span className="verify-step-pill done">
@@ -323,7 +307,7 @@ export function Otp({ onDone, onBack, enabled = true }) {
           <div className="envelope-icon-box" style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)" }}>
             <ShieldCheck size={34} />
           </div>
-          <div className="envelope-paw-tag">📱</div>
+          <div className="envelope-paw-tag"><Smartphone size={15} aria-hidden="true" /></div>
         </div>
 
         <h2>Enter 6-digit code</h2>
@@ -375,7 +359,7 @@ export function Otp({ onDone, onBack, enabled = true }) {
           </button>
         </div>
       </form>
-    </div>
+    </AuthShell>
   );
 }
 
@@ -421,27 +405,16 @@ export function Unlock({ token, onDone }) {
   }, [wait]); // eslint-disable-line
 
   return (
-    <div className="lg auth cardl">
-      <aside className="lgl photo">
-        <div className="brandrow">
-          <Logo size={28} />
-          <span>PawCare</span>
-        </div>
-        <div className="cap">
-          <h1>
-            Account <em>Protection</em>
-          </h1>
-          <p>For your security, locked accounts require a short cooling period before re-activating.</p>
-        </div>
-      </aside>
+    <AuthShell title={<>Your account, <em>protected.</em></>} description="A short security pause helps protect your account before you log in again.">
 
-      <div className="auth-verify-card">
+      <div className="login-card auth-verify-card">
+          <AuthBrand />
         <div className="envelope-badge-wrap">
           <div className="envelope-pulse-bg" />
           <div className="envelope-icon-box" style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)" }}>
             <Lock size={32} />
           </div>
-          <div className="envelope-paw-tag">🛡️</div>
+          <div className="envelope-paw-tag"><ShieldCheck size={15} aria-hidden="true" /></div>
         </div>
 
         <h2>Cooling Period Active</h2>
@@ -482,6 +455,6 @@ export function Unlock({ token, onDone }) {
           <ArrowLeft size={16} /> Return to Log in
         </button>
       </div>
-    </div>
+    </AuthShell>
   );
 }

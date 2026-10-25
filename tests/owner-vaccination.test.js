@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { currentVaccinationDue, vaccinationStatus, vaccinationAppointment, vaccinationBooking } from '../src/ownerVaccination.js';
+import { currentVaccinationDue, vaccinationStatus, vaccinationAppointment, vaccinationBooking, nextVaccination } from '../src/ownerVaccination.js';
 
 const dose = { id: 'dose1', petId: 'pet1', vaccine: 'Anti-rabies', date: '2026-09-01', createdAt: '2026-09-01T10:00:00Z', done: true, vetId: 'vet1', nextDue: '2026-10-25' };
 const today = '2026-10-24';
@@ -44,4 +44,36 @@ test('booking carries the exact pet and approved due date, but moves overdue req
   assert.equal(vaccinationBooking({ ...dose, nextDue:'2027-10-25' }, today, '2027-01-22').date, '');
   assert.equal(vaccinationBooking(dose, today, '2027-01-22').date, '2026-10-25');
   assert.equal(vaccinationBooking({ ...dose, vaccine:'Routine deworming' }, today, '2027-01-22').service, 'deworming');
+});
+
+
+test('next vaccine shows a booked vaccination even without a certified recall', () => {
+  const visit = { id: 'v', petId: 'pet1', service: 'vaccination', reason: 'Vaccination – Anti-rabies', date: '2026-10-25', time: '10:00', status: 'Confirmed' };
+  assert.deepEqual(nextVaccination('pet1', [], [visit], today), { recall: null, appointment: visit, matched: null });
+  assert.equal(nextVaccination('pet1', [], [{ ...visit, service: '', reason: 'Vaccination – Anti-rabies' }], today).appointment.reason, visit.reason);
+  for (const changes of [{ service: 'checkup' }, { petId: 'other' }, { status: 'Cancelled' }, { status: 'Completed' }, { date: '2026-10-23' }]) {
+    assert.equal(nextVaccination('pet1', [], [{ ...visit, ...changes }], today).appointment, null);
+  }
+  assert.deepEqual(nextVaccination('pet1', [], [], today), { recall: null, appointment: null, matched: null });
+});
+
+test('reservation dates stay distinct from approved due dates, including unrelated vaccine bookings', () => {
+  const visit = { petId: 'pet1', service: 'vaccination', reason: 'Vaccination – Anti-rabies', date: '2026-10-29', time: '10:00', status: 'Scheduled' };
+  const summary = nextVaccination('pet1', [dose], [visit], today);
+  assert.equal(summary.recall.nextDue, '2026-10-25');
+  assert.equal(summary.appointment.date, '2026-10-29');
+  assert.equal(summary.matched.id, dose.id);
+  const other = { ...visit, reason: 'Canine 5-in-1' };
+  assert.equal(nextVaccination('pet1', [dose], [other], today).matched, null);
+  assert.equal(nextVaccination('pet1', [dose], [other], today).recall.id, dose.id);
+  const newer = { ...dose, id: 'newer', date: '2026-10-23', nextDue: null };
+  assert.equal(nextVaccination('pet1', [dose, newer], [visit], today).recall, null);
+  assert.equal(nextVaccination('pet1', [{ ...dose, done: false }], [], today).recall, null);
+});
+
+test('the earliest active vaccination booking wins without using unrelated routine visits', () => {
+  const visit = { petId: 'pet1', service: 'vaccination', reason: 'Anti-rabies', date: '2026-10-29', time: '10:00', status: 'Scheduled' };
+  const earlier = { ...visit, reason: 'Canine 5-in-1', date: '2026-10-26' };
+  const checkup = { ...earlier, service: 'checkup', reason: 'Routine checkup', date: today };
+  assert.equal(nextVaccination('pet1', [dose], [visit, checkup, earlier], today).appointment, earlier);
 });

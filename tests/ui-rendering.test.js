@@ -122,3 +122,14 @@ test('root recovery only resets the remembered screen and preserves stored data'
     else globalThis.window = oldWindow;
   }
 });
+
+
+test('owner dashboard explains a booked vaccine with no booster due date', () => {
+  const db = populated();
+  db.vacc = [];
+  db.appts = [{ id: 'vaccine-visit', petId: 'p1', ownerId: 'o1', service: 'vaccination', reason: 'Vaccination – Anti-rabies', date: '2099-01-05', time: '10:00', status: 'Confirmed' }];
+  const html = render(ui.owner.Dash, props('owner', db));
+  assert.match(html, /Anti-rabies/);
+  assert.match(html, /Visit: 2099-01-05/);
+  assert.match(html, /Booster date not recorded/);
+});

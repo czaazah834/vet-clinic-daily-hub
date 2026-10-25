@@ -23,7 +23,7 @@
 
 /* Landing: a quiet canvas and a bounded, flexible content column. */
 .w.public-landing { padding: 20px clamp(16px, 3vw, 48px) 0; }
-.w.public-landing .wc { max-width: 1360px; margin-inline: auto; background: transparent; overflow: visible; }
+.w.public-landing .wc { max-width: none; margin-inline: auto; background: transparent; overflow: visible; }
 .w.public-landing .wc > * { padding: 0; margin: 0; }
 .w.public-landing .wnav { display: flex; flex-wrap: wrap; gap: 24px; padding: 18px 24px; background: white; border: 1px solid var(--public-line); border-radius: 20px; box-shadow: 0 4px 16px #1e3a8a03; }
 .w.public-landing .wnav nav { display: flex; justify-content: center; gap: clamp(16px, 2vw, 28px); padding: 0; }
@@ -117,8 +117,8 @@
 .w.public-landing .wfoot p, .w.public-landing .wfoot span:not(.err):not(.okm) { font-size: 12px; }
 
 /* Login: logo, heading and all form states remain inside one card. */
-.login-page { min-height: 100vh; min-height: 100svh; padding: clamp(16px, 4vw, 64px); display: grid; align-items: center; background: radial-gradient(ellipse at 0 0, #e9effa, transparent 60%), #f8f9f6; }
-.login-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 480px); gap: clamp(32px, 6vw, 88px); align-items: center; max-width: 1120px; width: 100%; margin: auto; }
+.login-page { min-height: 100vh; min-height: 100svh; padding: clamp(16px, 2.2vw, 40px); display: grid; align-items: center; background: radial-gradient(ellipse at 0 0, #e9effa, transparent 60%), #f8f9f6; }
+.login-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(24px, 3vw, 56px); align-items: center; max-width: none; width: 100%; margin: auto; }
 .login-story { min-width: 0; padding-block: 24px; }
 .login-story h2 { font-size: clamp(32px, 3.7vw, 48px); font-weight: 600; line-height: 1.2; letter-spacing: -1.8px; margin: 20px 0; color: #243c67; }
 .login-story h2 em { color: #466eac; font-style: normal; }

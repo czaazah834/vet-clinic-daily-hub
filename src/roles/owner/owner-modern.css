@@ -478,3 +478,11 @@
   .shell.th-owner .ow-bill-filters{grid-template-columns:minmax(0,1fr)}
   .shell.th-owner .ow-bill-list>li{align-items:flex-start;flex-direction:column}
 }
+
+/* Keep vaccine reservations and clinical due dates readable at every card width. */
+.shell.th-owner .petcard .pc-vaccine { gap: 8px; min-width: 0; }
+.shell.th-owner .pc-vaccine > b { overflow-wrap: anywhere; }
+.shell.th-owner .pc-vaccine-detail { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; font-size: 13px; line-height: 1.6; }
+.shell.th-owner .pc-vaccine-detail > span { color: #445874; overflow-wrap: anywhere; }
+.shell.th-owner .pc-vaccine-detail > svg { flex: none; color: var(--blue); }
+.shell.th-owner .petcard .pc-vaccine > small { color: #64748b; font-size: 13px; line-height: 1.65; }

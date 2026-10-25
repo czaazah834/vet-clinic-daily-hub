@@ -22,6 +22,21 @@ export function vaccinationAppointment(record, appointments, date = today()) {
     .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))[0] || null;
 }
 
+// A reservation can exist before a certified dose/booster date is recorded.
+// Keep reservation details separate from the vet-approved recall.
+export function nextVaccination(petId, records, appointments, date = today()) {
+  const recalls = currentVaccinationDue(records).filter(v => v.petId === petId)
+    .sort((a, b) => a.nextDue.localeCompare(b.nextDue));
+  const recall = recalls[0] || null;
+  const visits = appointments.filter(a => a.petId === petId && a.date >= date &&
+    ['Scheduled', 'Confirmed', 'Checked-in', 'In consultation'].includes(a.status));
+  const appointment = visits
+    .filter(a => a.service === 'vaccination' || (!a.service && /^vaccination\s*[–:-]/i.test(a.reason || '')) || recalls.some(v => vaccinationAppointment(v, [a], date)))
+    .sort((a, b) => `${a.date}${a.time || ''}`.localeCompare(`${b.date}${b.time || ''}`))[0] || null;
+  const matched = appointment ? recalls.find(v => vaccinationAppointment(v, [appointment], date)) || null : null;
+  return { recall, appointment, matched };
+}
+
 export function vaccinationBooking(record, date = today(), last = lastDay()) {
   const target = record.nextDue || date;
   return {

@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react";
-import { Logo, I } from "../lib.jsx";
+import AuthShell, { AuthBrand } from "./AuthShell.jsx";
 import { PW_RULES, pwStrength, validateReset, emOk } from "../validate.js";
 import { useLive, Field, noSpaces } from "../roles/owner/ui.jsx";
 import { auth, OFFLINE_MSG } from "../authApi.js";
 import OtpBoxInput from "./OtpBoxInput.jsx";
-import { ArrowLeft, ArrowRight, ShieldCheck, CheckCircle2, RotateCcw } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
 import "./auth.css";
 import "./brand.css";
+import "./auth-flow.css";
 
 const LABEL = ["Too weak", "Okay", "Good", "Strong", "Very strong"];
 const COLOR = ["#c0392b", "#d98e04", "#2f8f5b", "#1b7a43", "#1b7a43"];
@@ -80,28 +81,17 @@ export default function Forgot({ onBack, go }) {
   const s = pwStrength(v.password);
 
   return (
-    <div className="lg auth cardl">
-      <aside className="lgl photo">
-        <div className="brandrow">
-          <Logo size={28} />
-          <span>PawCare</span>
-        </div>
-        <div className="cap">
-          <h1>
-            Password <em>Recovery</em>
-          </h1>
-          <p>Verify your identity with a 6-digit code to choose a new secure password.</p>
-        </div>
-      </aside>
+    <AuthShell title={<>Password recovery, <em>made simple.</em></>} description="Get back to your pet’s care with a verification code and a new secure password.">
 
       {step === "done" ? (
-        <div className="auth-verify-card">
+        <div className="login-card auth-verify-card">
+          <AuthBrand />
           <div className="envelope-badge-wrap">
             <div className="envelope-pulse-bg" />
             <div className="envelope-icon-box" style={{ background: "linear-gradient(135deg,#059669,#10b981)" }}>
               <CheckCircle2 size={34} />
             </div>
-            <div className="envelope-paw-tag">🎉</div>
+            <div className="envelope-paw-tag"><CheckCircle2 size={15} aria-hidden="true" /></div>
           </div>
           <h2>Password Changed!</h2>
           <p className="card-subtitle">
@@ -112,7 +102,8 @@ export default function Forgot({ onBack, go }) {
           </button>
         </div>
       ) : step === "ask" ? (
-        <form className="auth-verify-card" onSubmit={send} noValidate style={{ textAlign: "left" }}>
+        <form className="login-card auth-verify-card" onSubmit={send} noValidate style={{ textAlign: "left" }}>
+          <AuthBrand />
           <fieldset disabled={busy} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <button type="button" className="lnk" onClick={onBack} style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginBottom: "8px" }}>
             <ArrowLeft size={14} /> Back to log in
@@ -144,7 +135,8 @@ export default function Forgot({ onBack, go }) {
           </fieldset>
         </form>
       ) : (
-        <form className="auth-verify-card" onSubmit={reset} noValidate style={{ textAlign: "left" }}>
+        <form className="login-card auth-verify-card" onSubmit={reset} noValidate style={{ textAlign: "left" }}>
+          <AuthBrand />
           <fieldset disabled={busy} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <button
             type="button"
@@ -249,6 +241,6 @@ export default function Forgot({ onBack, go }) {
           </fieldset>
         </form>
       )}
-    </div>
+    </AuthShell>
   );
 }

@@ -1,6 +1,6 @@
 import OwnerBills from "./owner/Bills.jsx";
 import { today as bookingToday } from "../booking.js";
-import { currentVaccinationDue, vaccinationAppointment, vaccinationStatus } from "../ownerVaccination.js";
+import { currentVaccinationDue, nextVaccination, vaccinationStatus } from "../ownerVaccination.js";
 import CareFollowUps from "./CareFollowUps.jsx";
 import Prices from "./owner/Prices.jsx";
 import { useState } from "react";
@@ -76,16 +76,24 @@ function Dash({ db, setDb, me, go, say }) {
     <CareFollowUps db={db} go={go} owner />
     <RequestList db={db} setDb={setDb} me={me} say={say} onEdit={r => setModal({ form: true, editing: r })} />
     {pets.length ? <div className="petgrid">{pets.map(p => {
-      const nv = recalls.filter(v => v.petId === p.id).sort((a, b) => a.nextDue.localeCompare(b.nextDue))[0];
+      const { recall: nv, appointment: nvAppt, matched } = nextVaccination(p.id, V, A, TODAY);
       const na = A.filter(a => a.petId === p.id && LIVE.includes(a.status) && a.date >= TODAY).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
-      const nvAppt = nv ? vaccinationAppointment(nv, A) : null;
       return <article className="petcard" key={p.id} role="button" tabIndex={0} aria-label={`${p.name}, open pet details`} onClick={() => setModal({ profile: p })} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModal({ profile: p }); } }}>
         <div className="pc-top">
           <div className="big"><Avatar src={p.photo} fallback={<I e={ICON[p.species]} size={40} />} size={84} round={false} /></div>
           <div className="pc-id"><h3>{p.name}</h3><p>{p.breed || p.species}</p></div>
         </div>
         <div className="pc-tags">{p.sex && <span>{p.sex}</span>}{p.weight ? <span>{p.weight} kg</span> : null}{p.birth ? <span>{petAge(p.birth)}</span> : null}</div>
-        <div className="kv"><span>Next vaccine</span>{nv ? <b>{nv.vaccine} <Badge v={nvAppt ? "Scheduled" : vaccinationStatus(nv, recalls)} /></b> : <b>—</b>}</div>
+        <div className="kv pc-vaccine"><span>Next vaccine</span>
+          {nvAppt ? <>
+            <b>{matched?.vaccine || nvAppt.reason?.replace(/^vaccination\s*[–:-]\s*/i, "") || "Vaccination visit"}</b>
+            <div className="pc-vaccine-detail"><Icon n="calendar" size={15} /><span>Visit: {nvAppt.date}{nvAppt.time ? ` at ${fmt12(nvAppt.time)}` : " · Time to be confirmed"}</span><Badge v={nvAppt.status} /></div>
+          </> : <b>{nv ? nv.vaccine : "No vaccine scheduled"}</b>}
+          {nv ? <>
+            <div className="pc-vaccine-detail"><span>Vet-approved due: {nv.nextDue}{nvAppt && matched?.id !== nv.id ? ` · ${nv.vaccine}` : ""}</span><Badge v={vaccinationStatus(nv, recalls, TODAY)} /></div>
+            {matched?.id !== nv.id && <small>Contact the clinic to book this vaccine.</small>}
+          </> : <small>{nvAppt ? "Booster date not recorded. Confirm the next dose with your vet at this visit." : "Ask the clinic to confirm the next vaccine and due date."}</small>}
+        </div>
         <div className="kv"><span>Next visit</span><b>{na ? <>{na.date} {fmt12(na.time)} <Badge v={na.status} /></> : "None booked"}</b></div>
         <small className="pc-more">View details <Icon n="chevron" size={14} /></small></article>;
     })}</div> : null}
