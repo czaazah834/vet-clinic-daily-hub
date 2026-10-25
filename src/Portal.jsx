@@ -4,6 +4,7 @@ import { useState, useEffect, useSyncExternalStore } from "react";
 import { Menu, LogOut } from "lucide-react";
 import { Logo, I, ROLES, E, scope, Table } from "./lib.jsx";
 import EntityPage from "./EntityPage.jsx";
+import ErrorBoundary from "./ErrorBoundary.jsx";
 import { auth } from "./authApi.js";
 import { accountProfile, saveAccountProfile } from "./accountProfile.js";
 import { Avatar } from "./roles/owner/ui.jsx";
@@ -54,8 +55,10 @@ function PortalBody({ cfg, me, db, setDb, onLogout, dataLoading = false, dataErr
             <p>{dataLoading ? "Clinic records could not load." : "Records may be out of date. Changes still require a successful server save."} {dataError}</p>
             <button className="btn sm" disabled={refreshing} onClick={onRetry}>{refreshing ? "Retrying…" : "Retry loading records"}</button>
           </section>}
+          <ErrorBoundary key={page} inline onReset={() => go(cfg.menu[0].k)}>
           {!dataLoading && <HistoryControls auto={!cur.dash && !["users","prices","audit","pet-requests"].includes(page)} />}
           {dataLoading ? (!dataError && <section className="clinic-loading" role="status"><span className="clinic-spinner" aria-hidden="true" />Loading clinic records…</section>) : cur.Page ? <cur.Page db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.dash ? <Dash db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.rep ? <Reports db={db} me={me} /> : <EntityPage key={cur.k} ent={cur.ent} db={db} setDb={setDb} me={me} say={say} />}
+          </ErrorBoundary>
         </main>
       </div>
       {me.role === "owner" && (

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import "./account.css";
 import { accountProfile, saveAccountProfile, formatAccountAddress } from "../../accountProfile.js";
-import { PW_RULES, pwStrength, validatePasswordChange, clean, normEmail, normPhone } from "../../validate.js";
+import { PW_RULES, pwStrength, validatePasswordChange, clean, normEmail, normPhone, emOk } from "../../validate.js";
 import { auth, OFFLINE_MSG } from "../../authApi.js";
 import { useLive, Field, onlyDigitsPlus, noSpaces, PhotoUpload } from "./ui.jsx";
 
