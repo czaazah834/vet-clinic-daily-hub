@@ -268,7 +268,7 @@ export const addBlock = (db, me) => {
 const kind = p => (p.species && p.species.includes("Other") && p.speciesOther) ? p.speciesOther : formatSpeciesLabel(p.species);
 
 /* ---------- Add / edit a pet request ---------- */
-export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSetup = false, onLogout }) {
+export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSetup = false, onLogout, onExistingRecord }) {
   const e0 = editing || {};
   const taken = [...scope(db, me, "pets").filter(isVerifiedPet), ...myRequests(db, me).filter(r => !editing || r.id !== editing.id)].map(p => p.name.trim().toLowerCase());
   
@@ -430,6 +430,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSet
 
   return (
     <ClinicDialog label={requiredSetup ? "Register your first pet" : editing ? "Edit pet request" : "Add my pet"} onClose={() => {if (!requiredSetup && !savingRef.current) onClose();}}><section className="modal owner-pet-setup"><h3>{requiredSetup ? "Register your first pet" : editing ? "Edit pet request" : "Add my pet"}</h3>
+      {onExistingRecord && <section className="ow-note info"><b>Already registered at this clinic?</b><p>Connect your existing pet records through reception.</p><button type="button" className="btn sm" disabled={saving} onClick={onExistingRecord}>Link my clinic records</button></section>}
       <form onSubmit={submit} noValidate aria-busy={saving}>
         {review.card}
         <p className="ow-note info">Save your pet’s details to get started. Your pet will appear as Pending verification, and you can request an appointment immediately.</p>

@@ -38,3 +38,12 @@ test('every walk-in purpose requires a matching durable arrival before intake op
   assert.equal(savedWalkInArrival(data,{...data.appointment}).id,'arrival');
  }
 });
+
+
+test('arrival review survives unrelated measurement refresh but detects changed identity, purpose or availability',async()=>{
+ const {walkInReviewContext}=await import('../src/walkInRegistration.js');
+ const input={pet:{id:'pet',ownerId:'owner',name:'Milo',species:'Feline',registrationStatus:'Verified',weights:[]},owner:{id:'owner',name:'Owner'},vetId:'vet',reason:'Routine examination',service:'checkup',vaccineId:'',date:'2026-10-26',estimate:'',activeVisits:[],doctors:[['vet','Doctor']]};
+ const original=walkInReviewContext(input);
+ assert.deepEqual(walkInReviewContext({...input,pet:{...input.pet,weights:[{kg:4}],weightOrigin:'registration'}}),original);
+ for(const change of [{pet:{...input.pet,registrationStatus:'Pending'}},{pet:{...input.pet,ownerId:'another-owner'}},{reason:'Vomiting'},{activeVisits:[{id:'new-arrival',status:'Scheduled'}]},{doctors:[]},{date:'2026-10-27'},{estimate:'New price'}])assert.notDeepEqual(walkInReviewContext({...input,...change}),original);
+});

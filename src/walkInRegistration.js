@@ -138,3 +138,14 @@ export function validateWalkInFields(v, {vets} = {}) {
 
   return e;
 }
+
+// Approval adds measurement history on the next state refresh. Only facts
+// relevant to this arrival review should invalidate its confirmation.
+export function walkInReviewContext({pet,owner,vetId,reason,service,vaccineId,activeVisits,doctors,estimate,date}) {
+  return {
+    pet:pet ? {id:pet.id,ownerId:pet.ownerId,name:pet.name,species:pet.species,registrationStatus:pet.registrationStatus || 'Verified'} : null,
+    owner:owner ? {id:owner.id,name:owner.name,phone:owner.phone || '',email:owner.email || '',address:owner.address || ''} : null,
+    vetId,reason,service,vaccineId,date,estimate,
+    activeVisits:activeVisits.map(a=>({id:a.id,status:a.status})),doctors,
+  };
+}

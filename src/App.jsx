@@ -143,7 +143,9 @@ export default function App() {
       },
     });
     retrySync.current = () => { showProgress = true; sync.refresh(); };
-    return () => { sync.stop(); retrySync.current = () => {}; };
+    const refresh=()=>sync.refresh();
+    window.addEventListener('pawcare:refresh',refresh);
+    return () => { window.removeEventListener('pawcare:refresh',refresh);sync.stop(); retrySync.current = () => {}; };
   }, [me?.id, me?.role, restoring]);
   /* Log out here and on the server. A message (e.g. idle timeout) sends the person to Log in with that notice. */
   const logout = async msg => { try { await auth.logout(); } catch { /* signed out here either way */ } try { localStorage.removeItem("pawcare_token"); sessionStorage.removeItem("pawcare_token"); } catch (_) {} setDb(emptyClinicState()); setLoadedFor(""); setClinicError(""); setMe(null); saveCachedUser(null); setSessionUser(null); window.history.replaceState(null, "", window.location.pathname); setNotice(msg || ""); setBad(false); setView(msg ? "login" : "landing"); };

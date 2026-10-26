@@ -9,3 +9,6 @@
 .household-pets{display:grid;gap:12px;margin-top:16px}.household-pets article{display:flex;gap:14px;align-items:center;padding:16px;border:1px solid #e1e8f2;border-radius:14px}.household-pets article>div{flex:1;min-width:0}.household-pets h4{margin:0 0 4px;overflow-wrap:anywhere}.household-pets p{margin:0;font-size:13px;color:#526a8c}.household-pets small{color:#6d7f98}.household-species{width:46px;height:46px;border-radius:14px}
 @media(max-width:720px){.staff-clients td>div:has([class*=lucide-phone]){flex-wrap:wrap}.staff-clients td[data-label="Quick Access"]>div{flex-wrap:wrap}.staff-clients td[data-label="Action"]>div{flex-wrap:wrap}}
 @media(max-width:480px){.shell .modal.household-dialog{padding:20px 16px}.household-summary{padding:16px;gap:12px}.household-avatar{width:46px;height:46px;border-radius:14px}.household-summary h3{font-size:20px}.household-contact{grid-template-columns:minmax(0,1fr)}.household-pets article{flex-wrap:wrap;padding:14px}.household-pets article>.btn{margin-left:60px}.household-pets article>div{flex-basis:calc(100% - 60px)}}
+
+.account-link-comparison { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px;margin:16px 0; }
+.account-link-comparison dd { overflow-wrap:anywhere; }

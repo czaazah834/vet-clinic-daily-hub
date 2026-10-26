@@ -317,5 +317,13 @@ test('both walk-in entry points expose the saved arrival then measured intake pr
  db.appts=[{id:'rejected',petId:db.pets[0].id,date:today,status:'Rejected'}];
  const existing=render(ui.ExistingPatientCheckInModal,{...props('assistant',db),initialPetId:db.pets[0].id,onCheckIn(){}});
  assert.match(existing,/Review arrival/);assert.doesNotMatch(existing,/Today&#x27;s existing visit/);
- assert.match(existing,/1. Save arrival/);assert.match(existing,/name="reason"/);
+ assert.match(existing,/1. Verify patient &amp; save arrival/);assert.match(existing,/name="reason"/);
+});
+
+test('pending walk-in patient has registration review before intake',()=>{
+ const db=populated();db.pets[0].registrationStatus='Pending';
+ db.petRequests=[{id:'pending',petId:db.pets[0].id,status:'Pending'}];
+ db.appts=[{id:'legacy-arrival',petId:db.pets[0].id,date:new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'}),status:'Scheduled'}];
+ const html=render(ui.ExistingPatientCheckInModal,{...props('assistant',db),initialPetId:db.pets[0].id,onCheckIn(){}});
+ assert.match(html,/Review registration/);assert.match(html,/Registration needs review/);assert.doesNotMatch(html,/>Record vitals for this visit</);
 });

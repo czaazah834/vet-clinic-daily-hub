@@ -1,3 +1,4 @@
+import ExistingClinicRecord from './owner/ExistingClinicRecord.jsx';
 import { isVerifiedPet, needsFirstPetSetup } from '../ownerOnboarding.js';
 import { PaginatedList } from "../components/Pagination.jsx";
 import AdmissionsPage, { AdmissionsSummary } from './AdmissionsPage.jsx';
@@ -44,6 +45,7 @@ function Dash({ db, setDb, me, go, say }) {
           <p>Here’s how your pets are doing.</p>
         </div>
         <div className="ow-hero-acts">
+          <button className="btn glass" onClick={()=>setModal({link:true})}>Link clinic records</button>
           <button className="btn glass" onClick={() => go("bills")}>Bills & payments</button>
           <button className="btn glass" onClick={() => go("prices")}>View services & prices</button>
           {registered.some(p=>p.registrationStatus!=="Declined") && <button className="btn gold" onClick={() => book()}><Icon n="calendar" size={16} /> Book a visit</button>}
@@ -102,14 +104,17 @@ function Dash({ db, setDb, me, go, say }) {
         <small className="pc-more">View details <Icon n="chevron" size={14} /></small></article>;
     })}</PaginatedList> : null}
     {!pets.length && reqs.length > 0 && <div className="empty sm">Your saved pets are listed above. You can request an appointment while verification is pending.</div>}
+    {modal?.link && <ExistingClinicRecord me={me} onClose={()=>setModal(null)} />}
     {modal && modal.form && <PetFormModal db={db} setDb={setDb} me={me} say={say} editing={modal.editing} onClose={() => setModal(null)} />}
     {modal && modal.profile && <PetProfileModal pet={modal.profile} db={db} setDb={setDb} me={me} onClose={() => setModal(null)} onVacc={() => { pick.petId = modal.profile.id; go("vacc"); }} onBook={(pid, rsn) => book(pid || modal.profile.id, rsn)} />}
   </>);
 }
 const P = (k, l, i, sub, Page, s) => ({ k, l, i, sub, Page, s });
 export function FirstPetSetup({db,setDb,me,say,go,onLogout}) {
+  const [existing,setExisting]=useState(false);
   if(!needsFirstPetSetup(db,me)) return null;
-  return <PetFormModal requiredSetup db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} onClose={()=>go('home')} />;
+  if(existing)return <ExistingClinicRecord required me={me} onLogout={onLogout} onClose={()=>setExisting(false)} />;
+  return <PetFormModal onExistingRecord={()=>setExisting(true)} requiredSetup db={db} setDb={setDb} me={me} say={say} onLogout={onLogout} onClose={()=>go('home')} />;
 }
 export const owner = { Onboarding:FirstPetSetup, portal: "Pet Owner Portal", Dash, Header: OwnerHeader, menu: [
   { k: "home", l: "My Pets", s: "Pets", i: "paw", dash: 1, sub: "Your pets, their profiles, next vaccines and visits." },

@@ -69,11 +69,11 @@ export function validatePetRegistration(body) {
 export async function lockRegistrationOwner(client, ownerId) {
   if (!ownerId || !(await client.query('SELECT id FROM owners WHERE id = $1 FOR UPDATE',[ownerId])).rows.length) throw registrationError('Your owner profile is unavailable. Contact the clinic.',404);
 }
-export async function checkRegistrationCapacity(client, ownerId, name, excludeId = null) {
+export async function checkRegistrationCapacity(client, ownerId, name, excludeId = null, {pendingRequest = true} = {}) {
   const pets = (await client.query("SELECT name FROM pets WHERE owner_id = $1 AND NOT EXISTS (SELECT 1 FROM pet_requests r WHERE r.pet_id=pets.id AND r.status<>'Approved')",[ownerId])).rows;
   const requests = (await client.query("SELECT name,status FROM pet_requests WHERE owner_id = $1 AND status <> 'Approved' AND ($2::varchar IS NULL OR id <> $2)",[ownerId,excludeId])).rows;
   if (pets.length + requests.length >= 10) throw registrationError('One account can hold up to 10 pets and registration requests.',409);
-  if (requests.filter(r=>r.status==='Pending').length >= 3) throw registrationError('Three requests are already waiting for the clinic. Wait for a review before sending more.',409);
+  if (pendingRequest && requests.filter(r=>r.status==='Pending').length >= 3) throw registrationError('Three requests are already waiting for the clinic. Wait for a review before sending more.',409);
   if ([...pets,...requests].some(p=>p.name.trim().toLowerCase()===name.toLowerCase())) throw registrationError(`A pet or request named ${name} is already on your account. Open the existing record.`,409);
 }
 export function checkRequestRevision(request, revision) {

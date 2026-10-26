@@ -1,3 +1,4 @@
+import {matchingOwners} from '../ownerMatching.js';
 import DocumentHeader from "../components/DocumentHeader.jsx";
 import { VaccinePicker, useBookingCatalog } from '../components/VaccineBooking.jsx';
 import { vaccineChoiceError, vaccineReason, vaccinePriceLabel, VACCINE_CHOICES } from '../vaccineBooking.js';
@@ -18,9 +19,12 @@ import {
 import { useLive, Field, onlyDigitsPlus, onlyDecimal, petAge } from "./owner/ui.jsx";
 import { CheckCircle2, ClipboardList, Printer, X } from "lucide-react";
 
-export default function InClinicRegistration({ db, setDb, me, onClose, onRegistered, existingOwner }) {
+export default function InClinicRegistration({ db, setDb, me, onClose, onRegistered, existingOwner: initialOwner }) {
   const {yesterday:YESTERDAY,oldest:OLDEST} = walkInBirthWindow();
   const inFlight = useRef(false);
+  const [selectedOwnerId,setSelectedOwnerId]=useState(initialOwner?.id || '');
+  const existingOwner=(db.owners || []).find(o=>o.id===selectedOwnerId);
+
   const f = useLive(
     {
       // Owner details
@@ -48,10 +52,22 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
       addToQueue: true,
       reason: "Walk-in Consultation & Routine Exam",
     },
-    value=>validateWalkInFields(value,{vets:db.vets || []})
+    value=>{
+      const errors=validateWalkInFields(value,{vets:db.vets || []});
+      if(existingOwner)for(const field of ['ownerName','phone','email','address'])delete errors[field];
+      if(selectedOwnerId && !existingOwner)errors.ownerSelection='This owner record changed. Select the current owner.';
+      if(!selectedOwnerId && matchingOwners(db.owners || [],value).length)errors.ownerSelection='Matching contacts are already on file. Choose the correct existing owner.';
+      return errors;
+    }
   );
 
   const { v } = f;
+  const ownerMatches=matchingOwners(db.owners || [],v);
+  const selectOwner=id=>{
+    setSelectedOwnerId(id);setSaveError('');
+    const owner=(db.owners || []).find(o=>o.id===id);
+    f.patch({ownerSelection:id,ownerName:owner?.name || '',phone:owner?.phone || '',email:owner?.email || '',address:owner?.address || ''});
+  };
   const {vetId,serviceCategory,vaccineId,hasExternalHistory,priorVaccines,externalClinicNotes}=v;
   const setVetId=value=>f.set('vetId',value), setServiceCategory=value=>f.set('serviceCategory',value), setVaccineId=value=>f.set('vaccineId',value);
   const setHasExternalHistory=value=>f.set('hasExternalHistory',value), setPriorVaccines=value=>f.set('priorVaccines',value), setExternalClinicNotes=value=>f.set('externalClinicNotes',value);
@@ -129,10 +145,10 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
     const finalColor = showCustomColor && v.customColor.trim() ? v.customColor.trim() : v.color;
 
     const payload = {
-      ownerName: v.ownerName.trim(),
-      phone: v.phone.trim(),
-      email: v.email.trim(),
-      address: v.address.trim(),
+      ownerName: existingOwner?.name ?? v.ownerName.trim(),
+      phone: existingOwner?.phone ?? v.phone.trim(),
+      email: existingOwner?.email ?? v.email.trim(),
+      address: existingOwner?.address ?? v.address.trim(),
       petName: v.petName.trim(),
       species: canonicalSpecies,
       speciesOther: v.species.includes("Other") ? v.otherSpecies.trim() : "",
@@ -221,7 +237,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                 {existingOwner ? `Add New Pet for ${existingOwner.name}` : "Walk-In Registration (Client & Patient)"}
               </h3>
               <span style={{ fontSize: "12px", color: "#64748b" }}>
-                {existingOwner ? "Add and link a new animal patient to this verified client account" : "Front desk intake with live validation and a stable internal patient reference"}
+                {existingOwner ? "Register a new pet under this saved owner record" : "Front desk intake with live validation and a stable internal patient reference"}
               </span>
             </div>
           </div>
@@ -244,7 +260,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
             <section className="ow-note" style={{textAlign:"left",marginBottom:20}}>
               <h4>Owner registration summary</h4>
               <p>{successData.owner.name} · Phone: {successData.owner.phone || "Not recorded"} · Email: {successData.owner.email || "Not recorded"}</p>
-              <p>This slip does not provide sign-in access. Owners with a verified account should sign in normally. If this pet does not appear, ask the clinic to check the owner record.</p>
+              <p>For online access, create and verify an owner account, then ask reception to link it through Clients & Patients Masterlist → Clients & Households → Link online account. Refresh the owner portal after linking. Existing linked owners can sign in normally.</p>
             </section>
 
             <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "12px" }}>
@@ -258,12 +274,14 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
           <form onSubmit={handleSubmit} noValidate>
             {review.card}<fieldset disabled={loading} style={{border:0,padding:0,margin:0}}><legend className="sr-only">Walk-in registration</legend>
             <ol className="sf-steps" aria-label="Walk-in steps"><li className="on">1. Register patient and save arrival</li><li>2. Record measured intake</li><li>3. Assigned veterinarian</li></ol><p>For a patient already on file, use Existing patient check-in to keep their history together. Registration weight does not complete today’s intake.</p>
+            <div className="fld"><label htmlFor="ownerSelection">Owner record</label><select id="ownerSelection" name="ownerSelection" value={selectedOwnerId} onChange={e=>selectOwner(e.target.value)} aria-invalid={!!f.show('ownerSelection')} aria-describedby="ownerSelection-feedback"><option value="">New owner — enter details below</option>{(db.owners || []).map(o=><option key={o.id} value={o.id}>{o.name} · {o.phone || o.email || o.id}</option>)}</select><span id="ownerSelection-feedback" className="err" role={f.show('ownerSelection')?'alert':undefined}>{f.show('ownerSelection')}</span></div>
+            {!existingOwner && ownerMatches.length>0 && <section className="ow-note info"><b>Matching owner contacts</b><p>Review the owner before saving this pet.</p>{ownerMatches.map(o=><div key={o.id}><span>{o.name} · {o.phone} · {o.email || 'No email'}</span> <button type="button" className="btn sm" onClick={()=>selectOwner(o.id)}>Use this owner</button></div>)}</section>}
             {/* Section 1: Pet Owner Information */}
             {existingOwner ? (
               <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: "11px", fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                    Registered Client &amp; Household
+                    Saved owner record
                   </div>
                   <b style={{ fontSize: "16px", color: "var(--navy)" }}>{existingOwner.name}</b>
                   <div style={{ fontSize: "12.5px", color: "#475569", marginTop: "3px" }}>
@@ -272,13 +290,13 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                   </div>
                 </div>
                 <span style={{ background: "#dbeafe", color: "#1e40af", padding: "5px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: 700 }}>
-                  Existing Client
+                  Existing owner
                 </span>
               </div>
             ) : (
               <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px", border: "1px solid #e2e8f0" }}>
                 <b style={{ display: "block", color: "var(--navy)", fontSize: "13.5px", marginBottom: "10px" }}>
-                  1. Owner &amp; Client Contact Details
+                  1. Owner contact details
                 </b>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                   <Field
@@ -566,7 +584,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
             {/* Section 3: Today's Clinical Purpose & Arrival Queue */}
             <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", padding: "14px 16px", borderRadius: "12px", marginBottom: "16px" }}>
               <b style={{ display: "block", color: "var(--navy)", fontSize: "13.5px", marginBottom: "8px" }}>
-                3. Today&rsquo;s Visit Purpose &amp; Queue Admission
+                3. Today&rsquo;s visit and arrival
               </b>
 
               <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 700, color: "var(--navy)", fontSize: "13px", marginBottom: "12px" }}>
@@ -603,7 +621,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
 
                   {serviceCategory !== "vaccination" && <Field
                     id="reason"
-                    label="Arrival Reason for Queue &amp; Doctor Notes"
+                    label="Visit reason and notes for the veterinarian"
                     req
                     value={v.reason}
                     filter={petText}
@@ -712,7 +730,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
 
                   <span id="walkin-history-error" className="err" aria-live="polite">{f.show('externalClinicNotes')}</span>
                   <div style={{ marginTop: "10px", padding: "8px 10px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "6px", fontSize: "11.5px", color: "#166534" }}>
-                    <b>Smart Pre-Scheduling Active:</b> Selected previous shots will be saved as unverified references in the patient’s clinical history. Suggested protocols still require veterinarian review; these entries do not certify doses or approve booster dates.
+                    <b>Reported vaccine history:</b> Selected previous shots will be saved as unverified references in the patient’s clinical history. Suggested protocols still require veterinarian review; these entries do not certify doses or approve booster dates.
                   </div>
                 </div>
               )}

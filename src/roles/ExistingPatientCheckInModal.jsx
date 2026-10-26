@@ -1,5 +1,6 @@
+import PetApprovalModal from './PetApprovalModal.jsx';
 import {useFormValidation} from '../components/useFormValidation.jsx';
-import {walkInReasonError,savedWalkInArrival} from '../walkInRegistration.js';
+import {walkInReasonError,savedWalkInArrival,walkInReviewContext} from '../walkInRegistration.js';
 import { VaccinePicker, useBookingCatalog } from '../components/VaccineBooking.jsx';
 import { vaccineChoiceError, vaccineReason, vaccinePriceLabel } from '../vaccineBooking.js';
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
@@ -14,6 +15,7 @@ const sameOwner = (o, id) => !!id && (o.id === id || o.id === id.replace(/^o(\d+
 export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, onCheckIn, say = () => {}, initialPetId = "" }) {
   const TODAY = today();
   const inFlight = useRef(false);
+  const [registrationReview,setRegistrationReview]=useState(null);
   const [saveError, setSaveError] = useState("");
   const [search, setSearch] = useState("");
   const [selectedPetId, setSelectedPetId] = useState(initialPetId);
@@ -39,12 +41,12 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
   const alreadyToday = activeVisits.length > 0;
 
   const validation=useFormValidation({
-    patient:!selectedPet || !selectedOwner ? 'Choose a patient with a saved owner record.' : selectedPet.registrationStatus==='Declined' ? 'Correct and verify this patient’s registration before check-in.' : '',
+    patient:!selectedPet || !selectedOwner ? 'Choose a patient with a saved owner record.' : selectedPet.registrationStatus==='Declined' ? 'The owner must correct and resubmit this registration.' : selectedPet.registrationStatus==='Pending' ? 'Review and approve registration before saving an arrival or intake.' : '',
     vetId:!alreadyToday && !doctors.some(([id])=>id===vetId) ? 'Choose an available veterinarian.' : '',
     reason:!alreadyToday && service!=='vaccination' ? walkInReasonError(reason) : '',
     vaccineId:!alreadyToday && service==='vaccination' ? vaccineChoiceError(vaccineId,selectedPet?.species) : '',
   });
-  const review = useSubmissionReview([selectedPet,selectedOwner,vetId,reason,service,vaccineId,activeVisits,doctors]);
+  const review = useSubmissionReview(walkInReviewContext({pet:selectedPet,owner:selectedOwner,vetId,reason,service,vaccineId,activeVisits,doctors,estimate:service==='vaccination' ? vaccinePriceLabel(vaccineId,catalog) : '',date:TODAY}));
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -95,6 +97,7 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
     onCheckIn(newAppt);
   };
 
+  if(registrationReview)return <PetApprovalModal request={registrationReview} db={db} setDb={setDb} me={me} onClose={()=>setRegistrationReview(null)} onProcessed={()=>{setRegistrationReview(null);setSaveError('');}} />;
   return (
     <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: 16 }}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="exw-title" style={{ width: "min(560px, 100%)", maxHeight: "90vh", overflowY: "auto" }}>
@@ -104,7 +107,7 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
         </div>
 
         <ol className="sf-steps" aria-label="Check-in steps">
-          <li className="on">1. Save arrival</li><li>2. Record vitals</li><li>3. Doctor queue</li>
+          <li className="on">1. Verify patient & save arrival</li><li>2. Record vitals</li><li>3. Doctor queue</li>
         </ol>
 
         <form {...validation.formProps} onSubmit={handleSubmit}><fieldset disabled={busy} style={{border:0,padding:0,margin:0}}>
@@ -131,11 +134,12 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
               {selectedPet.allergies?.length > 0 && <> Allergies: <b>{selectedPet.allergies.join(", ")}</b>.</>}
             </div>
           )}
+          {selectedPet?.registrationStatus==='Pending' && <section className="sf-note"><b>Registration needs review</b><p>Review the saved pet details before continuing. A pending appointment is reviewed together with its registration.</p><button type="button" className="btn sm gold" disabled={busy || !(db.petRequests || []).some(r=>r.petId===selectedPet.id && r.status==='Pending')} onClick={()=>setRegistrationReview(db.petRequests.find(r=>r.petId===selectedPet.id && r.status==='Pending'))}>Review registration</button></section>}
           {alreadyToday && <section className="sf-note" aria-label="Today's existing visits">
             <b>Today's existing visit{activeVisits.length > 1 ? "s" : ""}</b>
             <p>Continue with the saved visit and assigned veterinarian.</p>
             {activeVisits.map(visit => {
-              const canIntake = ["Scheduled", "Checked-in"].includes(visit.status);
+              const canIntake = ["Scheduled", "Checked-in"].includes(visit.status) && !["Pending","Declined"].includes(selectedPet.registrationStatus);
               const vet = (db.vets || []).find(v => v.id === visit.vetId);
               return <div key={visit.id} style={{marginBottom:12}}>
                 <div>{visit.time || "Time not recorded"} · {visit.status} · {vet?.name || "Veterinarian not found"}</div>

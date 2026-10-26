@@ -1,3 +1,5 @@
+import {ownerAccountLinkRouter} from './ownerAccountLink.js';
+import {resolveWalkInOwner} from '../walkInOwner.js';
 import {vaccinationCardFieldErrors} from '../../src/vaccinationCardFields.js';
 import {externalHistoryErrors} from '../../src/externalHistory.js';
 import {bookingReasonErrors,bookingReason} from '../../src/bookingReason.js';
@@ -45,6 +47,7 @@ import { clinicAccess, assignedTo, validateStatusChange } from "../clinicAccess.
 export const clinicRouter = express.Router();
 clinicRouter.use(requireAuth, clinicAccess);
 clinicRouter.use(digitalVetCardRouter);
+clinicRouter.use(ownerAccountLinkRouter);
 clinicRouter.use("/checkout-inbox", checkoutRouter);
 clinicRouter.use("/pets/:petId/vitals",vitalsRouter);
 clinicRouter.use("/admin", adminRouter);
@@ -1222,6 +1225,8 @@ async function saveBooking(req, res, editing = false) {
       const walkIn = !editing && b.bookingKind === "walk-in" && req.user.role === "assistant";
       let duration;
       if (walkIn) {
+        if (registration?.registration_status && registration.registration_status!=='Verified')
+          throw bookingError('Review and approve this pet’s registration before saving a walk-in arrival.',409);
         const clock = clinicClock(); v.date = clock.date; v.time = clock.time;
         const existing = (await client.query("SELECT * FROM appointments WHERE date = $1 AND (vet_id = $2 OR pet_id = $3)", [v.date, v.vetId, v.petId])).rows;
         if (existing.some(a => a.pet_id === v.petId && !["Cancelled", "Rejected", "No-show", "Completed"].includes(a.status))) throw bookingError("This pet already has an active visit today. Check in that visit.", 409);
@@ -1459,37 +1464,10 @@ clinicRouter.post("/walk-in", async (req, res) => {
     await ensureSchedulingSchema();
     await ensurePetRegistrationSchema();
     const result = await withTransaction(async (client) => {
-      // 1. Insert Owner (or match existing by explicit ownerId, or by phone/email)
-      let effectiveOwner = null;
-      if (req.body.ownerId) {
-        const existById = await client.query(
-          `SELECT * FROM owners WHERE id = $1 LIMIT 1`,
-          [req.body.ownerId]
-        );
-        if (existById.rows.length) {
-          effectiveOwner = existById.rows[0];
-        }
-      }
-
-      if (!effectiveOwner && (email || phone)) {
-        const existQ = await client.query(
-          `SELECT * FROM owners WHERE (email = $1 AND $1 <> '') OR (phone = $2 AND $2 <> '') LIMIT 1`,
-          [registration.email, registration.phone]
-        );
-        if (existQ.rows.length) {
-          effectiveOwner = existQ.rows[0];
-        }
-      }
-
-      if (!effectiveOwner) {
-        const insOwner = await client.query(
-          `INSERT INTO owners (id, name, email, phone, address)
-           VALUES ($1, $2, $3, $4, $5)
-           RETURNING *`,
-          [ownerId, registration.ownerName, registration.email, registration.phone, registration.address]
-        );
-        effectiveOwner = insOwner.rows[0];
-      }
+      // Match contacts only to prompt a reviewed selection; never choose a household silently.
+      const effectiveOwner = await resolveWalkInOwner(client,req.body.ownerId,registration,ownerId);
+      await lockRegistrationOwner(client,effectiveOwner.id);
+      await checkRegistrationCapacity(client,effectiveOwner.id,patient.name,null,{pendingRequest:false});
 
       // 2. Insert Pet
       const insPet = await client.query(

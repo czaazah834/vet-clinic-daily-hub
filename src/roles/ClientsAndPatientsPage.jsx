@@ -1,3 +1,4 @@
+import OwnerAccountLinkModal from './OwnerAccountLinkModal.jsx';
 import { ownerForPet, petsForOwner } from "../ownerRelationships.js";
 import { Modal } from "./owner/ui.jsx";
 import "./households.css";
@@ -76,6 +77,7 @@ function getPetVaccState(petId, vaccList) {
 }
 
 export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
+  const [linkOwner,setLinkOwner]=useState(null);
   const [ownerFilter, setOwnerFilter] = useState("");
   const [householdId, setHouseholdId] = useState(null);
   const [tab, setTab] = useState("patients"); // 'patients' | 'owners'
@@ -536,6 +538,8 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
                         <td data-label="Quick Access" style={{ padding: "12px 14px", textAlign: "right" }}>
                           <div style={{ display: "inline-flex", flexWrap:"wrap", gap: "8px", alignItems: "center" }}>
                             <button type="button" className="btn sm ghost" onClick={() => setHouseholdId(o.id)}>View household</button>
+                            {canCheckIn && !o.userId && <button type="button" className="btn sm" onClick={()=>setLinkOwner(o)}>Link online account</button>}
+                            {o.userId && <span className="sf-pill">Online account linked</span>}
                             {canCheckIn && <button
                               type="button"
                               className="btn sm gold"
@@ -588,6 +592,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
         </section>
       )}
 
+      {linkOwner && <OwnerAccountLinkModal owner={linkOwner} onClose={()=>setLinkOwner(null)} onLinked={()=>{setHouseholdId(null);say?.('Owner account linked. The owner can refresh their portal to see their records.');window.dispatchEvent(new Event('pawcare:refresh'));}} />}
       {household && <Modal title="Owner & pets" onClose={() => setHouseholdId(null)} className="household-dialog" closeButton>
         <section className="household-summary">
           <span className="household-avatar"><User size={28} aria-hidden="true" /></span>
