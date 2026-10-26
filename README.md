@@ -163,7 +163,9 @@ Opening an unpaid invoice reserves it for that receptionist and browser window
 for five minutes, renewed every minute while open. Other receptionists can see
 who is handling it. Closing releases the reservation; a disconnected or crashed
 window recovers through expiry. A lost claim disables payment and offers retry
-without clearing invoice entries. Payment and task completion commit together;
+without clearing invoice entries. The screen requires a confirmed reservation
+and future expiry, serializes renewal/retry requests, and checks that the
+reservation is still active after payment review. Payment and task completion commit together;
 failed payments keep the invoice open and do not issue a receipt. Only assistants
 can claim tasks or record payments. Existing payment integrations without a claim
 remain supported when no active reservation exists; they cannot override one.

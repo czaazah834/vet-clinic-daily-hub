@@ -73,7 +73,8 @@ window.fetch=async(path,options={})=>{
  if(url.includes('/services/prices'))data={catalog:[{id:'srv_consult',name:'Consultation',price:400,category:'Consultation'},{id:'medicine',name:'Synthetic medicine',price:50,category:'Pet medicine',requiresPrescription:true}]};
  else if(url.includes('/clinical/note-options'))data={options:{diagnosis:['Synthetic diagnosis'],treatment:['Synthetic care']}};
  else if(url.includes('/availability'))data={slots:['09:00','10:00']};
- else if(url.includes('/claim'))data={claimToken:'synthetic-local-claim',invoiceItems:visit.invoiceItems,prescriptionItems:[]};
+ else if(url.includes('/claim'))data={success:true,claimToken:'synthetic-local-claim',leaseUntil:new Date(Date.now()+300000).toISOString(),invoiceItems:visit.invoiceItems,prescriptionItems:[],prescription:''};
+ else if(url.endsWith('/renew'))data={success:true,leaseUntil:new Date(Date.now()+300000).toISOString()};
  else if(url==='/api/state')data={...db,consults:[],vaccs:[]};
  else if(url.includes('/api/admin/staff'))data={staff:[],invitations:[]};
  else if(url.includes('/api/admissions/synthetic-admission'))data={admission,updates:[],medicationOrders:[],checkedAt:new Date().toISOString()};

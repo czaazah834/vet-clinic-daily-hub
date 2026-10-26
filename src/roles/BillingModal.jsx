@@ -119,7 +119,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
       }
     }
 
-    if (!claim.ready) { setFormErr("Reclaim this checkout before recording payment. Your invoice entries are preserved."); return; }
+    if (!claim.isActive()) { setFormErr("Reclaim this checkout before recording payment. Your invoice entries are preserved."); return; }
     if (!await review.ask({title:"Review payment", confirmLabel:"Confirm payment",
       description:"Confirm the invoice and the payment actually received. Confirming records the payment and issues the saved receipt.",
       fields:[
@@ -132,6 +132,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
         ["Payment method",method],...(method === "Cash" ? [["Cash received",money(Number(cashTendered))],
         ["Change",money(change)]] : [["Verified reference",refNo.trim()]])]
     })) return;
+    if (!claim.isActive()) { setFormErr("Your checkout reservation is no longer active. Retry checkout and review payment again. Your invoice entries are preserved."); return; }
     paying.current = true;
     setLoading(true);
 
@@ -182,7 +183,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
         {review.card}
         {!paid && me.role === "assistant" && !claim.ready && <div role={claim.error ? "alert" : "status"} style={{padding:12,background:"#fff7ed",marginBottom:12}}>
           {claim.error || "Reserving this checkout for you…"}
-          {claim.error && <button className="btn ghost sm" onClick={claim.retry}>Retry checkout claim</button>}
+          {claim.error && <button type="button" className="btn ghost sm" onClick={claim.retry} disabled={claim.checking}>{claim.checking ? "Retrying checkout…" : "Retry checkout claim"}</button>}
         </div>}
         {/* Header */}
         <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #f1f5f9", paddingBottom: "12px" }}>
