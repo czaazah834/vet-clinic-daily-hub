@@ -52,12 +52,15 @@ test('clinic choices require authorized roles, persist, reject concurrent overwr
   await query('DROP TRIGGER reject_options ON audit_logs');
 });
 test('booking → approval → check-in → consultation → billing → owner records stays connected', async () => {
-  const profile=await call('admin','GET','/clinic-document-profile');assert.equal(profile.status,200);
-  assert.equal((await call('admin','PUT','/clinic-document-profile',{revision:profile.data.profile.revision,name:'Synthetic clinic',address:'Synthetic clinic address',phone:'+639170000001',email:'clinic@example.invalid',registration:'SYNTHETIC-REG',verificationSource:'Synthetic verified registration',confirmed:true})).status,200);
-  const booking = await call('owner','POST','/appointments',{petId:'connected-pet',vetId:'connected-vet',date:'2026-10-26',time:'09:00',service:'checkup',reason:'Synthetic clinical concern'});
+  const registration=await call('owner','POST','/pet-requests',{requestId:crypto.randomUUID(),name:'Online Journey Patient',species:'Canine',breed:'Mixed Breed',sex:'Male',birth:'2020-01-01',weight:10,neutered:'Not sure',color:'Brown',notes:'Synthetic owner registration'});
+  assert.equal(registration.status,200,JSON.stringify(registration));
+  const requestedPet=registration.data.pet.id,expectedRegistration={id:registration.data.request.id,revision:registration.data.request.revision};
+  assert.equal((await call('owner','GET','/state')).data.data.pets.find(p=>p.id===requestedPet).registrationStatus,'Pending');
+  const booking = await call('owner','POST','/appointments',{petId:requestedPet,vetId:'connected-vet',date:'2026-10-26',time:'09:00',service:'checkup',reason:'Synthetic clinical concern'});
   assert.equal(booking.status,200,JSON.stringify(booking)); let visit = booking.data.appointment; assert.equal(visit.status,'Pending Approval');
   const patch = async (role,body) => { const result = await call(role,'PATCH',`/appointments/${visit.id}/status`,{...body,expectedVisit:intakeVisitSnapshot(visit)}); assert.equal(result.status,200,JSON.stringify(result)); visit = (await call(role,'GET','/state')).data.data.appts.find(row => row.id === visit.id); };
-  await patch('assistant',{status:'Scheduled'}); assert.equal(visit.status,'Scheduled');
+  await patch('assistant',{status:'Scheduled',expectedRegistration}); assert.equal(visit.status,'Scheduled');
+  assert.equal((await call('owner','GET','/state')).data.data.pets.find(p=>p.id===requestedPet).registrationStatus,'Verified','combined approval verifies the exact pending pet');
   await patch('assistant',{status:'Checked-in',intakeVitals:{weight:10.5,temp:38.5,triageLevel:'Routine',notes:'Synthetic intake'}}); assert.equal(visit.intakeVitals.weight,10.5);
   await patch('vet',{status:'In consultation'});
   const admissionRequest = {requestId:crypto.randomUUID(),apptId:visit.id,expectedVisit:intakeVisitSnapshot(visit),clinicalNote:'Private observation reason',carePlan:'Vet-approved observation plan',ownerUpdate:'Your pet is staying for observation.',nextObservationAt:new Date(Date.now()+3600000).toISOString(),observationInstructions:'Private scheduled check',consentConfirmed:true,consentName:'Synthetic owner',consentMethod:'In person',emergencyName:'Synthetic contact',emergencyPhone:'+639170000001',emergencyRelationship:'Owner'};
@@ -114,4 +117,39 @@ test('diagnosis default expansion preserves custom lists and retired suggestions
   await ensureNoteOptionsSchema();
   const after=(await call('vet','GET','/clinical/note-options')).data;
   assert.deepEqual(after,retired.data,'initialization must not reintroduce retired defaults');
+});
+
+test('walk-in vaccination → intake → vet dose → checkout → owner/admin history retains exact links',async()=>{
+ const registered=await call('assistant','POST','/walk-in',{ownerId:'owner',ownerName:'Synthetic owner',phone:'+639170000001',email:'owner@example.invalid',address:'Synthetic address',petName:'Walkin Vaccine Patient',species:'Canine',breed:'Mixed Breed',sex:'Male',birth:'2020-01-01',weight:12,neutered:'Not sure',color:'Brown',notes:'Synthetic walk-in',addToQueue:true,vetId:'connected-vet',serviceCategory:'vaccination',vaccineId:'rabies',reason:'Vaccination: Anti-rabies'});
+ assert.equal(registered.status,200,JSON.stringify(registered));
+ const petId=registered.data.pet.id;let visit=registered.data.appointment;
+ assert.equal(registered.data.owner.id,'owner');assert.equal(visit.status,'Scheduled');assert.equal(visit.intakeVitals,null);assert.equal(visit.service,'vaccination');
+ const patch=async(role,body)=>{
+  const result=await call(role,'PATCH',`/appointments/${visit.id}/status`,{...body,expectedVisit:intakeVisitSnapshot(visit)});
+  assert.equal(result.status,200,JSON.stringify(result));visit=(await call(role,'GET','/state')).data.data.appts.find(a=>a.id===visit.id);
+ };
+ await patch('assistant',{status:'Checked-in',intakeVitals:{weight:12.4,temp:38.5,triageLevel:'Routine',notes:'Measured at arrival'}});
+ await patch('vet',{status:'In consultation'});
+ const noteId='walkin-vaccine-note',doseId='walkin-vaccine-dose';
+ const saved=await call('vet','POST','/consultations',{id:noteId,petId,apptId:visit.id,date:visit.date,symptoms:'Reason for visit: Vaccination: Anti-rabies',objective:'Measured weight 12.4 kg, temperature 38.5 C. Veterinarian examination recorded.',diagnosis:'Suitable for vaccination following examination',treatment:'Anti-rabies administered; monitoring instructions explained',prescription:'',performedServices:[],prescriptionItems:[],expectedVisit:intakeVisitSnapshot(visit),careStatus:'Routine care',vaccination:{id:doseId,doseNo:1,doseOf:1,scheduleApproved:true,intervalDays:365,vaccine:'Anti-rabies',brand:'Synthetic Vaccine',batch:'SYNTHETIC-LOT',date:visit.date,nextDue:'2027-10-26',manufacturer:'Synthetic Manufacturer',serialNumber:'SYNTHETIC-SERIAL'}});
+ assert.equal(saved.status,200,JSON.stringify(saved));assert.equal(saved.data.appointment.status,'Completed');
+ const ownerBefore=(await call('owner','GET','/state')).data.data;
+ const dose=ownerBefore.vaccs.find(v=>v.id===doseId);assert.equal(dose.apptId,visit.id);assert.equal(dose.consultationId,noteId);assert.equal(dose.vetId,'connected-vet');
+ assert.equal(ownerBefore.consults.find(c=>c.id===noteId).apptId,visit.id);
+ const card=await call('owner','GET',`/pets/${petId}/vet-card`);assert.equal(card.status,200);assert.ok(card.data.document,'card is available before checkout');
+ assert.ok(JSON.stringify(card.data.document).includes('SYNTHETIC-LOT'));
+ assert.equal((await call('other-owner','GET',`/pets/${petId}/vet-card`)).status,404);
+ const inbox=await call('assistant','GET','/checkout-inbox');assert.ok(inbox.data.tasks.some(t=>t.appointmentId===visit.id));
+ const claim=await call('assistant','POST',`/checkout-inbox/${visit.id}/claim`,{});assert.equal(claim.status,200,JSON.stringify(claim));
+ assert.equal(claim.data.invoiceItems.length,1,'only the administered vaccine is charged');assert.equal(claim.data.invoiceItems[0].catalogId,'srv_rabies');
+ const amount=claim.data.invoiceItems.reduce((n,line)=>n+line.qty*line.price,0);
+ const paid=await call('assistant','POST',`/appointments/${visit.id}/billing`,{claimToken:claim.data.claimToken,invoiceItems:claim.data.invoiceItems,amount,paymentMethod:'Cash',cashTendered:1000});
+ assert.equal(paid.status,200,JSON.stringify(paid));
+ for(const role of ['owner','admin']){
+  const state=(await call(role,'GET','/state')).data.data,paidVisit=state.appts.find(a=>a.id===visit.id);
+  assert.equal(paidVisit.status,'Completed');assert.equal(paidVisit.billingStatus,'Paid');assert.equal(paidVisit.amount,amount);
+  assert.equal(state.consults.find(c=>c.id===noteId).petId,petId);assert.equal(state.vaccs.find(v=>v.id===doseId).consultationId,noteId);
+ }
+ const before=(await query('SELECT count(*)::int n FROM vaccinations WHERE id=$1',[doseId])).rows[0].n;
+ assert.equal(before,1,'billing never duplicates administration');
 });

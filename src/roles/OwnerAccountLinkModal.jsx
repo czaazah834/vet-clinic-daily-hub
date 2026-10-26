@@ -1,3 +1,4 @@
+import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
 import {useRef,useState} from 'react';
 import ClinicDialog from '../components/ClinicDialog.jsx';
 import {useFormValidation} from '../components/useFormValidation.jsx';
@@ -8,7 +9,8 @@ export default function OwnerAccountLinkModal({owner,onClose,onLinked}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   const saving=useRef(false);
   const validation=useFormValidation({email:!/^\S+@\S+\.\S+$/.test(email.trim())?'Enter the owner’s online account email.':'',confirmed:review&&!confirmed?'Confirm the owner’s identity and listed pets.':''});
-  const close=()=>{if(!saving.current)onClose();};
+  const unsaved=useUnsavedChanges({value:{email,confirmed},saving:busy,onClose});
+  const close=unsaved.close;
   const submit=async event=>{
     event.preventDefault();
     if(saving.current || !validation.validate(event))return;
@@ -27,6 +29,7 @@ export default function OwnerAccountLinkModal({owner,onClose,onLinked}) {
   };
   return <ClinicDialog label="Link owner’s online account" onClose={close}><section className="modal" style={{width:'min(680px,100%)'}}>
     <h3>Link owner’s online account</h3><p>Connect {owner.name}’s clinic history to their verified account. Confirm their identity with them before linking.</p>
+    {unsaved.card}
     <form {...validation.formProps} onSubmit={submit} aria-busy={busy}>
       <label className="fld">Online account email<input type="email" maxLength={255} {...validation.field('email')} value={email} disabled={busy || !!review} onChange={e=>setEmail(e.target.value)} /></label>{validation.feedback('email')}
       {review && <>

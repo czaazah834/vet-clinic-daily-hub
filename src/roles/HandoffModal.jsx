@@ -1,4 +1,6 @@
 import ClinicDialog from "../components/ClinicDialog.jsx";
+import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
+import {useFormValidation} from '../components/useFormValidation.jsx';
 import { useSubmissionReview } from "../components/SubmissionReview.jsx";
 import { useRef, useState } from "react";
 import { api } from "../api.js";
@@ -9,13 +11,12 @@ import { removeHandedOffVisit, savedHandoff } from "../vetHandoff.js";
 export default function HandoffModal({ appt, db, me, setDb, onClose }) {
   const [vetId,setVet]=useState(''),[note,setNote]=useState(''),[error,setError]=useState(''),[saving,setSaving]=useState(false);
   const [saved,setSaved]=useState(null),[refreshError,setRefreshError]=useState(''),[refreshing,setRefreshing]=useState(false);
-  const [touched,setTouched]=useState({vet:false,note:false});
   const inFlight=useRef(false),refreshFlight=useRef(false);
   const current=db.appts.find(a=>a.id===appt.id),pet=db.pets.find(p=>p.id===appt.petId);
   const recipients=db.vets.filter(v=>![me.id,me.vetId].includes(v.id));
   const stale=!pet || !current || !sameIntakeVisit(current,appt) || ![me.id,me.vetId].includes(current.vetId) || !['Checked-in','In consultation'].includes(current.status);
-  const vetErr = touched.vet && (!vetId || !recipients.some(v => v.id === vetId)) ? "Choose a receiving veterinarian." : "";
-  const noteErr = touched.note && (!note.trim() ? "Handoff instructions are required." : note.length > 3000 ? "Keep instructions under 3,000 characters." : "");
+  const validation=useFormValidation({vetId:!recipients.some(v=>v.id===vetId)?'Choose a receiving veterinarian.':'',note:!note.trim()?'Handoff instructions are required.':note.length>3000?'Keep instructions under 3,000 characters.':''});
+  const unsaved=useUnsavedChanges({value:{vetId,note},saving:saving||refreshing,active:!saved,onClose});
   const review = useSubmissionReview([vetId,note,current,pet,recipients,stale]);
   async function refresh() {
     if(refreshFlight.current)return;
@@ -30,8 +31,8 @@ export default function HandoffModal({ appt, db, me, setDb, onClose }) {
   }
   async function submit(e) {
     e.preventDefault();if(inFlight.current)return;setError('');
+    if(!validation.validate(e))return;
     if(stale){setError('This visit has changed. Refresh clinic records and reopen the handoff.');return;}
-    if(!recipients.some(v=>v.id===vetId) || !note.trim() || note.length>3000){setError('Choose a current receiving veterinarian and enter handoff instructions (up to 3,000 characters).');return;}
     if (!await review.ask({title:"Review care transfer",confirmLabel:"Confirm care transfer",description:"The receiving veterinarian gets this visit and patient history. Your access changes after transfer; include the findings needed to continue care.",fields:[
         ["Patient",pet.name],
         ["Visit",`${appt.date} at ${appt.time}`],
@@ -45,37 +46,38 @@ export default function HandoffModal({ appt, db, me, setDb, onClose }) {
     } catch(e){setError(e.message);inFlight.current=false;}
     finally {setSaving(false);}
   }
-  return <ClinicDialog labelledBy="handoff-title" onClose={() => {if ((!inFlight.current || saved) && !refreshFlight.current) onClose();}}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="handoff-title" style={{width:'min(600px,100%)',maxHeight:'94vh',overflowY:'auto',overflowWrap:'anywhere'}}>
-    {review.card}<h3 id="handoff-title">Hand over patient care</h3>
+  return <ClinicDialog labelledBy="handoff-title" onClose={unsaved.close}><div className="modal" aria-labelledby="handoff-title" style={{width:'min(600px,100%)',maxHeight:'94vh',overflowY:'auto',overflowWrap:'anywhere'}}>
+    {review.card}{unsaved.card}<h3 id="handoff-title">Hand over patient care</h3>
     {saved ? <>
       <section role="status" className="sf-note"><b>Care transferred to {saved.to}</b><p>The visit is in the receiving veterinarian’s waiting queue.</p><p>{new Intl.DateTimeFormat('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'}).format(new Date(saved.at))}</p><p style={{whiteSpace:'pre-wrap'}}>{saved.note}</p></section>
       {refreshing&&<p>Refreshing your clinic records…</p>}
       {refreshError&&<p role="alert" className="err">{refreshError}</p>}
       <div className="row end" style={{flexWrap:'wrap',gap:10}}>{refreshError&&<button type="button" className="btn" disabled={refreshing} onClick={refresh}>{refreshing?'Refreshing…':'Retry refresh'}</button>}<button type="button" className="btn gold" disabled={saving||refreshing} onClick={onClose}>Done</button></div>
-    </> : <form onSubmit={submit} noValidate>
+    </> : <form {...validation.formProps} onSubmit={submit}>
       <p><b>{pet?.name || 'Patient unavailable'}</b> · Visit {appt.date} at {appt.time}</p>
       <p>The receiving veterinarian gets the visit, intake and patient history. Include current findings, care already given and next steps.</p>
       {appt.intakeVitals&&<p className="sf-note">Saved intake: {appt.intakeVitals.weight} kg · {appt.intakeVitals.temp}°C{appt.intakeVitals.triageLevel?` · ${appt.intakeVitals.triageLevel}`:''}</p>}
       {stale&&<p role="alert" className="err">This visit has changed. Refresh clinic records and reopen the handoff.</p>}
       <div className="sf-field">
         <label htmlFor="handoff-vet">Receiving veterinarian *</label>
-        <select id="handoff-vet" aria-invalid={!!vetErr} aria-describedby="handoff-vet-error" value={vetId} disabled={saving||stale} className={vetErr ? "bad" : vetId ? "ok" : ""} onChange={e=>{setTouched(t=>({...t,vet:true}));setVet(e.target.value);setError('');}} onBlur={()=>setTouched(t=>({...t,vet:true}))}>
+        <select {...validation.field('vetId')} id="handoff-vet" value={vetId} disabled={saving||stale} onChange={e=>{setVet(e.target.value);setError('');}}>
           <option value="">Choose veterinarian</option>
           {recipients.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
         </select>
-        {vetErr && <span id="handoff-vet-error" className="err" aria-live="polite" style={{fontSize:12,display:'block',marginTop:2}}>{vetErr}</span>}
+        {validation.feedback('vetId')}
       </div>
       {!recipients.length&&<p>No other active veterinarian is available in the directory.</p>}
       <div className="sf-field">
         <label htmlFor="handoff-note">Handoff instructions *</label>
-        <textarea id="handoff-note" aria-invalid={!!noteErr} aria-describedby="handoff-note-error" rows={4} maxLength={3000} value={note} disabled={saving||stale} className={noteErr ? "bad" : note.trim() ? "ok" : ""} onChange={e=>{setTouched(t=>({...t,note:true}));setNote(e.target.value);setError('');}} onBlur={()=>setTouched(t=>({...t,note:true}))} placeholder="Enter findings, symptoms, current vital signs, and next examination steps..."/>
+        <textarea {...validation.field('note')} id="handoff-note" rows={4} maxLength={3000} value={note} disabled={saving||stale} onChange={e=>{setNote(e.target.value);setError('');}} placeholder="Enter findings, symptoms, current vital signs, and next examination steps..."/>
         <div style={{display:'flex',justifyContent:'space-between',fontSize:11.5,color:'#64748b',marginTop:2}}>
-          <span id="handoff-note-error" aria-live="polite">{noteErr ? <span className="err">{noteErr}</span> : "Saved intake and clinical notes are forwarded with this patient"}</span>
+          <span>Saved intake and clinical notes are forwarded with this patient</span>
           <span>{note.length} / 3000</span>
         </div>
+        {validation.feedback('note')}
       </div>
       <p>The visit returns to the receiving vet’s waiting queue. Save any relevant draft findings in these instructions before transferring.</p>
-      {error&&<p role="alert" className="err">{error}</p>}<div className="row end" style={{flexWrap:'wrap',gap:10}}><button type="button" className="btn ghost" disabled={saving} onClick={onClose}>Close</button><button type="submit" className="btn gold" disabled={saving||stale||!recipients.length}>{saving?'Transferring…':'Review care transfer'}</button></div>
+      {error&&<p role="alert" className="err">{error}</p>}<div className="row end" style={{flexWrap:'wrap',gap:10}}><button type="button" className="btn ghost" disabled={saving} onClick={unsaved.close}>Close</button><button type="submit" className="btn gold" disabled={saving||stale||!recipients.length}>{saving?'Transferring…':'Review care transfer'}</button></div>
     </form>}
   </div></ClinicDialog>;
 }

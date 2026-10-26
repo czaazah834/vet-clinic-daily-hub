@@ -1,3 +1,5 @@
+import ClinicDialog from '../components/ClinicDialog.jsx';
+import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
 import {matchingOwners} from '../ownerMatching.js';
 import DocumentHeader from "../components/DocumentHeader.jsx";
 import { VaccinePicker, useBookingCatalog } from '../components/VaccineBooking.jsx';
@@ -130,6 +132,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
 
   const review = useSubmissionReview([v,vetId,serviceCategory,specificVaccine,vaccineId,hasExternalHistory,priorVaccines,externalClinicNotes,existingOwner,db.vets]);
 
+  const unsaved=useUnsavedChanges({value:{...f.v,selectedOwnerId},saving:loading,active:!successData,onClose});
   const handleSubmit = async (ev) => {
     ev.preventDefault();
     if (inFlight.current) return;
@@ -224,15 +227,16 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !loading && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
+    <ClinicDialog label="Register walk-in owner and patient" onClose={unsaved.close}>
+      {unsaved.card}
       <div className={`modal ${successData?"print-document":""}`} style={{ width: "min(680px, 100%)", maxHeight: "94vh", overflowY: "auto", padding: "24px 28px" }}>
         
         {successData&&<DocumentHeader title="Client and patient registration slip"/>}
         {/* Modal Title */}
-        <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #f1f5f9", paddingBottom: "10px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <ClipboardList size={24} color="var(--navy)" />
-            <div>
+        <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap:8, marginBottom: "16px", borderBottom: "1px solid #f1f5f9", paddingBottom: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth:0 }}>
+            <ClipboardList size={24} color="var(--navy)" style={{flexShrink:0}} />
+            <div style={{minWidth:0}}>
               <h3 style={{ margin: 0, color: "var(--navy)", fontSize: "1.3rem" }}>
                 {existingOwner ? `Add New Pet for ${existingOwner.name}` : "Walk-In Registration (Client & Patient)"}
               </h3>
@@ -241,7 +245,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               </span>
             </div>
           </div>
-          <button type="button" className="btn sm ghost" onClick={onClose} disabled={loading} aria-label="Close" style={{ padding: "6px 10px" }}><X size={16} aria-hidden="true" /></button>
+          <button type="button" className="btn sm ghost" onClick={unsaved.close} disabled={loading} aria-label="Close" style={{ padding: "6px 10px", flexShrink:0 }}><X size={16} aria-hidden="true" /></button>
         </div>
 
         {successData ? (
@@ -267,7 +271,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
               <button className="btn sm ghost" onClick={() => window.print()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <Printer size={15} /> Print registration slip
               </button>
-              <button className="btn sm gold" onClick={onClose}>{successData.appt ? "Done · Continue to intake" : "Done"}</button>
+              <button className="btn sm gold" onClick={unsaved.close}>{successData.appt ? "Done · Continue to intake" : "Done"}</button>
             </div>
           </div>
         ) : (
@@ -298,7 +302,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                 <b style={{ display: "block", color: "var(--navy)", fontSize: "13.5px", marginBottom: "10px" }}>
                   1. Owner contact details
                 </b>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div className="walkin-field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "10px" }}>
                   <Field
                     id="ownerName"
                     label="Owner Full Name"
@@ -364,7 +368,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
                 2. Patient Clinical Details (Species &amp; Life Stage)
               </b>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <div className="walkin-field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "10px" }}>
                 <Field
                   id="petName"
                   label="Pet Name"
@@ -744,7 +748,7 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
 
             {/* Actions */}
             <div className="row end" style={{ gap: "10px" }}>
-              <button type="button" className="btn ghost sm" onClick={onClose} disabled={loading}>Cancel</button>
+              <button type="button" className="btn ghost sm" onClick={unsaved.close} disabled={loading}>Cancel</button>
               {saveError && <p className="err" role="alert">{saveError}</p>}
               <button type="submit" className="btn gold" disabled={loading} style={{ fontWeight: 700 }}>
                 {loading ? "Saving registration…" : "Review registration"}
@@ -755,6 +759,6 @@ export default function InClinicRegistration({ db, setDb, me, onClose, onRegiste
         )}
 
       </div>
-    </div>
+    </ClinicDialog>
   );
 }

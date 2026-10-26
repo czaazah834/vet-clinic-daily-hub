@@ -352,3 +352,11 @@ test('owner card directs pending registrations back to their existing request',(
  assert.match(html,/Registration review needed/);assert.match(html,/correct the existing request/);
  assert.doesNotMatch(html,/No registered pets yet/);
 });
+
+test('vet queue separates previous-day unfinished work without changing clinical priority',()=>{
+ const db=populated(),pet=db.pets[0];
+ db.appts=[{id:'old',petId:pet.id,vetId:'v1',date:'2000-01-01',time:'09:00',reason:'Previous day care',status:'Checked-in',intakeVitals:{weight:10,temp:38.5,triageLevel:'Routine'}}];
+ const html=render(ui.vet.Dash,props('vet',db));
+ assert.match(html,/Unfinished from earlier days/);assert.match(html,/Unfinished · 2000-01-01/);
+ assert.match(html,/Next · Assigned veterinarian/);assert.doesNotMatch(html,/waiting in your queue today/);
+});

@@ -2,6 +2,9 @@ import {ExternalHistorySummary} from '../components/ExternalHistory.jsx';
 import DigitalVetCard from './DigitalVetCard.jsx';
 import VitalsHistory from './VitalsHistory.jsx';
 import { approvalVisit } from "../appointmentStatus.js";
+import {currentAppointmentsByPet,money} from '../assistantWorkflow.js';
+import {ownerBill} from '../ownerBilling.js';
+import VisitNextStep from '../components/VisitNextStep.jsx';
 import ClinicDialog from "../components/ClinicDialog.jsx";
 import PetPortrait from "./PetPortrait.jsx";
 import { today as bookingToday } from "../booking.js";
@@ -26,7 +29,8 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
   if (!p.id) return null;
   if (walkIn) return <ExistingPatientCheckInModal db={db} setDb={setDb} me={me} initialPetId={p.id} onClose={() => setWalkIn(false)} onCheckIn={visit => { onClose(); onCheckIn?.(visit); }} />;
 
-  const activeAppt = appt ? (db.appts || []).find(a => a.id === appt.id && a.petId === p.id) : (db.appts || []).find(a => a.petId === p.id && a.date === bookingToday() && !["Cancelled","Rejected","No-show"].includes(a.status));
+  const activeAppt = appt ? (db.appts || []).find(a => a.id === appt.id && a.petId === p.id) : currentAppointmentsByPet(db.appts || [],bookingToday())[p.id];
+  const bill=activeAppt?ownerBill(activeAppt):null;
   const savePhoto = async photo => {
     try {
       const r = await auth.petPhoto(p.id, photo);
@@ -101,17 +105,18 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                 <Badge v={activeAppt.status} />
                 {activeAppt.billingStatus === "Paid" ? (
                   <span style={{ background: "#dcfce7", color: "#166534", fontSize: "11.5px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px" }}>
-                    Paid (₱{activeAppt.amount})
+                    Paid · {bill.amount===null?'Amount not recorded':money(bill.amount)}
                   </span>
                 ) : activeAppt.status === "Completed" ? (
                   <span style={{ background: "#fef3c7", color: "#92400e", fontSize: "11.5px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px" }}>
-                    Ready for Checkout (₱{activeAppt.amount || 600})
+                    {bill.status}{bill.amount!==null?` · Draft ${money(bill.amount)}`:''}
                   </span>
                 ) : null}
               </div>
               <div style={{ fontSize: "12.5px", color: "#475569", marginTop: "3px" }}>
                 <b>Reason:</b> {activeAppt.reason || "General Consultation"} &bull; <b>Veterinarian:</b> {(db.vets || []).find(v => v.id === activeAppt.vetId)?.name || "Veterinarian not recorded"}
               </div>
+              <VisitNextStep visit={activeAppt}/>
             </div>
 
             <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
@@ -190,7 +195,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               )}
 
               {/* Bill / Pay: strictly ONLY when appointment is Completed, or if Paid show Receipt */}
-              {activeAppt.status === "Completed" && (me?.role === "assistant" || activeAppt.billingStatus === "Paid") && (
+              {onBill && activeAppt.status === "Completed" && (activeAppt.billingStatus === "Paid" || me?.role === "assistant" && activeAppt.admissionStatus!=='Admitted') && (
                 <button
                   type="button"
                   className={`btn sm ${activeAppt.billingStatus === "Paid" ? "ghost" : "gold"}`}
@@ -199,7 +204,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
                     onBill && onBill(activeAppt);
                   }}
                   style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
-                  title="Search clinic prices, invoice items, and record payment"
+                  title={bill.paid?'View the saved payment receipt':'Review saved invoice items and record payment'}
                 >
                   <Receipt size={15} />
                   <span>{activeAppt.billingStatus === "Paid" ? "View Paid Receipt" : "Settle Bill / Checkout"}</span>
@@ -274,4 +279,3 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
     </ClinicDialog>
   );
 }
-

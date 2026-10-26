@@ -1,3 +1,4 @@
+import VisitNextStep from '../components/VisitNextStep.jsx';
 import Prices from './owner/Prices.jsx';
 import { approvalVisit } from "../appointmentStatus.js";
 import CancellationDialog from '../components/CancellationDialog.jsx';
@@ -13,7 +14,7 @@ import ReminderStatus from "./ReminderStatus.jsx";
 import { currentVaccinationDue, vaccinationAppointment, vaccinationBooking, vaccinationStatus } from "../ownerVaccination.js";
 import { today, plus } from "../booking.js";
 import { setPrefill } from "./owner/ui.jsx";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CalendarDays, AlertTriangle, PawPrint, ConciergeBell, Thermometer, Scale, UserCheck, Receipt, ArrowRight, X, Phone, Syringe,
 } from "lucide-react";
@@ -34,7 +35,7 @@ import LogCallModal from "./LogCallModal.jsx";
 const sameOwner = (o, id) => !!id && (o.id === id || o.id === id.replace(/^o(\d+)/, "o_$1") || o.id?.replace(/^o_(\d+)/, "o$1") === id);
 const tempTone = s => (s === "normal" ? "" : s === "high_fever" || s === "hypothermia" ? "er" : "wa");
 
-function Dash({ db, setDb, me, go, say }) {
+function Dash({ db, setDb, me, go, say, navigation, onNavigationHandled }) {
   const TODAY = today();
   const confirmingRef = useRef(new Set());
   const [confirming, setConfirming] = useState({});
@@ -76,6 +77,16 @@ function Dash({ db, setDb, me, go, say }) {
     }
   };
 
+  useEffect(()=>{
+    if(!navigation?.apptId)return;
+    const visit=(db.appts || []).find(a=>a.id===navigation.apptId);
+    if(!visit)setActionError('This visit is unavailable. Refresh clinic records before retrying.');
+    else if(navigation.action==='checkout' && visit.status==='Completed' && visit.admissionStatus!=='Admitted')setBillingAppt(visit);
+    else if(navigation.action==='intake' && ['Scheduled','Checked-in','In consultation'].includes(visit.status))setCheckInAppt(visit);
+    else setActionError('This visit changed. Review its current next step before continuing.');
+    onNavigationHandled?.();
+  },[navigation]);
+
   return (
     <>
       <Hero
@@ -109,7 +120,7 @@ function Dash({ db, setDb, me, go, say }) {
         ]}
       />
 
-      <CheckoutInbox me={me} blocked={Boolean(billingAppt || showWalkIn || showExistingWalkIn || checkInAppt || reviewReq || cardPetId || logCallTarget)} onOpen={task => {
+      <CheckoutInbox me={me} blocked={Boolean(billingAppt || showWalkIn || showExistingWalkIn || checkInAppt || reviewReq || rejecting || cardPetId || logCallTarget)} onOpen={task => {
         const visit=db.appts.find(a=>a.id===task.appointmentId);
         if(!visit){say("The visit is loading. Please retry in a moment.");return false;}
         setBillingAppt(visit);
@@ -165,6 +176,7 @@ function Dash({ db, setDb, me, go, say }) {
                             <span className={`sf-pill ${iv.triageLevel === "Emergency" ? "er" : "wa"}`}><AlertTriangle size={12} aria-hidden="true" />{iv.triageLevel}</span>
                           )}
                         </div>
+                        <VisitNextStep visit={a} />
                         <div className="sf-reason">{a.reason}</div><VaccineEstimate appointment={a} compact />
                         {iv && (
                           <div className="sf-chips">
@@ -188,7 +200,7 @@ function Dash({ db, setDb, me, go, say }) {
                       {a.status === "Checked-in" && (
                         <button className="btn sm ghost" title="Review or adjust intake vitals" onClick={() => setCheckInAppt(a)}>Edit vitals</button>
                       )}
-                      {a.status === "Completed" && (
+                      {a.status === "Completed" && a.admissionStatus!=="Admitted" && (
                         <button className={`btn sm ${isPaid ? "ghost" : "gold"}`} onClick={() => setBillingAppt(a)} title="Create the invoice and settle the bill">
                           {isPaid ? "View receipt" : "Bill and check out"}
                         </button>

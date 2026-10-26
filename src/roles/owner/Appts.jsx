@@ -1,3 +1,5 @@
+import {useUnsavedChanges} from '../../components/useUnsavedChanges.jsx';
+import VisitNextStep from '../../components/VisitNextStep.jsx';
 import {chronologicalAppointments,upcomingAppointments} from '../../appointmentOrder.js';
 import BookingReason from '../../components/BookingReason.jsx';
 import {bookingReasonErrors,bookingReason} from '../../bookingReason.js';
@@ -48,6 +50,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
   const [changingDate, setChangingDate] = useState(!start?.date || !!editing);
   const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState("");
   const { v } = f, S = SERVICES[v.service];
+  const unsaved=useUnsavedChanges({value:v,saving,onClose});
   const conflict = bookingDayConflict(db.appts, v.petId, v.date, editing?.id);
   const followUp = db.records.find(r => r.id === v.followUpId && r.petId === v.petId);
   const availability = useAvailability({ ...v, excludeId: editing?.id });
@@ -118,7 +121,8 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
     onClose();
   };
   return (
-    <Modal title={editing ? "Edit appointment" : "Book a visit"} onClose={() => { if (!bookingFlight.current) onClose(); }}>
+    <Modal title={editing ? "Edit appointment" : "Book a visit"} onClose={unsaved.close}>
+      {unsaved.card}
       <form className="ow-book-form" onSubmit={submit} noValidate>
         {review.card}
         {pets.find(p=>p.id===v.petId)?.registrationStatus==='Pending' && <p className="ow-note info">Your pet is pending verification. This sends an appointment request; the clinic will review registration before confirming the visit.</p>}
@@ -158,7 +162,7 @@ function BookForm({ db, setDb, me, say, editing, start, onClose, onExisting }) {
         <p className="ow-hint" style={{ marginTop: 10 }}>The clinic will reach you at {owner.phone || "your number on file"}. You can update it in My Profile.</p>
         {saveError && <p className="err" role="alert">{saveError}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
-        <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Close</button><button className="btn" disabled={!pets.length || saving || !!conflict}>{saving ? "Saving…" : editing ? "Review changes" : "Review booking"}</button></div>
+        <div className="row end"><button type="button" className="btn ghost" disabled={saving} onClick={unsaved.close}>Close</button><button className="btn" disabled={!pets.length || saving || !!conflict}>{saving ? "Saving…" : editing ? "Review changes" : "Review booking"}</button></div>
         </fieldset>
       </form>
     </Modal>
@@ -391,7 +395,7 @@ export default function OwnerAppts({ db, setDb, me, say }) {
                       <td><span className="who"><span className="av"><I e={ICON[p.species]} size={16} /></span>{p.name}</span></td>
                       <td>{(liveDoctors(db).find(v => v[0] === a.vetId) || [])[1] || "—"}</td>
                       <td>{a.reason}<VaccineEstimate appointment={a} compact />{a.service && SERVICES[a.service] && <small className="ow-sub">{SERVICES[a.service].label} · {durText(durOf(a))}</small>}{a.notes && <small className="ow-sub">Note: {a.notes}</small>}{a.cancelReason && <small className="ow-sub">{a.status === "Rejected" ? "Rejected" : "Cancelled"}: {a.cancelReason}</small>}</td>
-                      <td><Badge v={a.status} /><small className="ow-sub">{STATUS_NOTE[a.status]}</small></td>
+                      <td><Badge v={a.status} /><small className="ow-sub">{STATUS_NOTE[a.status]}</small><VisitNextStep visit={a} /></td>
                       <td className="act">{open && <><button className="btn ghost sm" onClick={e => { e.stopPropagation(); setModal({ book: true, editing: a }); }}>Edit</button> <button className="btn danger sm" onClick={e => { e.stopPropagation(); setModal({ cancel: a }); }}>Cancel</button></>}</td>
                     </tr>
                   );

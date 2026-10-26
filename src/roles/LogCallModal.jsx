@@ -1,3 +1,5 @@
+import ClinicDialog from '../components/ClinicDialog.jsx';
+import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
 import LiveControl from '../components/LiveControl.jsx';
 import { PaginatedList } from "../components/Pagination.jsx";
 import {useEffect,useRef,useState} from 'react';
@@ -45,11 +47,13 @@ export default function LogCallModal({target,db,onClose,onLogged,me,setDb,say}) 
     finally {setSaving(false);}
   };
   const done=()=>{if(saved)onLogged?.(saved);onClose();};
-  return <div className="scrim" onMouseDown={e=>e.target===e.currentTarget&&!saving&&done()} style={{zIndex:1050,padding:16}}>
-    <div className="modal" role="dialog" aria-modal="true" aria-labelledby="reminder-call-title" style={{width:'min(560px,100%)',maxHeight:'94vh',overflowY:'auto',overflowWrap:'anywhere'}}>
+  const unsaved=useUnsavedChanges({value:{outcome,notes},saving,active:!saved,onClose:done});
+  return <ClinicDialog label="Record reminder call" onClose={unsaved.close}>
+    {unsaved.card}
+    <div className="modal" aria-labelledby="reminder-call-title" style={{width:'min(560px,100%)',maxHeight:'94vh',overflowY:'auto',overflowWrap:'anywhere'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
         <h3 id="reminder-call-title"><Phone size={20} aria-hidden="true"/> Record reminder call</h3>
-        <button type="button" className="btn ghost sm" aria-label="Close call record" disabled={saving} onClick={done}><X size={18}/></button>
+        <button type="button" className="btn ghost sm" aria-label="Close call record" disabled={saving} onClick={unsaved.close}><X size={18}/></button>
       </div>
       <p>Record the outcome of your phone call. Automatic email and SMS results appear in the front desk reminder panel.</p>
       <section className="sf-note">
@@ -62,7 +66,7 @@ export default function LogCallModal({target,db,onClose,onLogged,me,setDb,say}) 
         <b>Call record saved: {saved.outcome}</b>
         <p>{callTime(saved.createdAt)} · {saved.staffName}</p>
         {saved.notes&&<p style={{whiteSpace:'pre-wrap'}}>{saved.notes}</p>}
-        <button className="btn gold" onClick={done}>Done</button>
+        <button className="btn gold" onClick={unsaved.close}>Done</button>
       </section> : <form onSubmit={submit}>
         <div className="sf-field"><label htmlFor="reminder-call-outcome">Call outcome *</label>
           <LiveControl as="select" required id="reminder-call-outcome" value={outcome} disabled={saving||stale} onChange={e=>setOutcome(e.target.value)}>
@@ -74,7 +78,7 @@ export default function LogCallModal({target,db,onClose,onLogged,me,setDb,say}) 
         </div>
         {error&&<p className="err" role="alert">{error}</p>}
         <div className="row end" style={{flexWrap:'wrap',gap:10}}>
-          <button type="button" className="btn ghost" disabled={saving} onClick={done}>Cancel</button>
+          <button type="button" className="btn ghost" disabled={saving} onClick={unsaved.close}>Cancel</button>
           <button type="submit" className="btn gold" disabled={saving||stale}>{saving?'Saving call…':'Save call outcome'}</button>
         </div>
       </form>}
@@ -91,5 +95,5 @@ export default function LogCallModal({target,db,onClose,onLogged,me,setDb,say}) 
         </article>)}</PaginatedList>
       </section>
     </div>
-  </div>;
+  </ClinicDialog>;
 }

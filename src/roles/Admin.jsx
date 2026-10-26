@@ -1,3 +1,5 @@
+import ClinicDialog from '../components/ClinicDialog.jsx';
+import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
 import NoteOptionsPage from "./NoteOptionsPage.jsx";
 import AuditActivity from "../components/AuditActivity.jsx";
 import { auditActivity } from "../auditActivity.js";
@@ -50,7 +52,7 @@ function Bars({ title, data }) {
   );
 }
 
-function StaffModal({ db, setDb, me, onClose, onCreated }) {
+export function StaffModal({ db, setDb, me, onClose, onCreated }) {
   const [f, setF] = useState({
     name: "",
     email: "",
@@ -62,6 +64,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
   const [err, setErr] = useState("");
   const [success, setSuccess] = useState(null);
   const [copied, setCopied] = useState(false);
+  const unsaved=useUnsavedChanges({value:f,saving:loading,active:!success,onClose});
   const inviting = useRef(false);
   const [emailCheck,setEmailCheck]=useState({email:'',status:'idle'});
   const [emailRetry,setEmailRetry]=useState(0);
@@ -169,8 +172,9 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
   const roleName = f.role === "vet" ? "Veterinarian" : "Vet Assistant";
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !loading && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="staff-invite-title" style={{ width: "min(540px, 100%)", borderRadius: "18px", padding: "26px", overflowWrap: "anywhere" }}>
+    <ClinicDialog label="Staff invitation" onClose={unsaved.close}>
+      {unsaved.card}
+      <div className="modal" aria-labelledby="staff-invite-title" style={{ width: "min(540px, 100%)", borderRadius: "18px", padding: "26px", overflowWrap: "anywhere" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
           <div>
             <h3 id="staff-invite-title" style={{ margin: "0 0 4px", fontSize: "19px", color: "var(--navy, #0f172a)", fontWeight: 700 }}>
@@ -180,7 +184,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
               Invite staff to set their password and verify their mobile number
             </p>
           </div>
-          <button className="btn ghost sm" onClick={onClose} style={{ padding: "6px" }} aria-label="Close" disabled={loading}>
+          <button className="btn ghost sm" onClick={unsaved.close} style={{ padding: "6px" }} aria-label="Close" disabled={loading}>
             <X size={18} />
           </button>
         </div>
@@ -223,7 +227,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
 
             {err && <p role="alert">{err}</p>}
             <div className="row end">
-              <button className="btn gold" onClick={onClose}>Done</button>
+              <button className="btn gold" onClick={unsaved.close}>Done</button>
             </div>
           </div>
         ) : (
@@ -310,7 +314,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
             </div>
 
             <div className="row end" style={{ gap: "10px", flexWrap: "wrap" }}>
-              <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+              <button type="button" className="btn ghost" onClick={unsaved.close}>Cancel</button>
               <button
                 type="submit"
                 className="btn gold"
@@ -325,7 +329,7 @@ function StaffModal({ db, setDb, me, onClose, onCreated }) {
           </form>
         )}
       </div>
-    </div>
+    </ClinicDialog>
   );
 }
 

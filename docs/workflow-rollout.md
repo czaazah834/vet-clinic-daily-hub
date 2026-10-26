@@ -42,20 +42,48 @@ A failed apply leaves the prior schema/data in place. After a successful apply,
 roll back application code only if compatible; database reversal requires the
 verified backup/restore procedure, not deleting preserved medical records.
 
-## Verify the clinic identity
+## Vaccination cards and clinical records
 
-An administrator opens **Official Document Details**, enters the actual clinic
-name, full address, phone, email, registration/license reference and checked
-source, confirms the review, and saves. Use current clinic registration/contact
-records. Saving records the administrator, time, source and revision. Edits reset
-the confirmation; errors appear and clear while typing. Never copy synthetic test
-values into a live clinic.
+The standard vaccination card includes saved pet and owner details, actual
+vaccinations and deworming, visit weights and recorded veterinarian credentials.
+Cards and PDFs do not require payment or an Official Document Details setup.
+The old certification/publication prerequisite has been removed. Do not configure
+invented clinic credentials or use payment as proof that treatment was given.
+Planned protocols and unverified external references are separate from administered
+doses. A dose belongs to a clinical visit only when its saved visit/record link
+identifies that visit; matching patient and date alone is insufficient.
 
-A stable internal patient/card reference supports treatment before publication.
-An official document additionally requires verified clinic details, verified pet
-registration, a completed consultation and saved payment. An unpaid visit cannot
-publish. Export loads the complete published history regardless of current UI
-filters. Planned doses remain labelled as not administered.
+Clinical completion, payment, discharge approval and actual release are separate
+saved events. An admitted pet stays under care until the veterinarian approves
+discharge. Reception then records payment and confirms actual release.
+
+## Role handoffs
+
+- Online owner: verify account → add pet or link existing clinic records at
+  reception → request appointment → combined appointment/pet review → arrival
+  and measured intake → assigned veterinarian → checkout → owner history.
+- Walk-in: reception selects or registers the owner and patient explicitly →
+  reviews arrival/service/vet → saves arrival → records measured intake →
+  assigned veterinarian → checkout. Pending registration must be approved first.
+- Admissions: veterinarian admits from an active visit → assistant records care
+  and owner updates → veterinarian finalizes visit notes and approves discharge
+  → reception records payment → reception confirms release.
+- Administrator: oversees staff access, calendar, clinical choices, sales and
+  audit history. Use the saved record’s next-step guidance to identify the role
+  responsible for the next action.
+
+Admission **Finish visit notes** opens the exact assigned visit. **Open this
+visit’s checkout** opens the corresponding receptionist invoice. If a visit has
+changed or is outside the role’s scope, refresh and review the current state.
+Earlier unfinished visits remain visible in the vet queue with their original
+date and a separate count. Clinical triage priority is preserved.
+
+Historical reports require complete, fresh history. **Load all history** follows
+saved pages sequentially, displays progress and stops on an error; retry explicitly.
+Exports remain blocked until loading completes. Form close/Escape/backdrop actions
+ask before discarding unsaved booking, arrival, intake and checkout changes;
+clinical notes retain their existing draft recovery. Review dialogs must be
+confirmed before a write starts.
 
 ## Hosting
 
@@ -89,11 +117,11 @@ sessions against a real database. Verify:
 - Assistant/veterinarian intake; every weight and temperature measurement,
   linked corrections, recording staff, units and timestamps.
 - Owner registration weights remain distinguishable from clinic measurements.
-- Completed unpaid consultations remain unpublished; saved payment publishes an
-  eligible document once and refreshes its content without duplicate audits.
-- Long complete PDFs include vaccinations, planned doses, vitals, corrections,
-  veterinarian, clinic details, issue date and document reference. Filters and
-  visible-page limits do not truncate the export.
+- Standard cards and PDFs remain available independently of payment. Saving
+  payment records a receipt; it does not certify that treatment was given.
+- Standard card PDFs include the pet, owner, actual vaccinations/deworming,
+  visit weights and recorded veterinarian details. Filters and visible-page
+  limits do not truncate the export; planned doses and SOAP stay outside the card.
 - Admission care, notes and medicine events persist through veterinarian discharge
   approval, payment and separate release confirmation. Payment leaves the patient
   **Ready for discharge**. Owner documents exclude private admission observations.

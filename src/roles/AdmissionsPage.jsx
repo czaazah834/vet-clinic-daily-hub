@@ -25,9 +25,9 @@ function NewAdmission({me,onSaved}) {
   const [open,setOpen] = useState(false);
   const read = useClinicRead('/api/admissions/eligible',5000);
   return <>
-    {read.error && <p role="alert">{read.error} <button className="btn sm" onClick={() => read.load()}>Retry consultation list</button></p>}
-    <button className="btn ghost" disabled={!read.data?.visits.length || !!read.error} onClick={() => setOpen(true)}>Choose a consultation to admit</button>
-    {!read.error && read.data && !read.data.visits.length && <p>No other consultations are available for admission. Start the patient’s consultation from the Clinical Queue.</p>}
+    {read.error && <p role="alert">{read.error} <button className="btn sm" onClick={() => read.load()}>Retry visit list</button></p>}
+    <button className="btn ghost" disabled={!read.data?.visits.length || !!read.error} onClick={() => setOpen(true)}>Choose a visit to admit</button>
+    {!read.error && read.data && !read.data.visits.length && <p>No other visits are available for admission. Start the patient’s visit from the Clinical Queue.</p>}
     {open && <AdmissionForm mode="create" me={me} visits={read.data?.visits || []} onClose={() => setOpen(false)} onSaved={row => {setOpen(false);read.load();onSaved(row);}} />}
   </>;
 }
@@ -52,7 +52,8 @@ function AdmissionDetail({id,me,go,onBack,onChanged}) {
           <p>Assistants follow the saved plan, record findings and actual medicine events, and contact the veterinarian if the pet’s condition changes. Only the veterinarian changes the plan or approves discharge.</p></section>
         {admission.status === 'Admitted' && ['vet','assistant'].includes(me.role) && <div className="admission-actions"><button className="btn gold" onClick={() => setMode('update')}>{me.role === 'vet' ? 'Add veterinarian update' : 'Record care observation'}</button>
           {me.role === 'vet' && <button className="btn" disabled={admission.visitStatus !== 'Completed'} onClick={() => setMode('discharge')}>Approve discharge</button>}
-          {me.role === 'vet' && admission.visitStatus !== 'Completed' && <p>Finalize the consultation SOAP notes in the Clinical Queue before discharge.</p>}
+          {me.role === 'vet' && admission.visitStatus !== 'Completed' && <button className="btn gold" onClick={()=>go('home',{apptId:admission.apptId,action:'notes'})}>Finish visit notes</button>}
+          {me.role === 'vet' && admission.visitStatus !== 'Completed' && <p>Finalize the visit record before approving discharge.</p>}
         </div>}
       </>}
       <section className="admission-plan" aria-label="Admission owner consent"><h3>Owner consent</h3>
@@ -63,7 +64,7 @@ function AdmissionDetail({id,me,go,onBack,onChanged}) {
         <p>{admission.status === 'Admitted' ? 'Care is ongoing. Final checkout waits for veterinarian discharge approval.' : admission.status === 'Ready for discharge' ? admission.billingStatus === 'Paid' ? 'Payment saved. Reception can now confirm release to the owner.' : 'Discharge approved. Reception must finalize the bill and record payment before release.' : 'This stay is closed. Its care history and discharge instructions are retained.'}</p>
         <p>Payment: {admission.billingStatus || 'Unbilled'}</p>
         {admission.status!=='Admitted' && <button className="btn" onClick={()=>setPrint(true)}>View / print discharge summary</button>}
-        {admission.status === 'Ready for discharge' && me.role === 'assistant' && <div className="admission-actions">{admission.billingStatus !== 'Paid' && go && <button className="btn" onClick={()=>go('home')}>Open Front Desk checkout inbox</button>}<button className="btn gold" disabled={admission.billingStatus !== 'Paid'} onClick={()=>setMode('release')}>Confirm release to owner</button></div>}
+        {admission.status === 'Ready for discharge' && me.role === 'assistant' && <div className="admission-actions">{admission.billingStatus !== 'Paid' && go && <button className="btn" onClick={()=>go('home',{apptId:admission.apptId,action:'checkout'})}>Open this visit’s checkout</button>}<button className="btn gold" disabled={admission.billingStatus !== 'Paid'} onClick={()=>setMode('release')}>Confirm release to owner</button></div>}
       </section>
       {!owner && <section className="admission-plan" aria-label="Medicine orders"><h3>Veterinarian medicine orders</h3>
         <p>Orders describe what should be given. The care timeline records what actually happened. Take-home prescriptions and clinic supplies are separate.</p>
@@ -109,12 +110,12 @@ export default function AdmissionsPage({me,go,say = () => {}}) {
     <section className="card admission-overview">
       <div className="admission-overview-heading"><span className="admission-icon"><Hospital size={26} aria-hidden="true" /></span><div>
         <h2>{owner ? 'Your pet’s stay at the clinic' : 'Admission and daily care'}</h2>
-        <p>{owner ? 'Read saved updates from the clinic and follow your pet’s progress through discharge.' : me.role === 'vet' ? 'Decide admission in the patient’s SOAP consultation. Monitor care and approve discharge here.' : 'Record daily care and medicine events, share owner updates, and coordinate release after payment.'}</p>
+        <p>{owner ? 'Read saved updates from the clinic and follow your pet’s progress through discharge.' : me.role === 'vet' ? 'Choose an active visit to admit. Monitor care, finalize visit notes and approve discharge here.' : 'Record daily care and medicine events, share owner updates, and coordinate release after payment.'}</p>
       </div></div>
       <ol className="admission-workflow" aria-label="Admission workflow">
         <li><span>1</span><div><b>Vet admits</b><small>Reason and monitoring plan</small></div></li>
         <li><span>2</span><div><b>Clinic provides care</b><small>Observations and actual medicine events</small></div></li>
-        <li><span>3</span><div><b>Vet approves discharge</b><small>Final SOAP and home-care instructions</small></div></li>
+        <li><span>3</span><div><b>Vet approves discharge</b><small>Final visit record and home-care instructions</small></div></li>
         <li><span>4</span><div><b>Payment and release</b><small>Reception confirms the pet went home</small></div></li>
       </ol>
       {me.role === 'vet' && <div className="admission-actions">
@@ -130,7 +131,7 @@ export default function AdmissionsPage({me,go,say = () => {}}) {
       {data && <>
         <div className="admission-list-meta"><b>{data.total} {status === 'Active' ? 'active' : status.toLowerCase()} {data.total === 1 ? 'stay' : 'stays'}</b><small>Updated {time(data.checkedAt)}</small></div>
         {!data.admissions.length && <div className="admission-empty"><Hospital size={32} aria-hidden="true" /><h3>{status === 'Active' ? 'No active admissions' : `No ${status.toLowerCase()} stays`}</h3>
-          <p>{owner ? 'When the clinic admits your pet, shared updates will appear here.' : me.role === 'vet' ? 'Open a patient’s consultation and use Admission under the Plan section to record hospital care.' : 'Patients appear here after a veterinarian saves an admission. You can then record care and share updates.'}</p></div>}
+          <p>{owner ? 'When the clinic admits your pet, shared updates will appear here.' : me.role === 'vet' ? 'Start the patient’s visit in the Clinical Queue, then choose that visit here or use the Admission action in the open visit notes.' : 'Patients appear here after a veterinarian saves an admission. You can then record care and share updates.'}</p></div>}
         <div className="admission-list">{data.admissions.map(row => <article key={row.id}>
           <div className="admission-heading"><h3>{row.petName}</h3><Status admission={row} /></div>
           {!owner && <p className="admission-card-owner">Owner: {row.ownerName}</p>}

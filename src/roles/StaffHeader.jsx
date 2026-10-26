@@ -1,3 +1,4 @@
+import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
 import { useState, useEffect, useRef } from "react";
 import { User, KeyRound, LogOut, ChevronDown } from "lucide-react";
 import { ROLES } from "../lib.jsx";
@@ -12,6 +13,8 @@ export default function StaffHeader({ db, setDb, me, say, onLogout }) {
   const [dlg, setDlg] = useState(null); // "profile" | "password"
   const ref = useRef(null);
 
+  const [formState,setFormState]=useState({dirty:false,busy:false});
+  const unsaved=useUnsavedChanges({value:formState.dirty,saving:formState.busy,active:!!dlg,onClose:()=>{setDlg(null);setFormState({dirty:false,busy:false});}});
   useEffect(() => {
     if (!open) return;
     const down = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -24,7 +27,7 @@ export default function StaffHeader({ db, setDb, me, say, onLogout }) {
     };
   }, [open]);
 
-  const to = t => { setOpen(false); setDlg(t); };
+  const to = t => { setFormState({dirty:false,busy:false}); setOpen(false); setDlg(t); };
   const account = accountProfile(db, me);
   const roleLabel = (ROLES[me.role] && ROLES[me.role][0]) || me.role;
   const initial = String(me.name || me.firstName || "U").replace(/^Dr\.?\s+/i, "").charAt(0).toUpperCase();
@@ -54,13 +57,14 @@ export default function StaffHeader({ db, setDb, me, say, onLogout }) {
         </div>
       )}
 
+      {unsaved.card}
       {dlg && (
-        <Modal title={dlg === "profile" ? "My profile" : "Change password"} onClose={() => setDlg(null)} className={`ow-account-dialog ow-account-${dlg}`} portalTo={ref.current?.closest(".shell")} closeButton>
+        <Modal title={dlg === "profile" ? "My profile" : "Change password"} onClose={unsaved.close} className={`ow-account-dialog ow-account-${dlg}`} portalTo={ref.current?.closest(".shell")} closeButton>
           {dlg === "profile"
-            ? <ProfileBody db={db} setDb={setDb} me={me} say={say} />
-            : <PasswordBody db={db} setDb={setDb} me={me} say={say} />}
+            ? <ProfileBody onFormState={setFormState} db={db} setDb={setDb} me={me} say={say} />
+            : <PasswordBody onFormState={setFormState} db={db} setDb={setDb} me={me} say={say} />}
           <div className="row end" style={{ marginTop: 14 }}>
-            <button type="button" className="btn ghost sm" onClick={() => setDlg(null)}>Close</button>
+            <button type="button" className="btn ghost sm" onClick={unsaved.close}>Close</button>
           </div>
         </Modal>
       )}

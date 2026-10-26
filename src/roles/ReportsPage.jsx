@@ -375,7 +375,7 @@ export default function ReportsPage({ db, me }) {
         )}
       </div>
 
-      {!historyComplete && <p role="status">Showing loaded records only. Load all history before exporting or printing.</p>}
+      {!historyComplete && <p role="status">Showing loaded records only. Use “Load all history” above before exporting or printing.</p>}
       {/* Main Report Document Sheet */}
       <section className="card rep-sheet" style={{ padding: "32px", background: "#ffffff" }}>
         

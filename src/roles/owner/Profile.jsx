@@ -1,6 +1,6 @@
 import { UserRound, Mail, MapPin, ShieldCheck, AlertCircle, KeyRound, Check, Circle } from "lucide-react";
 import { ROLES } from "../../lib.jsx";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./account.css";
 import { accountProfile, saveAccountProfile, formatAccountAddress, contactFieldErrors, contactCodeErrors } from "../../accountProfile.js";
 import { PW_RULES, pwStrength, validatePasswordChange, clean, normEmail, normPhone, emOk } from "../../validate.js";
@@ -13,7 +13,7 @@ const LABEL = ["Too weak", "Too weak", "Okay", "Good", "Strong", "Very strong"],
 const explain = x => x.offline ? { top: OFFLINE_MSG } : x.fields ? { fields: x.fields } : { top: x.message || "Something went wrong. Please try again." };
 
 /* Popup bodies (shown inside a Modal from the header menu). */
-export function ProfileBody({ db, setDb, me, say }) {
+export function ProfileBody({ db, setDb, me, say, onFormState }) {
   const o = accountProfile(db, me);
   const savePhoto = async photo => {
     const result = await auth.profilePhoto(photo);
@@ -47,15 +47,15 @@ export function ProfileBody({ db, setDb, me, say }) {
       </div>
       <p className="account-photo-note">Your contact details are used for clinic updates and account verification.</p>
     </div>
-    <Contact o={o} me={me} setDb={setDb} say={say} />
+    <Contact o={o} me={me} setDb={setDb} say={say} onFormState={onFormState} />
   </div>);
 }
-export function PasswordBody({ me, say }) {
+export function PasswordBody({ me, say, onFormState }) {
   const [n, setN] = useState(0);   // bumps after a successful change so the form starts empty
-  return <Password key={n} me={me} say={say} onDone={() => setN(n + 1)} />;
+  return <Password key={n} me={me} say={say} onFormState={onFormState} onDone={() => setN(n + 1)} />;
 }
 
-function Contact({ o, me, setDb, say }) {
+function Contact({ o, me, setDb, say, onFormState }) {
   const [email, setEmail] = useState(o.email || "");
   const [phone, setPhone] = useState(o.phone || "");
   const [houseStreet, setHouseStreet] = useState(o.houseStreet || "");
@@ -89,6 +89,7 @@ function Contact({ o, me, setDb, say }) {
     clean(country) !== (o.country ?? "Philippines") ||
     clean(zipCode) !== (o.zipCode || "");
 
+  useEffect(()=>{onFormState?.({dirty:dirty || !!pending,busy});},[dirty,!!pending,busy,onFormState]);
   const save = async e => {
     e.preventDefault();
     if (submitting.current) return;
@@ -198,10 +199,11 @@ function Contact({ o, me, setDb, say }) {
 }
 
 /* The current password is checked by the server. The browser never sees or compares the real one. */
-function Password({ me, say, onDone }) {
+function Password({ me, say, onDone, onFormState }) {
   const [show, setShow] = useState(false), [srv, setSrv] = useState({}), [busy, setBusy] = useState(false), [top, setTop] = useState("");
   const f = useLive({ cur: "", next: "", conf: "" }, v => validatePasswordChange(v, me.username || "")), v = f.v;
   const set = (k, x) => { f.set(k, x); if (srv[k]) setSrv(s => ({ ...s, [k]: "" })); };
+  useEffect(()=>{onFormState?.({dirty:!!(v.cur || v.next || v.conf),busy});},[v.cur,v.next,v.conf,busy,onFormState]);
   const t = show ? "text" : "password", s = pwStrength(v.next), rulesOk = PW_RULES.every(([r]) => r(v.next));
   const save = async e => {
     e.preventDefault(); setTop(""); f.submit(e);

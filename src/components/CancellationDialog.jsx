@@ -1,3 +1,4 @@
+import {useUnsavedChanges} from './useUnsavedChanges.jsx';
 import LiveControl from './LiveControl.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { sameIntakeVisit } from '../intakeVisit.js';
@@ -9,11 +10,12 @@ export default function CancellationDialog({visit,currentVisit,onClose,onSubmit,
   const dialog = useRef(null);
   const [reason,setReason] = useState(''), [saving,setSaving] = useState(false);
   const pending = useRef(false);
+  const unsaved=useUnsavedChanges({value:reason,saving,onClose});
   const stale = !currentVisit || !sameIntakeVisit(visit,currentVisit);
   const review = useSubmissionReview([reason,visit,currentVisit]);
   useEffect(()=>{dialog.current.showModal();},[]);
-  return <dialog ref={dialog} className="submission-review" aria-label={action} onCancel={e=>{e.preventDefault();if(!pending.current)onClose();}}>
-    {review.card}
+  return <dialog ref={dialog} className="submission-review" aria-label={action} onCancel={e=>{e.preventDefault();if(!pending.current)unsaved.close();}}>
+    {review.card}{unsaved.card}
     <form onSubmit={async e=>{
       e.preventDefault();
       if(pending.current || stale || !reason.trim() || reason.length>500)return;
@@ -24,7 +26,7 @@ export default function CancellationDialog({visit,currentVisit,onClose,onSubmit,
       <h3>{action}</h3>
       <label>{reject ? "Rejection reason" : "Cancellation reason"}<LiveControl as="textarea" required maxLength={500} value={reason} disabled={saving} onChange={e=>setReason(e.target.value)} /></label>
       {(error || stale) && <p role="alert" className="err">{stale ? 'The visit changed. Close this form and reopen its current action.' : error}</p>}
-      <div className="row end"><button type="button" className="btn ghost" disabled={saving} onClick={onClose}>Keep appointment</button>
+      <div className="row end"><button type="button" className="btn ghost" disabled={saving} onClick={unsaved.close}>Keep appointment</button>
         <button className="btn danger" disabled={saving || stale || !reason.trim()}>{saving ? 'Saving…' : reviewTitle}</button></div>
     </form>
   </dialog>;

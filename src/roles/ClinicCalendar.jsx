@@ -1,3 +1,5 @@
+import ClinicDialog from '../components/ClinicDialog.jsx';
+import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
 import {chronologicalAppointments,upcomingAppointments,appointmentMinutes} from '../appointmentOrder.js';
 import BookingReason from '../components/BookingReason.jsx';
 import {bookingReasonErrors,bookingReason} from '../bookingReason.js';
@@ -1055,6 +1057,7 @@ export function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
   const [vaccineId,setVaccineId]=useState(vaccineIdFromReason(slot.reason) || (service==='vaccination' && slot.reason ? 'vet-review' : ''));
   const [followUpId,setFollowUpId]=useState(slot.followUpId || '');
   const [saving,setSaving]=useState(false),[saveError,setSaveError]=useState('');
+  const unsaved=useUnsavedChanges({value:{petId,vetId,date,time,service,reasonChoice,otherReason,vaccineId,followUpId},saving,onClose});
   const bookingFlight=useRef(false),catalog=useBookingCatalog()?.data?.catalog || [];
   const availability=useAvailability({vetId,date,service,excludeId:editing?slot.id:undefined});
   const selectedPet=db.pets.find(p=>p.id===petId) || {};
@@ -1087,9 +1090,10 @@ export function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
     catch(error){setSaveError(error.message);availability.refresh();}
     finally{bookingFlight.current=false;setSaving(false);}
   };
-  return <div className="scrim" onMouseDown={e=>e.target===e.currentTarget && !saving && onClose()}>
-    <div className="modal cc-book-modal" role="dialog" aria-modal="true" aria-labelledby="quick-book-title">
-      <header className="cc-book-heading"><h3 id="quick-book-title">{editing?'Reschedule appointment':'Book clinic visit'}</h3><button type="button" className="btn ghost sm" disabled={saving} onClick={onClose} aria-label="Close booking"><X size={16}/></button></header>
+  return <ClinicDialog label="Clinic appointment booking" onClose={unsaved.close}>
+    {unsaved.card}
+    <div className="modal cc-book-modal" aria-labelledby="quick-book-title">
+      <header className="cc-book-heading"><h3 id="quick-book-title">{editing?'Reschedule appointment':'Book clinic visit'}</h3><button type="button" className="btn ghost sm" disabled={saving} onClick={unsaved.close} aria-label="Close booking"><X size={16}/></button></header>
       <form {...validation.formProps} onSubmit={handleSubmit}>
         {review.card}<fieldset disabled={saving}>
         {editing?<><p className="ow-note">Choose a new date and time. The original patient, service, veterinarian, reason and follow-up stay linked to this visit.</p>
@@ -1110,9 +1114,9 @@ export function QuickBookModal({ slot, db, doctors, onClose, onBook }) {
         {availability.loading && <p role="status">Checking availability…</p>}
         {availability.error && <p className="err" role="alert">{availability.error} <button type="button" className="btn ghost sm" onClick={availability.refresh}>Retry availability</button></p>}
         {!availability.loading && !availability.error && !rules.date && !availability.slots.length && <p className="ow-note">No available times for this visit. Choose another date.</p>}
-        <div className="row end"><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button className="btn gold" disabled={saving || availability.loading || !!availability.error}>{saving?'Saving…':editing?'Review reschedule':'Review booking'}</button></div>
+        <div className="row end"><button type="button" className="btn ghost" onClick={unsaved.close}>Cancel</button><button className="btn gold" disabled={saving || availability.loading || !!availability.error}>{saving?'Saving…':editing?'Review reschedule':'Review booking'}</button></div>
         </fieldset>{saveError && <p className="err" role="alert">{saveError}</p>}
       </form>
     </div>
-  </div>;
+  </ClinicDialog>;
 }

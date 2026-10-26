@@ -1,3 +1,5 @@
+import ClinicDialog from '../components/ClinicDialog.jsx';
+import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
 import {visitFormType} from '../visitForm.js';
 import { useFormValidation } from '../components/useFormValidation.jsx';
 import { intakeErrors } from '../formValidation.js';
@@ -59,6 +61,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   const [fasted, setFasted] = useState(saved?.fasted ?? false);
   const [saving, setSaving] = useState(false);
   const [valErr, setValErr] = useState("");
+  const unsaved=useUnsavedChanges({value:{weight,temp,triage,serviceReason,notes,fasted},saving,onClose});
 
   const externalVaccs = (db.vacc || db.vaccs || []).filter(v => 
     v.petId === pet.id && (v.recorded_by?.includes("External") || v.brand?.includes("External") || v.protocol_type?.includes("External") || v.protocolType?.includes("External"))
@@ -217,7 +220,8 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <ClinicDialog label="Patient check-in and measured vitals" onClose={unsaved.close}>
+      {unsaved.card}
       <div className="modal" style={{ width: "min(640px, 100%)", maxHeight: "94vh" }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: "12px", marginBottom: "14px" }}>
@@ -230,7 +234,7 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
               <b>Patient:</b> {pet.name || "Patient"} ({pet.breed || species}) &bull; <b>Owner:</b> {owner.name || "—"} ({owner.phone || "—"})
             </p>
           </div>
-          <button className="btn ghost sm" onClick={onClose}><X size={16} /></button>
+          <button className="btn ghost sm" onClick={unsaved.close} disabled={saving}><X size={16} /></button>
         </div>
 
         <p>Earlier measurements are retained. Recording new vitals keeps an active consultation in progress.</p>
@@ -496,14 +500,14 @@ export default function CheckInModal({ appt, db, setDb, me, onClose, onCheckedIn
           )}
 
           <div className="row end" style={{ marginTop: "20px", gap: "10px", flexWrap: "wrap" }}>
-            <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn ghost" onClick={unsaved.close} disabled={saving}>Cancel</button>
             <button type="submit" className="btn gold" disabled={saving || stale || !!dateError || !pet.id || !owner.id}>
               Review measured vitals
             </button>
           </div>
         </form>
       </div>
-    </div>
+    </ClinicDialog>
   );
 }
 

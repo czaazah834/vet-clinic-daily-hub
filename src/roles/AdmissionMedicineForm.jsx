@@ -57,7 +57,7 @@ export default function AdmissionMedicineForm({action,admission,order,event,onCl
         <label>Clinic medicine supply product (optional)<select disabled={!!catalogError} value={form.catalogId} onChange={e=>{set('catalogId',e.target.value);set('supplyLimit',e.target.value?'1':'0');}}><option value="">No additional clinic supply charge</option>{catalog.map(p=><option key={p.id} value={p.id}>{p.name} · ₱{p.price} per item/package</option>)}</select></label>
         {catalogError && <p role="alert">{catalogError} You can record an order without an additional supply charge, or reopen this form to reload the catalog.</p>}
         {form.catalogId && <label>Maximum whole items/packages authorized for clinic use *<input type="number" required min="1" max="1000" step="1" {...validation.field('supplyLimit')} value={form.supplyLimit} onChange={e=>set('supplyLimit',e.target.value)} />{validation.feedback('supplyLimit')}</label>}
-        <p>Item/package quantities are for billing supplies. They are separate from the medicine dose. Take-home supply is prescribed in SOAP.</p>
+        <p>Item/package quantities are for billing supplies. They are separate from the medicine dose. Take-home supply is prescribed in the clinical visit record.</p>
       </>}
       {recording && <>
         <label>Actual result *<select required {...validation.field('result')} value={form.result} onChange={e=>set('result',e.target.value)}><option value="">Choose what happened</option>{['Given','Missed','Held'].map(v=><option key={v}>{v}</option>)}</select>{validation.feedback('result')}</label>

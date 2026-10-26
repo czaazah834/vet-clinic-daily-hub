@@ -36,6 +36,7 @@ function PortalBody({ cfg, me, db, setDb, onLogout, dataLoading = false, dataErr
   }, [me.id, setDb]);
   // Per-account last screen is preserved across reloads; a different user cannot inherit it.
   const pageKey = `pawcare_page_${me.id}`;
+  const [navigation,setNavigation] = useState(null);
   const [page, setPage] = useState(() => {
     try {
       const previous = sessionStorage.getItem(pageKey);
@@ -43,7 +44,7 @@ function PortalBody({ cfg, me, db, setDb, onLogout, dataLoading = false, dataErr
     } catch (_) { return cfg.menu[0].k; }
   }), [open, setOpen] = useState(false), [toast, setToast] = useState("");
   const say = m => { setToast(m); setTimeout(() => setToast(""), 2200); };
-  const cur = cfg.menu.find(m => m.k === page) || cfg.menu[0], go = k => { setPage(k); try { sessionStorage.setItem(pageKey, k); } catch (_) {} setOpen(false); }, Dash = cfg.Dash;
+  const cur = cfg.menu.find(m => m.k === page) || cfg.menu[0], go = (k,context=null) => { setNavigation(context); setPage(k); try { sessionStorage.setItem(pageKey, k); } catch (_) {} setOpen(false); }, Dash = cfg.Dash;
   return (
     <div className={`shell th-${me.role}`} data-page={page}>
       <a className="portal-skip" href="#portal-main">Skip to page content</a>
@@ -62,7 +63,7 @@ function PortalBody({ cfg, me, db, setDb, onLogout, dataLoading = false, dataErr
           </section>}
           <ErrorBoundary key={page} inline onReset={() => go(cfg.menu[0].k)}>
           {!dataLoading && page !== "audit" && page !== 'admissions' && <HistoryControls auto={!cur.dash && !["users","prices","audit","pet-requests"].includes(page)} />}
-          {dataLoading ? (!dataError && <section className="clinic-loading" role="status"><span className="clinic-spinner" aria-hidden="true" />Loading clinic records…</section>) : cur.Page ? <cur.Page db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.dash ? <Dash db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.rep ? <Reports db={db} me={me} /> : <EntityPage key={cur.k} ent={cur.ent} db={db} setDb={setDb} me={me} say={say} />}
+          {dataLoading ? (!dataError && <section className="clinic-loading" role="status"><span className="clinic-spinner" aria-hidden="true" />Loading clinic records…</section>) : cur.Page ? <cur.Page navigation={navigation} onNavigationHandled={()=>setNavigation(null)} db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.dash ? <Dash navigation={navigation} onNavigationHandled={()=>setNavigation(null)} db={db} setDb={setDb} me={me} go={go} say={say} /> : cur.rep ? <Reports db={db} me={me} /> : <EntityPage key={cur.k} ent={cur.ent} db={db} setDb={setDb} me={me} say={say} />}
           </ErrorBoundary>
         </main>
       </div>

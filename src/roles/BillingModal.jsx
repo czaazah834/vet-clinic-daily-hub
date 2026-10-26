@@ -1,3 +1,5 @@
+import ClinicDialog from '../components/ClinicDialog.jsx';
+import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
 import { useFormValidation } from '../components/useFormValidation.jsx';
 import { paymentErrors } from '../formValidation.js';
 import DocumentHeader from "../components/DocumentHeader.jsx";
@@ -79,6 +81,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
   const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const total = Math.max(0, (Math.round(subtotal * 100) - Math.round(Number(discount) * 100)) / 100);
+  const unsaved=useUnsavedChanges({value:{items,method,discount,cashTendered,refNo},saving:loading,active:!paid,onClose});
   const errors = paymentErrors({items,discount,cashTendered,refNo,method,prescribed});
   const validation = useFormValidation(errors);
   const change = method === "Cash" ? Math.max(0, (+cashTendered || 0) - total) : 0;
@@ -171,8 +174,9 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !loading && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: "16px" }}>
-      <div className={`modal ${paid?"print-document receipt-document":""}`} role="dialog" aria-modal="true" aria-labelledby="billing-title" style={{ width: "min(620px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "22px 26px" }}>
+    <ClinicDialog label={paid ? "Saved payment receipt" : "Visit checkout"} onClose={unsaved.close}>
+      {unsaved.card}
+      <div className={`modal ${paid?"print-document receipt-document":""}`} aria-labelledby="billing-title" style={{ width: "min(620px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "22px 26px" }}>
         
         {paid&&<DocumentHeader title="Payment receipt">Visit reference: {appt.id}</DocumentHeader>}
         {review.card}
@@ -190,7 +194,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
               Search clinical services, procedures &amp; medication prices from official database
             </span>
           </div>
-          <button type="button" className="btn sm ghost" onClick={onClose} disabled={loading} aria-label="Close" style={{ padding: "6px 10px" }}><X size={16} aria-hidden="true" /></button>
+          <button type="button" className="btn sm ghost" onClick={unsaved.close} disabled={loading} aria-label="Close" style={{ padding: "6px 10px" }}><X size={16} aria-hidden="true" /></button>
         </div>
 
         {paid ? (
@@ -238,7 +242,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
               <button className="btn ghost sm" onClick={() => window.print()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <Printer size={15} /> Print Receipt
               </button>
-              <button className="btn gold sm" onClick={onClose}>Done</button>
+              <button className="btn gold sm" onClick={unsaved.close}>Done</button>
             </div>
           </div>
         ) : (
@@ -518,7 +522,7 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
 
             {/* Actions */}
             <div className="row end" style={{ gap: "10px" }}>
-              <button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button>
+              <button type="button" className="btn ghost sm" onClick={unsaved.close}>Cancel</button>
               <button type="submit" className="btn gold" disabled={loading || !claim.ready} style={{ fontWeight: 700 }}>
                 {loading ? "Processing..." : "Review payment"}
               </button>
@@ -529,6 +533,6 @@ export default function BillingModal({ appt, db, setDb, me, onClose, onPaid }) {
         )}
 
       </div>
-    </div>
+    </ClinicDialog>
   );
 }

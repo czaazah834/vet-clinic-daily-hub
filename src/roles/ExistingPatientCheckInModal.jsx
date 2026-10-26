@@ -1,3 +1,5 @@
+import ClinicDialog from '../components/ClinicDialog.jsx';
+import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
 import PetApprovalModal from './PetApprovalModal.jsx';
 import {useFormValidation} from '../components/useFormValidation.jsx';
 import {walkInReasonError,savedWalkInArrival,walkInReviewContext} from '../walkInRegistration.js';
@@ -26,6 +28,7 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
   const doctors = (db.vets || []).map(v => [v.id, v.name]);
   const [vetId, setVetId] = useState(doctors[0]?.[0] || "");
   const [busy, setBusy] = useState(false);
+  const unsaved=useUnsavedChanges({value:{selectedPetId,vetId,service,vaccineId,reason},saving:busy,onClose});
 
   const term = search.trim().toLowerCase();
   const filteredPets = (db.pets || []).filter(p => {
@@ -99,11 +102,12 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
 
   if(registrationReview)return <PetApprovalModal request={registrationReview} db={db} setDb={setDb} me={me} onClose={()=>setRegistrationReview(null)} onProcessed={()=>{setRegistrationReview(null);setSaveError('');}} />;
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()} style={{ zIndex: 1050, display: "grid", placeItems: "center", padding: 16 }}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="exw-title" style={{ width: "min(560px, 100%)", maxHeight: "90vh", overflowY: "auto" }}>
+    <ClinicDialog label="Existing patient arrival" onClose={unsaved.close}>
+      {unsaved.card}
+      <div className="modal" aria-labelledby="exw-title" style={{ width: "min(560px, 100%)", maxHeight: "90vh", overflowY: "auto" }}>
         <div className="sf-modal-hd">
           <h3 id="exw-title"><UserCheck size={20} aria-hidden="true" />Existing patient check-in</h3>
-          <button type="button" className="sf-x" onClick={onClose} disabled={busy} aria-label="Close"><X size={18} aria-hidden="true" /></button>
+          <button type="button" className="sf-x" onClick={unsaved.close} disabled={busy} aria-label="Close"><X size={18} aria-hidden="true" /></button>
         </div>
 
         <ol className="sf-steps" aria-label="Check-in steps">
@@ -174,12 +178,12 @@ export default function ExistingPatientCheckInModal({ db, setDb, me, onClose, on
           </>}
           {saveError && <p className="err" role="alert">{saveError}</p>}
           <div className="row end" style={{flexWrap:"wrap"}}>
-            <button type="button" className="btn ghost" disabled={busy} onClick={onClose}>Cancel</button>
+            <button type="button" className="btn ghost" disabled={busy} onClick={unsaved.close}>Cancel</button>
             {!alreadyToday && <button type="submit" className="btn gold" disabled={busy}>{busy ? "Saving arrival…" : "Review arrival"}<ArrowRight size={16} aria-hidden="true" /></button>}
           </div>
         </fieldset></form>
       </div>
-    </div>
+    </ClinicDialog>
   );
 }
 

@@ -1,3 +1,4 @@
+import {useUnsavedChanges} from '../../components/useUnsavedChanges.jsx';
 import ExternalHistory, {ExternalHistorySummary} from '../../components/ExternalHistory.jsx';
 import {externalHistoryErrors} from '../../externalHistory.js';
 import VitalsHistory from '../VitalsHistory.jsx';
@@ -295,6 +296,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSet
   const [saving,setSaving] = useState(false);
   const [uploading,setUploading] = useState(false);
   const savingRef = useRef(false);
+  const unsaved=useUnsavedChanges({value:{...v,photo},saving:saving||uploading,onClose});
   const submissionId = useRef(crypto.randomUUID());
 
   const initialSpeciesBreeds = BREEDS_BY_SPECIES[v.species] || BREEDS_BY_SPECIES[e0.species] || [];
@@ -429,7 +431,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSet
   const normSpecies = normalizeSpecies(v.species);
 
   return (
-    <ClinicDialog label={requiredSetup ? "Register your first pet" : editing ? "Edit pet request" : "Add my pet"} onClose={() => {if (!requiredSetup && !savingRef.current) onClose();}}><section className="modal owner-pet-setup"><h3>{requiredSetup ? "Register your first pet" : editing ? "Edit pet request" : "Add my pet"}</h3>
+    <ClinicDialog label={requiredSetup ? "Register your first pet" : editing ? "Edit pet request" : "Add my pet"} onClose={() => {if (!requiredSetup)unsaved.close();}}><section className="modal owner-pet-setup">{unsaved.card}<h3>{requiredSetup ? "Register your first pet" : editing ? "Edit pet request" : "Add my pet"}</h3>
       {onExistingRecord && <section className="ow-note info"><b>Already registered at this clinic?</b><p>Connect your existing pet records through reception.</p><button type="button" className="btn sm" disabled={saving} onClick={onExistingRecord}>Link my clinic records</button></section>}
       <form onSubmit={submit} noValidate aria-busy={saving}>
         {review.card}
@@ -507,7 +509,7 @@ export function PetFormModal({ db, setDb, me, say, editing, onClose, requiredSet
         </fieldset>
         {top && <p className="err" role="alert">{top}</p>}
         {f.submitted && !f.valid && <p className="err" role="alert">Please fix {f.count} field{f.count > 1 ? "s" : ""} above.</p>}
-        <div className="row end"><button type="button" className="btn ghost" onClick={requiredSetup ? onLogout : onClose} disabled={saving}>{requiredSetup ? "Log out" : "Close"}</button><button className="btn" disabled={saving || uploading}>{saving ? "Sending…" : uploading ? "Preparing picture…" : editing ? "Review and resend" : "Review request"}</button></div>
+        <div className="row end"><button type="button" className="btn ghost" onClick={requiredSetup ? onLogout : unsaved.close} disabled={saving}>{requiredSetup ? "Log out" : "Close"}</button><button className="btn" disabled={saving || uploading}>{saving ? "Sending…" : uploading ? "Preparing picture…" : editing ? "Review and resend" : "Review request"}</button></div>
       </form>
     </section></ClinicDialog>
   );

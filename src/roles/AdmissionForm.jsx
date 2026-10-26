@@ -34,7 +34,7 @@ export default function AdmissionForm({mode,admission,visits = [],consultationCo
     if (pending.current) return;
     setError('');
     if (!validation.validate(event)) return;
-    if (create && !visit) return setError('Choose an assigned consultation. Refresh visits if it is missing.');
+    if (create && !visit) return setError('Choose an assigned visit. Refresh visits if it is missing.');
     const body = {clinicalNote:consent ? 'Admission consent received.' : form.clinicalNote.trim(),ownerUpdate:form.ownerUpdate.trim(),measurements:{},
       ...(create ? {reasonChoice:form.reasonChoice,apptId:visit.id,expectedVisit:visit} : {revision}),
       ...(me.role === 'vet' && !discharge && !release ? {carePlan:form.carePlan.trim(),planTemplate:form.planTemplate,observationTemplate:form.observationTemplate,planConfirmed:form.planConfirmed} : {}),
@@ -76,7 +76,7 @@ export default function AdmissionForm({mode,admission,visits = [],consultationCo
       <p>{release ? 'Check the saved payment and home-care instructions, then confirm the pet was released to the owner.' : discharge ? 'The veterinarian approves discharge after finalizing the consultation. Enter the summary and instructions for going home.' : 'Record care that was actually observed or provided. Owner messages are shared only when you explicitly enter them.'}</p>
       {create && context && <section className="admission-consultation-context" aria-label="Consultation linked to admission">
         <b>{context.petName}</b><p>Owner: {context.ownerName} · Visit: {visit.date} at {visit.time}</p>
-        <p>This admission is linked to the consultation you have open. Your SOAP notes remain open and must be finalized separately.</p>
+        <p>This admission is linked to the consultation you have open. Your visit notes remain open and must be finalized separately.</p>
         {context.diagnosis && <><h3>Current assessment (clinic only)</h3><p className="admission-context-notes">{context.diagnosis}</p></>}
         {context.treatment && <><h3>Current consultation plan (clinic only)</h3><p className="admission-context-notes">{context.treatment}</p>
           <button type="button" className="btn sm ghost" disabled={saving || context.treatment.length>3000} onClick={()=>set('carePlan',context.treatment)}>Use consultation plan for admission</button>
@@ -84,8 +84,8 @@ export default function AdmissionForm({mode,admission,visits = [],consultationCo
       </section>}
       <form {...validation.formProps} onSubmit={submit}>
         <fieldset disabled={saving}>
-          {create && !context && <label>Consultation visit *<select required {...validation.field('apptId')} value={form.apptId} onChange={event => set('apptId',event.target.value)}>
-            <option value="">Choose a consultation</option>{sources.map(row => <option key={row.id} value={row.id}>{row.petName} · {row.ownerName} · {row.date} {row.time} · {row.status}</option>)}
+          {create && !context && <label>Clinical visit *<select required {...validation.field('apptId')} value={form.apptId} onChange={event => set('apptId',event.target.value)}>
+            <option value="">Choose a visit</option>{sources.map(row => <option key={row.id} value={row.id}>{row.petName} · {row.ownerName} · {row.date} {row.time} · {row.status}</option>)}
           </select>{validation.feedback('apptId')}</label>}
           {create && <label>Reason for admission *<select required {...validation.field('reasonChoice')} value={form.reasonChoice} onChange={e=>{const value=e.target.value;setForm(previous=>({...previous,reasonChoice:value,clinicalNote:value==='Other'?'':value}));}}><option value="">Choose an admission reason</option>{admissionReasons.map(v=><option key={v}>{v}</option>)}</select>{validation.feedback('reasonChoice')}</label>}
           {(!create || form.reasonChoice==='Other') && !consent && <label>{create ? 'Other reason for admission (clinic only)' : release ? 'Release confirmation (clinic only)' : discharge ? 'Discharge summary (clinic only)' : 'Observations / care provided (clinic only)'} *

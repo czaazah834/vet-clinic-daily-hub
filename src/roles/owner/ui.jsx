@@ -1,3 +1,4 @@
+import ClinicDialog from '../../components/ClinicDialog.jsx';
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import "./owner.css";
@@ -67,11 +68,10 @@ export function Suggest({ items, onPick, label = "Suggestions:" }) {
 }
 
 export function Modal({ title, onClose, children, className = "", portalTo, closeButton = false }) {
-  useEffect(() => { const k = e => e.key === "Escape" && onClose(); document.addEventListener("keydown", k); return () => document.removeEventListener("keydown", k); }, []);
-  const dialog = <div className="scrim" onMouseDown={e => e.target === e.currentTarget && onClose()}><div className={`modal ${className}`} role="dialog" aria-modal="true" aria-label={title}>
+  const dialog = <ClinicDialog label={title} onClose={onClose}><div className={`modal ${className}`}>
     {closeButton ? <div className="ow-account-heading"><h3>{title}</h3><button type="button" className="ow-account-close" onClick={onClose} aria-label="Close dialog">×</button></div> : <h3>{title}</h3>}
     {children}
-  </div></div>;
+  </div></ClinicDialog>;
   return portalTo ? createPortal(dialog, portalTo) : dialog;
 }
 

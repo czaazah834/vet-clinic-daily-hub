@@ -1348,3 +1348,44 @@ Walk-in registration now offers an explicit owner selector. Contact matches are 
 Roles stay connected through saved actions: reception verifies registration and arrival, the vet records care for the visit purpose, reception records checkout/payment, and the owner sees their records and follow-up. Admin manages access and audits. Admission additionally requires veterinarian orders/discharge approval, reception consent/care tasks and recorded actual release.
 
 Regression coverage: `TEST_DATABASE_URL=<local-disposable-database> node --test server/tests/owner-account-link-postgres.test.js`, the registration/connected workflow PostgreSQL suites, `npm run test:clinic`, `node --test tests/*.test.js`, and `npm run build`.
+
+
+### Current workflow actions and history loading
+
+Visits show the next responsible role and action from saved clinical, admission
+and payment status. In Admitted Pets, **Finish visit notes** opens the exact
+assigned visit, and **Open this visit’s checkout** opens its reception invoice.
+An admitted pet cannot proceed to final checkout before discharge approval;
+payment still requires a separate release confirmation.
+
+The vet queue separates **Today** and **Earlier unfinished** with date filters,
+original dates and a carryover count. The default queue preserves triage priority
+across dates. Completed-today counts exclude earlier unfinished visits.
+
+**Load all history** follows every saved history page sequentially with progress.
+Failures stop loading and offer explicit retry; incomplete or stale history keeps
+report exports disabled. Manual **Load older history** remains available.
+
+Booking, patient registration, arrival, measured intake, checkout, staff invitation,
+calendar booking, care transfers, account changes, linking and reminder-call forms ask before
+closing unsaved edits. Clinical visit notes retain browser draft recovery;
+admission/medicine forms retain their existing discard guards. Saving keeps a
+form open until the server confirms the outcome; failed saves retain entries.
+
+Development browser regressions (Vite required):
+
+- `/tests/browser/forms.html`: controlled fields and inline feedback.
+- `/tests/browser/history.html`: failed history recovery and selected-pet booking.
+- `/tests/browser/history-all.html`: sequential loading, progress and error recovery.
+- `/tests/browser/workflow-forms.html`: use `window.checkWorkflowForms()` at desktop
+  and mobile sizes for modal layout, close guards, inline feedback and exact visit
+  handoffs. This page intercepts API calls with synthetic state and blocks writes;
+  real route/database journeys run through `test:workflow:postgres` and related
+  PostgreSQL suites using isolated synthetic schemas.
+
+Run `window.checkNextWorkflowFixes()` on the same browser fixture for handoff
+field errors/edit retention, blocked close during saving, failed-transfer recovery,
+patient checkout amounts/admission holds and checkout waiting behind a native
+rejection dialog. It also checks that a patient's active arrival takes precedence
+over an earlier completed visit. See [the clinic process](docs/PROCESS.md) for the
+current online, walk-in, admission and payment handoffs.
