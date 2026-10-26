@@ -2,7 +2,9 @@ import {ExternalHistorySummary} from '../components/ExternalHistory.jsx';
 import { changeAppointmentStatus } from "../appointmentStatus.js";
 import { sameIntakeVisit } from "../intakeVisit.js";
 import { fmt12 } from "../booking.js";
-import LiveControl from '../components/LiveControl.jsx';
+import ClinicDialog from '../components/ClinicDialog.jsx';
+import {useUnsavedChanges} from '../components/useUnsavedChanges.jsx';
+import {useFormValidation} from '../components/useFormValidation.jsx';
 import { api } from "../api.js";
 import { useRef, useState } from "react";
 import { Syringe, CheckCircle2, X } from "lucide-react";
@@ -18,11 +20,14 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
   const [linkedVisit] = useState(() => (db.appts || []).filter(a=>a.petId===request.petId && a.status==='Pending Approval').sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time))[0] || null);
   const visitChanged = linkedVisit && !sameIntakeVisit(linkedVisit,db.appts.find(a=>a.id===linkedVisit.id));
   const canReview = !visitChanged && request.status === "Pending" && !changed && !conflict;
-  const close = () => { if (!inFlight.current) onClose(); };
   const [mode, setMode] = useState("review"); // 'review' | 'decline'
   const [declineReason, setDeclineReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState("");
+
+  const validation = useFormValidation({declineReason: !declineReason.trim() ? 'Explain what the owner needs to correct.' : declineReason.length > 500 ? 'Use at most 500 characters.' : ''});
+  const unsaved = useUnsavedChanges({value:declineReason,saving:submitting,onClose});
+  const close = () => { if (!inFlight.current) unsaved.close(); };
 
   const owner = db.owners.find(o => o.id === request.ownerId) || {};
   const age = calculateAge(request.birth);
@@ -74,7 +79,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
 
   const handleDecline = async e => {
     e.preventDefault();
-    if (inFlight.current || !canReview || !declineReason.trim()) return;
+    if (inFlight.current || !canReview || !validation.validate(e)) return;
     inFlight.current = true;
     setSaveError(""); setSubmitting(true);
     let result;
@@ -97,7 +102,8 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
   };
 
   return (
-    <div className="scrim" onMouseDown={e => e.target === e.currentTarget && close()}>
+    <ClinicDialog label="Online pet registration review" onClose={close}>
+      {unsaved.card}
       <div className="modal" style={{ width: "min(720px, 100%)", maxHeight: "94vh" }}>
         {(changed || conflict || visitChanged) && <p className="err" role="alert">This request changed or was already processed. Close this review and reopen the latest request before making a decision.</p>}
         {request.status !== "Pending" && <section role="status"><b>Registration {request.status}</b>{request.declineReason && <p style={{whiteSpace:"pre-wrap"}}>{request.declineReason}</p>}<p>{request.status === "Declined" ? "The owner must correct and resubmit this request before it can be reviewed again." : "This registration has already been processed."}</p></section>}
@@ -114,11 +120,12 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
               Submitted online by Pet Owner: <b>{owner.name}</b> ({owner.phone || "No phone"}) &bull; Requested: {request.requestedAt || "Not recorded"}
             </p>
           </div>
-          <button className="btn ghost sm" onClick={close}><X size={16} /></button>
+          <button className="btn ghost sm" onClick={close} disabled={submitting} aria-label="Close registration review"><X size={16} /></button>
         </div>
 
         {mode === "decline" ? (
-          <form onSubmit={handleDecline}>
+          <form {...validation.formProps} onSubmit={handleDecline}>
+            <fieldset disabled={submitting || !canReview} style={{border:0,padding:0,margin:0,minWidth:0}}>
             <div style={{ background: "#fef2f2", padding: "14px", borderRadius: "10px", border: "1px solid #fecaca", marginBottom: "16px" }}>
               <h4 style={{ margin: "0 0 6px", color: "#991b1b", fontSize: "15px" }}>Decline Pet Registration</h4>
               <p style={{ margin: 0, fontSize: "13px", color: "#b91c1c" }}>
@@ -129,7 +136,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
             <div className="fld full" style={{ marginBottom: "16px" }}>
               <label>
                 <b>Reason for Declining</b><i> *</i>
-                <LiveControl as="textarea"
+                <textarea {...validation.field("declineReason")}
                   rows={3}
                   value={declineReason}
                   onChange={e => setDeclineReason(e.target.value)}
@@ -137,6 +144,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                   placeholder="e.g. Duplicate pet profile already exists; please verify birth date; phone number unverified..."
                   required
                 />
+                {validation.feedback("declineReason")}
               </label>
             </div>
 
@@ -153,7 +161,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                   key={reason}
                   className="btn ghost sm"
                   style={{ fontSize: "11.5px" }}
-                  onClick={() => setDeclineReason(reason)}
+                  onClick={() => { setDeclineReason(reason); validation.changed("declineReason"); }}
                 >
                   + {reason}
                 </button>
@@ -162,10 +170,11 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
 
             <div className="row end" style={{ gap: "10px" }}>
               <button type="button" className="btn ghost" onClick={() => setMode("review")}>Back to Review</button>
-              <button type="submit" className="btn danger" disabled={!declineReason.trim() || submitting || !canReview}>
+              <button type="submit" className="btn danger" disabled={submitting || !canReview}>
                 Confirm decline
               </button>
             </div>
+            </fieldset>
           </form>
         ) : (
           <div>
@@ -193,7 +202,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                 )}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "13px", color: "#334155", marginTop: "10px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "10px", fontSize: "13px", color: "#334155", marginTop: "10px" }}>
                 <div><b>Birth Date:</b> {request.birth} ({age.weeks} weeks / {age.months} months old)</div>
                 <div><b>Color / Markings:</b> {request.color || "None specified"}</div>
                 {request.notes && (
@@ -214,7 +223,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
 
             {/* Automated Vaccination Card Generation Box */}
             {request.status === "Pending" && <div style={{ background: "#f0fdf4", padding: "16px", borderRadius: "12px", border: "1px solid #86efac", marginBottom: "16px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <div style={{ background: "#dcfce7", padding: "6px", borderRadius: "8px", color: "#166534" }}>
                     <Syringe size={18} />
@@ -222,7 +231,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                   <div>
                     <b style={{ color: "#166534", fontSize: "14px" }}>Internal Patient Reference & Suggested Protocols</b>
                     <small style={{ display: "block", color: "#15803d" }}>
-                      Approval assigns an internal treatment reference. The official Digital Vet Card requires consultation completion, saved payment and verified clinic details. Suggested protocols require veterinarian review and do not certify an administered dose.
+                      Approval assigns an internal treatment reference. The vaccination card shows recorded doses and does not require payment or clinic-document setup. Suggested protocols require veterinarian review and do not certify an administered dose.
                     </small>
                   </div>
                 </div>
@@ -242,6 +251,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
                       borderRadius: "8px",
                       border: "1px solid #bbf7d0",
                       display: "flex",
+                      flexWrap: "wrap", gap: "8px",
                       justifyContent: "space-between",
                       alignItems: "center",
                       fontSize: "12.5px"
@@ -297,7 +307,7 @@ export default function PetApprovalModal({ request, db, setDb, me, onClose, onPr
           </div>
         )}
       </div>
-    </div>
+    </ClinicDialog>
   );
 }
 

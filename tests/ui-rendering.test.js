@@ -224,6 +224,7 @@ test('registration review of a booked pending patient uses the combined approval
  const db=populated();const request={id:'review',petId:db.pets[0].id,ownerId:db.pets[0].ownerId,name:'Luna',species:'Feline',sex:'Female',birth:'2025-01-01',weight:4.25,neutered:'Not sure',status:'Pending',revision:0};
  db.petRequests=[request];db.appts=[{id:'linked',petId:request.petId,vetId:'v1',date:'2099-01-05',time:'10:00',reason:'Linked requested examination',status:'Pending Approval'}];
  const html=render(ui.PetApprovalModal,{...props('assistant',db),request});
+ assert.match(html,/aria-label="Online pet registration review"/);assert.match(html,/does not require payment or clinic-document setup/);assert.doesNotMatch(html,/requires consultation completion/);
  assert.match(html,/Requested visit/);assert.match(html,/Linked requested examination/);assert.match(html,/Approve appointment &amp; registration/);assert.doesNotMatch(html,/>Approve pet and issue vaccination card</);
 });
 

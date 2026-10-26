@@ -25,39 +25,52 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
   const p = (db.pets || []).find(x => x.id === petId) || {};
   const o = (db.owners || []).find(x => x.id === p.ownerId) || {};
   const fileInputRef = useRef(null);
+  const photoFlight = useRef(false);
+  const [photoBusy,setPhotoBusy] = useState(false);
+  const [photoError,setPhotoError] = useState("");
+  const [photoStatus,setPhotoStatus] = useState("");
+  const close = () => { if (!photoFlight.current) onClose(); };
 
   if (!p.id) return null;
   if (walkIn) return <ExistingPatientCheckInModal db={db} setDb={setDb} me={me} initialPetId={p.id} onClose={() => setWalkIn(false)} onCheckIn={visit => { onClose(); onCheckIn?.(visit); }} />;
 
   const activeAppt = appt ? (db.appts || []).find(a => a.id === appt.id && a.petId === p.id) : currentAppointmentsByPet(db.appts || [],bookingToday())[p.id];
   const bill=activeAppt?ownerBill(activeAppt):null;
-  const savePhoto = async photo => {
+  const savePhoto = async (file = null) => {
+    if (photoFlight.current) return;
+    photoFlight.current = true; setPhotoBusy(true); setPhotoError(""); setPhotoStatus("");
     try {
-      const r = await auth.petPhoto(p.id, photo);
-      const updatedPet = r?.pet || { ...p, photo };
-      setDb(d => ({
-        ...d,
-        pets: (d.pets || []).map(x => x.id === p.id ? { ...x, ...updatedPet, photo } : x)
-      }));
-    } catch (err) {
-      console.warn("Photo save error:", err);
-    }
+      let photo = "";
+      if (file) {
+        if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw Error("Only JPG, PNG or WEBP pictures are allowed.");
+        if (file.size > 5 * 1024 * 1024) throw Error("That picture is too big. The limit is 5 MB.");
+        try { photo = await toSquare(file); }
+        catch (error) { throw Error(error.message === "small" ? "Picture is too small. Use at least 64 × 64 pixels." : "We couldn’t read that picture. Try another one."); }
+      }
+      const result = await auth.petPhoto(p.id, photo);
+      if (!result?.success || result.pet?.id !== p.id || result.pet.photo !== photo) {
+        throw Error("The clinic did not confirm the photo change. Refresh the patient record before retrying.");
+      }
+      // A photo response must not overwrite newer measurements or patient details.
+      setDb(d => ({...d,pets:(d.pets || []).map(x => x.id === p.id ? {...x,photo:result.pet.photo} : x)}));
+      setPhotoStatus(photo ? "Pet photo saved." : "Pet photo removed.");
+    } catch (error) { setPhotoError(error.message || "The photo could not be saved. Please try again."); }
+    finally { photoFlight.current = false; setPhotoBusy(false); }
   };
 
-  const handlePhotoFileChange = async e => {
-    const file = e.target.files && e.target.files[0];
+  const handlePhotoFileChange = e => {
+    const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
-    try {
-      const squareBase64 = await toSquare(file);
-      await savePhoto(squareBase64);
-    } catch (_) {}
+    if (file) void savePhoto(file);
   };
 
   return (
-    <ClinicDialog label="Patient vaccination card" onClose={onClose} style={{padding:16}}>
+    <ClinicDialog label="Patient vaccination card" onClose={close} style={{padding:16}}>
       <div className="modal staff-pet-card" style={{ width: "min(880px, 100%)", maxHeight: "92vh", overflowY: "auto", padding: "20px 24px" }}>
         
+        {photoError && <p className="err" role="alert">{photoError}</p>}
+        <p role="status" aria-live="polite">{photoBusy ? "Saving pet photo…" : photoStatus}</p>
+        <fieldset disabled={photoBusy} style={{border:0,padding:0,margin:0,minWidth:0}}>
         {actionError && <p className="err" role="alert">{actionError}</p>}
         {/* Top Control Bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "16px" }}>
@@ -75,7 +88,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
             <button
               type="button"
               className="btn sm ghost"
-              onClick={onClose}
+              onClick={close}
               aria-label="Close" style={{ padding: "6px 10px" }}
             >
               <X size={16} aria-hidden="true" />
@@ -259,7 +272,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
           <button className={`btn sm ${section==='card'?'gold':'ghost'}`} aria-pressed={section==='card'} onClick={()=>setSection('card')}>Vaccination card</button>
           <button className={`btn sm ${section==='clinical'?'gold':'ghost'}`} aria-pressed={section==='clinical'} onClick={()=>setSection('clinical')}>Clinical history</button>
         </div>
-        {section==='card'?<DigitalVetCard key={p.id} petId={p.id} portrait={<PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto("")} />} refreshKey={`${activeAppt?.billingStatus || ''}-${activeAppt?.status || ''}`} />:<>
+        {section==='card'?<DigitalVetCard key={p.id} petId={p.id} portrait={<PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={() => savePhoto()} />} refreshKey={`${activeAppt?.billingStatus || ''}-${activeAppt?.status || ''}`} />:<>
           <ExternalHistorySummary patient={p}/><VitalsHistory petId={p.id} me={me} refreshKey={activeAppt?.intakeVitals}/>
         </>}
 
@@ -270,11 +283,12 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
               + Book Visit for {p.name}
             </button>
           )}
-          <button className="btn ghost sm" onClick={onClose}>
+          <button className="btn ghost sm" onClick={close}>
             Close
           </button>
         </div>
 
+        </fieldset>
       </div>
     </ClinicDialog>
   );

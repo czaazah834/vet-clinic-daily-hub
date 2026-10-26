@@ -33,12 +33,19 @@ import Cancellation from '../../src/components/CancellationDialog.jsx';
 import Admissions from '../../src/roles/AdmissionsPage.jsx';
 import CheckoutInbox from '../../src/roles/CheckoutInbox.jsx';
 import PetCard from '../../src/roles/PetCardModal.jsx';
+import PetApproval from '../../src/roles/PetApprovalModal.jsx';
 const db={...emptyClinicState(),...structuredClone(SEED),vets:[{id:'v1',name:'Synthetic veterinarian'}]};
 const pet=db.pets[0];pet.registrationStatus='Verified';
 const owner=db.owners.find(o=>o.id===pet.ownerId);owner.name='Synthetic owner';pet.name='Synthetic patient';
 const visit={id:'synthetic-visit',petId:pet.id,date:today(),time:'09:00',service:'checkup',reason:'Routine consultation',status:'Scheduled',vetId:'v1',invoiceItems:[{catalogId:'srv_consult',name:'Consultation',price:400,qty:1}],intakeVitals:{weight:10,temp:38.5,triageLevel:'Routine'}};
 db.appts=[visit];db.vacc=[];db.records=[];
 const admission={id:'synthetic-admission',apptId:visit.id,petId:pet.id,petName:pet.name,ownerName:owner.name,ownerPhone:'+639170000001',vetName:'Synthetic veterinarian',revision:0,status:'Admitted',visitStatus:'In consultation',reason:'Observation',carePlan:'Synthetic plan',admittedAt:new Date().toISOString(),billingStatus:'Unpaid',consent:{name:'Synthetic owner',method:'In person'}};
+const registration={...pet,id:'synthetic-request',petId:pet.id,status:'Pending',revision:0};
+function PhotoRecord(){
+ const [state,setState]=React.useState({...db,pets:db.pets.map(p=>p.id===pet.id?{...p,photo:window.initialPhoto || ''}:p)});
+ window.photoRecord=state;
+ return <PetCard {...props} db={state} setDb={setState} me={reception} petId={pet.id}/>;
+}
 const root=createRoot(document.getElementById('fixture'));
 const order={id:'synthetic-order',medicine:'Synthetic medicine',dose:'Vet entered dose',route:'Vet entered route',frequency:'Vet entered schedule',catalog_id:'medicine'};
 const staff={id:'v1',vetId:'v1',role:'vet',name:'Synthetic veterinarian'},reception={id:'assistant',role:'assistant',name:'Synthetic assistant'},client={id:owner.userId || 'u1',ownerId:owner.id,role:'owner',name:owner.name};
@@ -47,6 +54,18 @@ let key=0,inboxTasks=[],inboxReads=0,handoffWrites=0,handoffGate=null;window.clo
 const props={db,setDb:()=>{},say:()=>{},onSaved:()=>{},onPaid:()=>{},onCheckedIn:()=>{},onCheckIn:()=>{},onClose:()=>{window.closedWorkflow=true;root.render(null);},go:(page,context)=>{window.workflowHandoff={page,context};}};
 window.fetch=async(path,options={})=>{
  const url=String(path);let data={};
+ if(url.endsWith('/photo') && options.method==='POST'){
+  window.photoWrites=(window.photoWrites||0)+1;window.photoPayload=JSON.parse(options.body);
+  await new Promise(resolve=>window.photoGate=resolve);
+  if(window.photoReply==='fail')return new Response(JSON.stringify({error:'Synthetic photo failure'}),{status:503,headers:{'Content-Type':'application/json'}});
+  data=window.photoReply==='missing'?{}:{success:true,pet:{id:window.photoReply==='wrong'?'other-pet':pet.id,photo:window.photoPayload.photo,weight:999}};
+  return new Response(JSON.stringify({success:true,data}),{headers:{'Content-Type':'application/json'}});
+ }
+ if(url.endsWith('/decline') && options.method==='POST'){
+  window.declineWrites=(window.declineWrites||0)+1;await new Promise(resolve=>window.declineGate=resolve);
+  return new Response(JSON.stringify({error:'Synthetic decline failure'}),{status:503,headers:{'Content-Type':'application/json'}});
+ }
+
  if(url.endsWith('/handoff') && options.method==='POST'){
   handoffWrites++;await new Promise(resolve=>handoffGate=resolve);
   return new Response(JSON.stringify({success:false,error:'Synthetic transfer failure. Please retry.'}),{status:503,headers:{'Content-Type':'application/json'}});
@@ -95,6 +114,8 @@ window.showWorkflow=name=>{
  case 'medicine':node=<Medicine {...props} action="order" admission={admission}/>;break;
  case 'medicine-event':node=<Medicine {...props} action="medication" admission={admission} order={order}/>;break;
  case 'handoff':node=<Handoff {...props} appt={active} me={staff} db={{...db,appts:[active],vets:[...db.vets,{id:'v2',name:'Receiving veterinarian'}]}}/>;break;
+ case 'registration-review':node=<PetApproval {...props} db={{...db,appts:[],petRequests:[registration]}} me={reception} request={registration}/>;break;
+ case 'photo-record':node=<PhotoRecord/>;break;
  case 'patient-record':{const a={...complete,invoiceItems:[],amount:600,...window.patientScenario};node=<PetCard {...props} me={reception} petId={pet.id} appt={window.patientDefaultVisit?undefined:a} db={{...db,appts:window.patientDefaultVisit?[a,{...visit,id:'later-arrival',reason:'Later scheduled arrival',time:'11:00'}]:[a]}} onBill={()=>window.openedBill=true}/>;break;}
  case 'checkout-inbox':node=<CheckoutInbox me={reception} onOpen={()=>{window.inboxOpened=(window.inboxOpened||0)+1;return true;}}/>;break;
  case 'admissions-vet':admission.status='Admitted';admission.visitStatus='In consultation';node=<Admissions {...props} me={staff}/>;break;
@@ -103,7 +124,7 @@ window.showWorkflow=name=>{
  case 'checkout-target':node=<assistant.Dash {...props} db={{...db,appts:[complete]}} me={reception} navigation={{apptId:visit.id,action:'checkout'}} onNavigationHandled={()=>{}}/>;break;
  default:throw Error('Unknown fixture');
  }
- const role=['booking','pet','account-owner'].includes(name)?'owner':name==='invite'?'admin':['intake','walkin','arrival','checkout','consent','observation','release','quickbook','owner-link','cancel','log-call','admissions-assistant','checkout-target','patient-record','checkout-inbox'].includes(name)?'assistant':'vet';
+ const role=['booking','pet','account-owner'].includes(name)?'owner':name==='invite'?'admin':['intake','walkin','arrival','checkout','consent','observation','release','quickbook','owner-link','cancel','log-call','admissions-assistant','checkout-target','patient-record','checkout-inbox','registration-review','photo-record'].includes(name)?'assistant':'vet';
  flushSync(()=>root.render(<div key={++key} data-page="fixture" className={`shell th-${role}`}><div className="main"><main id="portal-main" tabIndex={-1} className="content"><BookingCatalogProvider>{node}</BookingCatalogProvider></main></div></div>));
  return name;
 };
@@ -221,5 +242,57 @@ window.checkNextWorkflowFixes=async()=>{
  await until(()=>window.inboxOpened===1);
  await tick();assert(window.inboxOpened===1,'Waiting checkout must open once after the dialog closes');
  const result={handoffInlineAndFocus:true,handoffDiscardAndFailureRetention:true,inFlightCloseBlocked:true,patientBillingCases:scenarios.length,activeArrivalPreferred:true,checkoutWaitsForNativeDialog:true,viewport:[innerWidth,innerHeight]};
+ document.getElementById('results').textContent='PASS: '+JSON.stringify(result);return result;
+};
+
+window.checkRegistrationPhotoFixes=async()=>{
+ const until=async(fn)=>{for(let i=0;i<100;i++){if(fn())return;await tick();}throw Error('Timed out');};
+ window.showWorkflow('registration-review');await tick();
+ assert(!document.body.textContent.includes('requires consultation completion'),'Card prerequisites must match the standard card');
+ const panel=document.querySelector('dialog .modal');assert(panel.scrollWidth<=panel.clientWidth+2,'Registration review fits viewport');
+ button('Decline Request...').click();await tick();
+ const form=document.querySelector('dialog form');form.requestSubmit();await tick();
+ let reason=document.querySelector('textarea[name=declineReason]');
+ assert(reason.getAttribute('aria-invalid')==='true' && document.activeElement===reason,'Missing decline reason is inline and focused');
+ button('+ Duplicate profile already on file').click();await tick();
+ assert(reason.getAttribute('aria-invalid')==='false','Preset clears decline error');
+ button('Back to Review').click();await tick();button('Decline Request...').click();await tick();
+ reason=document.querySelector('textarea[name=declineReason]');assert(reason.value.includes('Duplicate'),'Back to review retains draft');
+ document.querySelector('dialog.clinic-dialog').dispatchEvent(new Event('cancel',{cancelable:true}));await tick();
+ assert(document.querySelector('dialog.submission-review'),'Decline draft close needs discard decision');
+ button('Back to edit',document.querySelector('dialog.submission-review')).click();await tick();
+ const before=window.declineWrites||0;document.querySelector('dialog form').requestSubmit();await until(()=>window.declineWrites===before+1);
+ assert(reason.matches(':disabled'),'Saving locks decline fields');
+ document.querySelector('dialog.clinic-dialog').dispatchEvent(new Event('cancel',{cancelable:true}));await tick();assert(!window.closedWorkflow,'Saving decline blocks close');
+ window.declineGate();await until(()=>document.body.textContent.includes('Synthetic decline failure'));
+ assert(reason.value.includes('Duplicate') && !reason.matches(':disabled'),'Failed decline retains editable instructions');
+ document.querySelector('dialog.clinic-dialog').dispatchEvent(new Event('cancel',{cancelable:true}));await tick();button('Discard changes',document.querySelector('dialog.submission-review')).click();await tick();
+ assert(window.closedWorkflow,'Explicit discard closes registration');
+ const canvas=document.createElement('canvas');canvas.width=canvas.height=80;const ctx=canvas.getContext('2d');ctx.fillStyle='blue';ctx.fillRect(0,0,80,80);
+ const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+ window.initialPhoto=canvas.toDataURL('image/png');window.showWorkflow('photo-record');await tick();
+ const pick=file=>{const input=document.querySelector('.pet-portrait input');const transfer=new DataTransfer();transfer.items.add(file);input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));};
+ let writes=window.photoWrites||0;
+ pick(new File(['bad'],'bad.txt',{type:'text/plain'}));await tick();assert(document.body.textContent.includes('Only JPG') && (window.photoWrites||0)===writes,'Invalid type never sent');
+ pick(new File([new Uint8Array(5*1024*1024+1)],'big.png',{type:'image/png'}));await tick();assert(document.body.textContent.includes('limit is 5 MB') && (window.photoWrites||0)===writes,'Oversized file never sent');
+ pick(new File(['broken'],'broken.png',{type:'image/png'}));await until(()=>document.body.textContent.includes('couldn’t read'));assert((window.photoWrites||0)===writes,'Unreadable photo never sent');
+ const small=document.createElement('canvas');small.width=small.height=32;const smallBlob=await new Promise(resolve=>small.toBlob(resolve,'image/png'));
+ pick(new File([smallBlob],'small.png',{type:'image/png'}));await until(()=>document.body.textContent.includes('at least 64'));assert((window.photoWrites||0)===writes,'Too-small photo never sent');
+ for(const reply of ['fail','missing','wrong','saved']){
+  window.photoReply=reply;pick(new File([blob],'photo.png',{type:'image/png'}));writes++;await until(()=>window.photoWrites===writes); // one request per operation
+  assert(document.querySelector('.pet-portrait-photo').matches(':disabled'),'Photo controls locked');
+  pick(new File([blob],'second.png',{type:'image/png'}));await tick();assert(window.photoWrites===writes,'Overlapping photo changes blocked');
+  button('Clinical history').click();await tick();assert(document.querySelector('.pet-portrait'),'Navigation locked while photo saves');
+  document.querySelector('dialog.clinic-dialog').dispatchEvent(new Event('cancel',{cancelable:true}));await tick();assert(!window.closedWorkflow,'Photo save blocks Escape');
+  const oldPhoto=window.photoRecord.pets.find(p=>p.id===pet.id).photo;
+  window.photoGate();await until(()=>!document.querySelector('.pet-portrait-photo').matches(':disabled'));
+  const saved=window.photoRecord.pets.find(p=>p.id===pet.id);
+  assert(saved.weight===pet.weight,'Photo response cannot overwrite measurements');
+  assert(saved.photo===(reply==='saved'?window.photoPayload.photo:oldPhoto),'Only confirmed matching photo changes update patient');
+  assert(reply==='saved'?document.body.textContent.includes('Pet photo saved.'):!!document.querySelector('[role=alert]'),'Photo operation reports outcome');
+ }
+ window.photoReply='saved';document.querySelector('[aria-label="Remove pet photo"]').click();await until(()=>window.photoWrites===writes+1);window.photoGate();await until(()=>document.body.textContent.includes('Pet photo removed.'));
+ assert(window.photoRecord.pets.find(p=>p.id===pet.id).photo==='','Confirmed removal clears saved photo');
+ const result={registrationDraftAndValidation:true,registrationFailureRetention:true,photoValidation:true,photoAcknowledgements:4,photoRemoval:true,photoBusyProtection:true,viewport:[innerWidth,innerHeight]};
  document.getElementById('results').textContent='PASS: '+JSON.stringify(result);return result;
 };
