@@ -1,55 +1,25 @@
 import DigitalVetCard from '../DigitalVetCard.jsx';
 import PetPortrait from '../PetPortrait.jsx';
-import {useState,useEffect,useRef} from 'react';
+import {useState,useEffect} from 'react';
 import {scope} from '../../lib.jsx';
-import {auth,OFFLINE_MSG} from '../../authApi.js';
-import {toSquare,pick,setPrefill} from './ui.jsx';
-export function OwnerVacc({db,setDb,me,go,say}){
+import {usePetPhoto} from '../../components/usePetPhoto.jsx';
+import {pick,setPrefill} from './ui.jsx';
+export function OwnerVacc({db,setDb,me,go}){
  const registeredPets=scope(db,me,'pets');
  const pets=registeredPets.filter(p=>!p.registrationStatus || p.registrationStatus==='Verified');
  const [selected,setSelected]=useState(()=>pick.petId || pets[0]?.id || '');
  const sel=pets.some(p=>p.id===selected)?selected:pets[0]?.id;
- const p=pets.find(p=>p.id===sel),fileInputRef=useRef(null);
+ const p=pets.find(p=>p.id===sel);
+ const {fileInputRef,photoBusy,photoError,photoStatus,savePhoto,handlePhotoFileChange}=usePetPhoto(sel,setDb);
  useEffect(()=>{pick.petId=null;},[]);
-  const savePhoto = async photo => {
-    try {
-      const r = await auth.petPhoto(sel, photo);
-      const updatedPet = r?.pet || { ...p, photo };
-      setDb(d => ({
-        ...d,
-        pets: (d.pets || []).map(x => x.id === sel ? { ...x, ...updatedPet, photo } : x)
-      }));
-      say(photo ? "Picture saved to vaccination card" : "Picture removed");
-    } catch (x) {
-      console.warn("Photo save error:", x);
-      say(x.offline ? OFFLINE_MSG : x.message || "We couldn’t save the picture. Please try again.");
-    }
-  };
-
-  const handlePhotoFileChange = async e => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (!file) return;
-    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
-      say("Only JPG, PNG or WEBP pictures are allowed.");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      say("Picture is too big. The limit is 5 MB.");
-      return;
-    }
-    try {
-      const squareBase64 = await toSquare(file);
-      await savePhoto(squareBase64);
-    } catch (err) {
-      say(err.message === "small" ? "Picture is too small. Use at least 64 × 64 pixels." : "Could not process picture.");
-    }
-  };
-
 
  if(!p)return <div className="empty"><h3>{registeredPets.length ? 'Registration review needed' : 'No registered pets yet'}</h3><p>{registeredPets.length ? 'Open My Pets to check the registration status or correct the existing request. The card becomes available after approval.' : 'Add your pet in My Pets to create their vaccination card.'}</p><button className="btn gold" onClick={()=>go('home')}>My Pets</button></div>;
  return <section aria-label={`${p.name}’s vaccination card`}>
+  {photoError && <p className="err" role="alert">{photoError}</p>}
+  <p role="status" aria-live="polite">{photoBusy ? 'Saving pet photo…' : photoStatus}</p>
+  <fieldset disabled={photoBusy} style={{border:0,padding:0,margin:0,minWidth:0}}>
   <div className="row" style={{flexWrap:'wrap',gap:12}}><label htmlFor="card-pet">Pet</label><select id="card-pet" value={sel} onChange={e=>setSelected(e.target.value)}>{pets.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="btn ghost sm" onClick={()=>{setPrefill({petId:p.id});go('appts');}}>Book a visit</button></div>
-  <DigitalVetCard key={p.id} petId={p.id} portrait={<PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={()=>savePhoto('')}/>}/>
+  <DigitalVetCard key={p.id} petId={p.id} portrait={<PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={()=>savePhoto()}/>}/>
+  </fieldset>
  </section>;
 }

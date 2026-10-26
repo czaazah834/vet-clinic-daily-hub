@@ -124,7 +124,10 @@ require checking provider history before further contact; the providers do not
 supply a shared idempotency guarantee. **Accepted** means the provider accepted
 the request, not confirmed handset/inbox delivery. The front desk's automatic
 reminder panel shows missing setup, stale workers, backlog, failures and uncertain
-submissions. Contact the owner after checking the provider when manual follow-up
+submissions. A missing completed run or a run older than 26 hours needs checking;
+this window accommodates both the daily scheduler and the five-minute worker.
+Provider configuration is shown separately from processing activity. A failed
+status refresh labels the retained counts as out of date. Contact the owner after checking the provider when manual follow-up
 is needed. Owner contact edits are picked up at dispatch time.
 
 Validation (no live provider messages):

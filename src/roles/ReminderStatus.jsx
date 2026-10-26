@@ -1,5 +1,6 @@
 import { PaginatedTable } from "../components/Pagination.jsx";
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {readReminderStatus,reminderHealth} from '../reminderStatus.js';
 import { clinicRequest } from '../clinicApi.js';
 import {
   Bell,
@@ -9,33 +10,35 @@ import {
   Mail,
   Phone,
   Clock,
-  ShieldCheck,
-  Send,
   Radio
 } from 'lucide-react';
 
 export default function ReminderStatus() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const load = async () => {
+  const [loading, setLoading] = useState(true);
+  const [checkedAt,setCheckedAt]=useState(null);
+  const active=useRef(true),pendingRequest=useRef(null);
+  const load = useCallback(async () => {
+    if(pendingRequest.current)return;
+    const controller=new AbortController();pendingRequest.current=controller;
+    const timeout=setTimeout(()=>controller.abort(),15000);
     setLoading(true);
     try {
-      setData(await clinicRequest('GET', '/api/reminders/status'));
-      setError('');
+      const result=readReminderStatus(await clinicRequest('GET','/api/reminders/status',undefined,{signal:controller.signal}));
+      if(active.current && pendingRequest.current===controller){setData(result);setCheckedAt(new Date());setError('');}
     } catch (e) {
-      setError(e.message);
+      if(active.current && pendingRequest.current===controller)setError(controller.signal.aborted?'Reminder status timed out. Retry to check the saved queue.':e.message);
     } finally {
-      setLoading(false);
+      clearTimeout(timeout);
+      if(pendingRequest.current===controller){pendingRequest.current=null;if(active.current)setLoading(false);}
     }
-  };
-
+  },[]);
   useEffect(() => {
-    load();
-    const timer = setInterval(load, 30000);
-    return () => clearInterval(timer);
-  }, []);
+    active.current=true;load();
+    const timer=setInterval(load,30000);
+    return()=>{active.current=false;clearInterval(timer);pendingRequest.current?.abort();pendingRequest.current=null;};
+  },[load]);
 
   const pending = data?.summary?.pending || 0;
   const accepted = data?.summary?.accepted || 0;
@@ -55,7 +58,8 @@ export default function ReminderStatus() {
     }
   };
 
-  const isHealthy = data?.health?.emailConfigured && data?.health?.smsConfigured;
+  const health=reminderHealth(data,{loading,error});
+  const isHealthy=health.healthy;
 
   return (
     <section className="card" style={{ marginBottom: 20, padding: "24px" }}>
@@ -80,7 +84,7 @@ export default function ReminderStatus() {
                 Automatic Vaccination Recall Reminders
               </h3>
               <p style={{ margin: "2px 0 0", fontSize: "12.5px", color: "#64748b" }}>
-                Auto-dispatched via Email &amp; TextBee SMS at 30, 14, and 3 days before clinical booster dates.
+                Reminders are scheduled at 30, 14, and 3 days before booster dates. Check processing and provider acceptance below.
               </p>
             </div>
           </div>
@@ -100,7 +104,7 @@ export default function ReminderStatus() {
             border: `1px solid ${isHealthy ? "#86efac" : "#fde68a"}`
           }}>
             <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: isHealthy ? "#16a34a" : "#d97706" }} />
-            <span>{isHealthy ? "Dual Gateway Live" : "Configuration Needed"}</span>
+            <span>{health.label}</span>
           </span>
 
           <button
@@ -120,12 +124,16 @@ export default function ReminderStatus() {
       {error && (
         <div role="alert" style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: "10px", padding: "10px 14px", fontSize: "13px", marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span>{error}</span>
-          <button className="btn ghost sm" onClick={load} style={{ fontSize: "12px" }}>Retry</button>
+          <button className="btn ghost sm" disabled={loading} onClick={load} style={{ fontSize: "12px" }}>Retry</button>
         </div>
       )}
 
+      {loading && <p role="status">Checking the saved reminder queue…</p>}
+      {checkedAt && <p>Last checked: {checkedAt.toLocaleString()}{error ? ' · These saved counts may be out of date.' : ''}</p>}
+      {!loading && !error && data?.health.overdue>0 && <p className="err" role="alert">{data.health.overdue} pending reminders are overdue by more than a day. Ask the administrator to check reminder processing before contacting owners.</p>}
+      {!loading && !error && health.workerStale && <p role="status">{data.health.lastRun ? health.workerFuture ? 'The recorded reminder run is in the future. Ask the administrator to check the run time.' : 'The reminder worker has no recent completed run (over 26 hours). Ask the administrator to check its schedule and latest run.' : 'No completed reminder run is recorded. Ask the administrator to check reminder processing.'}</p>}
       {/* Metrics Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "18px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: "12px", marginBottom: "18px" }}>
         {/* Pending Card */}
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "14px", padding: "14px 16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "#64748b", fontSize: "12px", fontWeight: 600 }}>
@@ -143,14 +151,14 @@ export default function ReminderStatus() {
         {/* Accepted Card */}
         <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "14px", padding: "14px 16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "#166534", fontSize: "12px", fontWeight: 600 }}>
-            <span>Dispatched &amp; Accepted</span>
+            <span>Accepted by provider</span>
             <CheckCircle2 size={16} color="#16a34a" />
           </div>
           <div style={{ fontSize: "24px", fontWeight: 800, color: "#15803d", marginTop: "6px" }}>
             {data ? accepted : "—"}
           </div>
           <div style={{ fontSize: "11px", color: "#166534", marginTop: "2px" }}>
-            Delivered to pet owners
+            Delivery to the owner is not confirmed
           </div>
         </div>
 
@@ -164,21 +172,21 @@ export default function ReminderStatus() {
             {data ? issues : "—"}
           </div>
           <div style={{ fontSize: "11px", color: issues > 0 ? "#92400e" : "#64748b", marginTop: "2px" }}>
-            {issues > 0 ? "Requires contact check" : "Zero delivery errors"}
+            {!data ? "Status not loaded" : issues > 0 ? "Requires contact check" : "No failed or uncertain sends recorded"}
           </div>
         </div>
 
         {/* Worker Health Card */}
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "14px", padding: "14px 16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "#64748b", fontSize: "12px", fontWeight: 600 }}>
-            <span>Auto Worker</span>
+            <span>Last completed run</span>
             <Radio size={16} color="#059669" />
           </div>
           <div style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a", marginTop: "10px" }}>
-            {data ? formatLastRun(data.health?.lastRun) : "Checking..."}
+            {data ? formatLastRun(data.health.lastRun) : loading ? "Checking…" : "Not available"}
           </div>
           <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-            Runs continuously in background
+            Successful reminder processing
           </div>
         </div>
       </div>
@@ -188,17 +196,17 @@ export default function ReminderStatus() {
         <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <Mail size={15} color={data?.health?.emailConfigured ? "#16a34a" : "#dc2626"} />
-            <span style={{ color: "#334155", fontWeight: 600 }}>Email Gateway (SMTP/Gmail):</span>
+            <span style={{ color: "#334155", fontWeight: 600 }}>Email provider:</span>
             <span style={{ color: data?.health?.emailConfigured ? "#15803d" : "#b91c1c", fontWeight: 700 }}>
-              {data?.health?.emailConfigured ? "Connected" : "Not configured"}
+              {!data ? "Not checked" : data.health.emailConfigured ? "Configured" : "Not configured"}
             </span>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <Phone size={15} color={data?.health?.smsConfigured ? "#16a34a" : "#dc2626"} />
-            <span style={{ color: "#334155", fontWeight: 600 }}>SMS Gateway (TextBee Android):</span>
+            <span style={{ color: "#334155", fontWeight: 600 }}>SMS provider:</span>
             <span style={{ color: data?.health?.smsConfigured ? "#15803d" : "#b91c1c", fontWeight: 700 }}>
-              {data?.health?.smsConfigured ? "Connected" : "Device offline"}
+              {!data ? "Not checked" : data.health.smsConfigured ? "Configured" : "Not configured"}
             </span>
           </div>
         </div>
@@ -257,12 +265,12 @@ export default function ReminderStatus() {
             </PaginatedTable>
           </div>
         </div>
-      ) : (
+      ) : isHealthy ? (
         <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#15803d", fontSize: "12.5px", background: "#f0fdf4", padding: "8px 14px", borderRadius: "10px", border: "1px solid #bbf7d0" }}>
           <CheckCircle2 size={16} />
-          <span><b>All Reminders Running Smoothly:</b> No failed booster reminder deliveries on record.</span>
+          <span>No failed or uncertain sends are recorded. Provider acceptance does not confirm delivery to an owner.</span>
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

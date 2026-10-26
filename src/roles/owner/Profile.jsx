@@ -15,8 +15,12 @@ const explain = x => x.offline ? { top: OFFLINE_MSG } : x.fields ? { fields: x.f
 /* Popup bodies (shown inside a Modal from the header menu). */
 export function ProfileBody({ db, setDb, me, say, onFormState }) {
   const o = accountProfile(db, me);
+  const [photoBusy,setPhotoBusy]=useState(false);
+  const [contactState,setContactState]=useState({dirty:false,busy:false});
+  useEffect(()=>{onFormState?.({dirty:contactState.dirty,busy:contactState.busy || photoBusy});},[contactState.dirty,contactState.busy,photoBusy,onFormState]);
   const savePhoto = async photo => {
     const result = await auth.profilePhoto(photo);
+    if (result?.photo !== photo) throw Error("The server did not confirm your profile picture. Refresh your profile before retrying.");
     setDb(d => saveAccountProfile(d, me.id, { photo: result.photo, role: me.role, ownerId: me.ownerId }));
     say(photo ? "Profile picture saved" : "Profile picture removed");
   };
@@ -41,13 +45,13 @@ export function ProfileBody({ db, setDb, me, say, onFormState }) {
       <h3 className="account-name">{o.name || me.name}</h3>
       <span className="account-role">{ROLES[me.role]?.[0] || me.role}</span>
       <div className="account-photo-area"><h4>Profile picture</h4><p>Choose a clear photo for your account.</p></div>
-      <PhotoUpload src={o.photo} fallback={(o.name || "U")[0]} size={112} label="Upload picture" onSave={savePhoto} onRemove={() => savePhoto("")} />
+      <PhotoUpload onBusyChange={setPhotoBusy} src={o.photo} fallback={(o.name || "U")[0]} size={112} label="Upload picture" onSave={savePhoto} onRemove={() => savePhoto("")} />
       <div className="account-verification" aria-label="Contact verification">
         {[['Email',o.emailVerified],['Mobile',o.mobileVerified]].map(([label,verified]) => <div key={label} className={verified ? "verified" : "unverified"}>{verified ? <ShieldCheck size={17} aria-hidden="true" /> : <AlertCircle size={17} aria-hidden="true" />}<span>{label}<b>{verified ? "Verified" : "Not verified"}</b></span></div>)}
       </div>
       <p className="account-photo-note">Your contact details are used for clinic updates and account verification.</p>
     </div>
-    <Contact o={o} me={me} setDb={setDb} say={say} onFormState={onFormState} />
+    <Contact o={o} me={me} setDb={setDb} say={say} onFormState={setContactState} />
   </div>);
 }
 export function PasswordBody({ me, say, onFormState }) {

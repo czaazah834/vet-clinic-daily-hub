@@ -119,26 +119,33 @@ export const toSquare = (file, px = 256) => new Promise((ok, no) => {
 
 /* Live-validated picture picker: type, size and readability are checked the moment a file is chosen. */
 export function PhotoUpload({ src, fallback, onSave, onRemove, size = 84, round = true, label = "Upload picture", onBusyChange }) {
-  const [err, setErr] = useState(""), [busy, setBusy] = useState(false), ref = useRef();
+  const [err, setErr] = useState(""), [busy, setBusy] = useState(false), ref = useRef(), flight=useRef(false);
   useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
+  useEffect(()=>{
+    if(!busy)return;
+    const leave=event=>{event.preventDefault();event.returnValue='';};
+    window.addEventListener('beforeunload',leave);
+    return()=>window.removeEventListener('beforeunload',leave);
+  },[busy]);
   const choose = async e => {
     const file = e.target.files && e.target.files[0]; e.target.value = "";
-    if (!file) return;
+    if (!file || flight.current) return;
     if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return setErr("Only JPG, PNG or WEBP pictures are allowed");
     if (file.size > 5 * 1024 * 1024) return setErr("That picture is too big. The limit is 5 MB");
-    setErr(""); setBusy(true);
+    flight.current=true; setErr(""); setBusy(true);
     let photo;
     try { photo = await toSquare(file); }
-    catch (x) { setErr(x.message === "small" ? "Picture is too small. Use at least 64 × 64 pixels" : "We couldn’t read that picture. Try another one"); setBusy(false); return; }
+    catch (x) { setErr(x.message === "small" ? "Picture is too small. Use at least 64 × 64 pixels" : "We couldn’t read that picture. Try another one"); setBusy(false); flight.current=false; return; }
     try { await onSave(photo); }
     catch (x) { setErr(x.message || "Your picture could not be saved. Please try again."); }
-    setBusy(false);
+    flight.current=false; setBusy(false);
   };
   const remove = async () => {
-    setErr(""); setBusy(true);
+    if(flight.current)return;
+    flight.current=true; setErr(""); setBusy(true);
     try { await onRemove(); }
     catch (x) { setErr(x.message || "Your picture could not be removed. Please try again."); }
-    setBusy(false);
+    flight.current=false; setBusy(false);
   };
   return (
     <div className="ow-photo">

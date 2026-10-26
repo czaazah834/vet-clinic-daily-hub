@@ -10,11 +10,10 @@ import PetPortrait from "./PetPortrait.jsx";
 import { today as bookingToday } from "../booking.js";
 import ExistingPatientCheckInModal from "./ExistingPatientCheckInModal.jsx";
 import { canBookAppointments } from "../appointmentPermissions.js";
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { PawPrint, Calendar, CheckCircle2, Clock, CreditCard, Receipt, X } from "lucide-react";
 import { Badge, TODAY, ICON, I, moveAppt } from "../lib.jsx";
-import { toSquare } from "./owner/ui.jsx";
-import { auth, OFFLINE_MSG } from "../authApi.js";
+import {usePetPhoto} from "../components/usePetPhoto.jsx";
 
 
 
@@ -24,11 +23,7 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
   const [actionError, setActionError] = useState("");
   const p = (db.pets || []).find(x => x.id === petId) || {};
   const o = (db.owners || []).find(x => x.id === p.ownerId) || {};
-  const fileInputRef = useRef(null);
-  const photoFlight = useRef(false);
-  const [photoBusy,setPhotoBusy] = useState(false);
-  const [photoError,setPhotoError] = useState("");
-  const [photoStatus,setPhotoStatus] = useState("");
+  const {fileInputRef,photoFlight,photoBusy,photoError,photoStatus,savePhoto,handlePhotoFileChange}=usePetPhoto(petId,setDb);
   const close = () => { if (!photoFlight.current) onClose(); };
 
   if (!p.id) return null;
@@ -36,33 +31,6 @@ export default function PetCardModal({ petId, appt, db, setDb, me, onClose, onBo
 
   const activeAppt = appt ? (db.appts || []).find(a => a.id === appt.id && a.petId === p.id) : currentAppointmentsByPet(db.appts || [],bookingToday())[p.id];
   const bill=activeAppt?ownerBill(activeAppt):null;
-  const savePhoto = async (file = null) => {
-    if (photoFlight.current) return;
-    photoFlight.current = true; setPhotoBusy(true); setPhotoError(""); setPhotoStatus("");
-    try {
-      let photo = "";
-      if (file) {
-        if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw Error("Only JPG, PNG or WEBP pictures are allowed.");
-        if (file.size > 5 * 1024 * 1024) throw Error("That picture is too big. The limit is 5 MB.");
-        try { photo = await toSquare(file); }
-        catch (error) { throw Error(error.message === "small" ? "Picture is too small. Use at least 64 × 64 pixels." : "We couldn’t read that picture. Try another one."); }
-      }
-      const result = await auth.petPhoto(p.id, photo);
-      if (!result?.success || result.pet?.id !== p.id || result.pet.photo !== photo) {
-        throw Error("The clinic did not confirm the photo change. Refresh the patient record before retrying.");
-      }
-      // A photo response must not overwrite newer measurements or patient details.
-      setDb(d => ({...d,pets:(d.pets || []).map(x => x.id === p.id ? {...x,photo:result.pet.photo} : x)}));
-      setPhotoStatus(photo ? "Pet photo saved." : "Pet photo removed.");
-    } catch (error) { setPhotoError(error.message || "The photo could not be saved. Please try again."); }
-    finally { photoFlight.current = false; setPhotoBusy(false); }
-  };
-
-  const handlePhotoFileChange = e => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (file) void savePhoto(file);
-  };
 
   return (
     <ClinicDialog label="Patient vaccination card" onClose={close} style={{padding:16}}>

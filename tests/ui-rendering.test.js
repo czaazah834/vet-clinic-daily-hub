@@ -29,6 +29,7 @@ buildSync({
       export { default as InClinicRegistration } from './src/roles/InClinicRegistration.jsx';
       export { default as ExistingPatientCheckInModal } from './src/roles/ExistingPatientCheckInModal.jsx';
       export { default as AdmissionForm} from './src/roles/AdmissionForm.jsx';
+      export { default as ReminderStatus } from './src/roles/ReminderStatus.jsx';
       export { default as PetApprovalModal } from './src/roles/PetApprovalModal.jsx';
       export { ConsultationDetailModal } from './src/roles/ConsultationsPage.jsx';
       export { default as Reports } from './src/roles/ReportsPage.jsx';
@@ -360,4 +361,12 @@ test('vet queue separates previous-day unfinished work without changing clinical
  const html=render(ui.vet.Dash,props('vet',db));
  assert.match(html,/Unfinished from earlier days/);assert.match(html,/Unfinished · 2000-01-01/);
  assert.match(html,/Next · Assigned veterinarian/);assert.doesNotMatch(html,/waiting in your queue today/);
+});
+
+
+test('reminder initial render does not claim provider connectivity or owner delivery',()=>{
+ const html=render(ui.ReminderStatus,{});
+ assert.match(html,/Checking status/);
+ assert.match(html,/Delivery to the owner is not confirmed/);
+ assert.doesNotMatch(html,/All Reminders Running Smoothly|Dual Gateway Live|Delivered to pet owners|>Connected</);
 });
