@@ -171,7 +171,7 @@ function Dash({ db, setDb, me, go, say }) {
           me={me}
           onClose={() => setActiveSoap(null)}
           onSaved={(_record,care) => {
-            say(care?.admissionStatus === 'Admitted' ? `SOAP saved for ${activeSoap.pet.name}. The pet remains admitted; continue care in Admitted Pets.` : `SOAP consultation saved for ${activeSoap.pet.name}. Consultation completed; reception handles checkout.`);
+            say(care?.admissionStatus === 'Admitted' ? `Visit record saved for ${activeSoap.pet.name}. The pet remains admitted; continue care in Admitted Pets.` : `Visit record saved for ${activeSoap.pet.name}. Consultation completed; reception handles checkout.`);
             setActiveSoap(null);
           }}
         />
@@ -188,7 +188,7 @@ export const vet = {
     { k: 'admissions', l: 'Admitted Pets', i: 'hospital', Page: AdmissionsPage, sub: 'Admit assigned patients, review observations and care plans, and approve discharge.' },
     { k: "cal", l: "Doctor Schedule", i: "calendar", Page: ClinicCalendar, sub: "View assigned visits. Reception manages bookings." },
     { k: "pets", l: "Patient EMR & Masterlist", i: "paw", Page: ClientsAndPatientsPage, sub: "Digital medical records, patient profiles, and official vaccination cards." },
-    { k: "records", l: "SOAP Consultations", i: "file", Page: ConsultationsPage, sub: "Certified SOAP consultation notes, clinical diagnoses, and prescriptions." },
+    { k: "records", l: "Clinical Records", i: "file", Page: ConsultationsPage, sub: "Saved consultation, vaccination, deworming and grooming records." },
     { k: "vacc", l: "Vaccination Cards", i: "syringe", Page: VaccinationCards, sub: "Review patient cards. Certify administered doses through the consultation." },
     { k: "owners", hide: true, Page: ClientsAndPatientsPage },
     { k: "reports", l: "Clinical Reports", i: "chart", rep: 1, sub: "Filter and print clinic consultation summaries." },

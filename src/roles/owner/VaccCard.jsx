@@ -3,9 +3,10 @@ import PetPortrait from '../PetPortrait.jsx';
 import {useState,useEffect,useRef} from 'react';
 import {scope} from '../../lib.jsx';
 import {auth,OFFLINE_MSG} from '../../authApi.js';
-import {toSquare,pick} from './ui.jsx';
+import {toSquare,pick,setPrefill} from './ui.jsx';
 export function OwnerVacc({db,setDb,me,go,say}){
- const pets=scope(db,me,'pets').filter(p=>!p.registrationStatus || p.registrationStatus==='Verified');
+ const registeredPets=scope(db,me,'pets');
+ const pets=registeredPets.filter(p=>!p.registrationStatus || p.registrationStatus==='Verified');
  const [selected,setSelected]=useState(()=>pick.petId || pets[0]?.id || '');
  const sel=pets.some(p=>p.id===selected)?selected:pets[0]?.id;
  const p=pets.find(p=>p.id===sel),fileInputRef=useRef(null);
@@ -46,9 +47,9 @@ export function OwnerVacc({db,setDb,me,go,say}){
   };
 
 
- if(!p)return <div className="empty"><h3>No registered pets yet</h3><p>Add your pet in My Pets to create their vaccination card.</p><button className="btn gold" onClick={()=>go('home')}>My Pets</button></div>;
+ if(!p)return <div className="empty"><h3>{registeredPets.length ? 'Registration review needed' : 'No registered pets yet'}</h3><p>{registeredPets.length ? 'Open My Pets to check the registration status or correct the existing request. The card becomes available after approval.' : 'Add your pet in My Pets to create their vaccination card.'}</p><button className="btn gold" onClick={()=>go('home')}>My Pets</button></div>;
  return <section aria-label={`${p.name}’s vaccination card`}>
-  <div className="row" style={{flexWrap:'wrap',gap:12}}><label htmlFor="card-pet">Pet</label><select id="card-pet" value={sel} onChange={e=>setSelected(e.target.value)}>{pets.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="btn ghost sm" onClick={()=>go('appts')}>Book a visit</button></div>
+  <div className="row" style={{flexWrap:'wrap',gap:12}}><label htmlFor="card-pet">Pet</label><select id="card-pet" value={sel} onChange={e=>setSelected(e.target.value)}>{pets.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="btn ghost sm" onClick={()=>{setPrefill({petId:p.id});go('appts');}}>Book a visit</button></div>
   <DigitalVetCard key={p.id} petId={p.id} portrait={<PetPortrait pet={p} inputRef={fileInputRef} onChange={handlePhotoFileChange} onRemove={()=>savePhoto('')}/>}/>
  </section>;
 }

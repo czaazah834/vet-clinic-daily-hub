@@ -18,9 +18,9 @@ export function ClinicHistory({db,me,children}) {
   useEffect(()=>{mounted.current=true;return ()=>{mounted.current=false;pending.current?.abort();};},[]);
   useEffect(()=>{
     if(history && baseline.current) {
-      const apptsChanged = (baseline.current.appts?.length !== db.appts?.length);
-      const vaccChanged = (baseline.current.vacc?.length !== db.vacc?.length);
-      const recordsChanged = (baseline.current.records?.length !== db.records?.length);
+      const apptsChanged = (JSON.stringify(baseline.current.appts) !== JSON.stringify(db.appts));
+      const vaccChanged = (JSON.stringify(baseline.current.vacc) !== JSON.stringify(db.vacc));
+      const recordsChanged = (JSON.stringify(baseline.current.records) !== JSON.stringify(db.records));
       const totalsChanged = JSON.stringify(baseline.current.totals) !== JSON.stringify(db.totals);
       if (apptsChanged || vaccChanged || recordsChanged || totalsChanged) {
         setStale(true);
@@ -45,23 +45,23 @@ export function ClinicHistory({db,me,children}) {
     }catch(err){if(mounted.current)setError(controller.signal.aborted?'History loading timed out. Please retry.':err.message);}
     finally{clearTimeout(timeout);pending.current=null;if(mounted.current)setLoading(false);}
   };
-  const value={loading,error,stale,started:!!history,complete:!!history&&!history.page?.hasMore,hasMore:!history||history.page?.hasMore,load};
+  const value={loading,error,stale,started:!!history,complete:!!history&&!history.page?.hasMore&&!stale&&!loading&&!error,hasMore:!history||history.page?.hasMore,load};
   const merged=mergeClinicHistory(db,history,me);
   return <Context.Provider value={value}>{children({...merged,historyComplete:value.complete})}</Context.Provider>;
 }
 export function HistoryControls({auto=false}) {
   const history=useContext(Context);
   useEffect(()=>{
-    if(auto && history && !history.started && !history.loading) {
+    if(auto && history && !history.started && !history.loading && !history.error) {
       history.load();
     }
-  },[auto,history?.started,history?.loading]);
+  },[auto,history?.started,history?.loading,history?.error]);
 
   useEffect(()=>{
-    if(auto && history?.stale && !history.loading) {
+    if(auto && history?.stale && !history.loading && !history.error) {
       history.load(true);
     }
-  },[auto,history?.stale,history?.loading]);
+  },[auto,history?.stale,history?.loading,history?.error]);
 
   if(!history)return null;
 

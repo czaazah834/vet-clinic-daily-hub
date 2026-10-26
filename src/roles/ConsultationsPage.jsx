@@ -1,3 +1,4 @@
+import {visitFormType,visitFormTitle} from '../visitForm.js';
 import ClinicDialog from "../components/ClinicDialog.jsx";
 import DocumentHeader from "../components/DocumentHeader.jsx";
 import { PaginatedTable } from "../components/Pagination.jsx";
@@ -24,7 +25,7 @@ import {
 import { TODAY, ICON, I, petName, ownerName } from "../lib.jsx";
 import { formatSpeciesLabel } from "../preventiveSchedule.js";
 import { isVet } from "./clinicValidation.js";
-import { consultationAppointment } from "../vetQueue.js";
+import { consultationAppointment, vaccinationsForVisit } from "../vetQueue.js";
 import PetCardModal from "./PetCardModal.jsx";
 import SoapConsultationModal from "./SoapConsultationModal.jsx";
 
@@ -38,9 +39,11 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
   // Find corresponding appointment if any
   const appt = consultationAppointment(db.appts || [], record);
   const iv = appt?.intakeVitals;
+  const type = visitFormType(appt || {}), isSoap = type === 'consultation';
+  const title = visitFormTitle(type);
 
   // Find any vaccines administered on this date for this pet
-  const vaccsGiven = (db.vacc || db.vaccs || []).filter(v => v.petId === pet.id && v.date === record.date && v.done && v.vetId);
+  const vaccsGiven = vaccinationsForVisit(db.vacc || db.vaccs || [], record);
 
   // Parse lines of prescription for medical Rx format
   const rxLines = (record.prescription || "")
@@ -51,7 +54,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
   return (
     <ClinicDialog label="Clinical consultation record" onClose={onClose} style={{padding:16}}>
       <div className="modal clinical-record-dialog print-document" style={{ width: "min(780px, 100%)", maxHeight: "94vh", overflowY: "auto", padding: "26px 30px" }}>
-        <DocumentHeader title="Clinical consultation record" />
+        <DocumentHeader title={title} />
         <HistoryControls auto />
         
         {/* Top Header Toolbar */}
@@ -70,7 +73,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
             </div>
             <h3 style={{ margin: "0 0 2px", color: "var(--navy)", fontSize: "1.35rem", display: "flex", alignItems: "center", gap: "8px" }}>
               <Stethoscope size={22} color="var(--navy)" />
-              <span>SOAP Clinical Consultation: <b>{pet.name || "Patient"}</b></span>
+              <span>{title}: <b>{pet.name || "Patient"}</b></span>
             </h3>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
               Examined on <b>{record.date}</b> &bull; Attending Veterinarian: <b>{vetName}</b>
@@ -151,8 +154,8 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
           {/* S - Subjective */}
           <div style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "14px 16px", background: "#ffffff" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px", color: "#1e3a8a", fontWeight: 700, fontSize: "13.5px" }}>
-              <span style={{ background: "#dbeafe", color: "#1e40af", width: "22px", height: "22px", borderRadius: "4px", display: "grid", placeItems: "center", fontSize: "12px", fontWeight: 800 }}>S</span>
-              <span>Subjective (Chief Complaint &amp; Clinical History)</span>
+              <span style={{ background: "#dbeafe", color: "#1e40af", width: "22px", height: "22px", borderRadius: "4px", display: "grid", placeItems: "center", fontSize: "12px", fontWeight: 800 }}>{isSoap ? "S" : "•"}</span>
+              <span>{isSoap ? 'Subjective (Chief Complaint & Clinical History)' : 'Reason for visit'}</span>
             </div>
             <p style={{ margin: 0, fontSize: "13.5px", color: "#334155", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
               {record.symptoms || "Not recorded"}
@@ -162,8 +165,8 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
           {/* O - Objective */}
           <div style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "14px 16px", background: "#ffffff" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", color: "#065f46", fontWeight: 700, fontSize: "13.5px" }}>
-              <span style={{ background: "#d1fae5", color: "#065f46", width: "22px", height: "22px", borderRadius: "4px", display: "grid", placeItems: "center", fontSize: "12px", fontWeight: 800 }}>O</span>
-              <span>Objective (Vitals &amp; Physical Examination)</span>
+              <span style={{ background: "#d1fae5", color: "#065f46", width: "22px", height: "22px", borderRadius: "4px", display: "grid", placeItems: "center", fontSize: "12px", fontWeight: 800 }}>{isSoap ? "O" : "•"}</span>
+              <span>{isSoap ? 'Objective (Vitals & Physical Examination)' : 'Recorded vitals & visit observations'}</span>
             </div>
 
             {/* Vitals summary cards */}
@@ -196,8 +199,8 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
           {/* A - Assessment (Diagnosis) */}
           <div style={{ border: "1.5px solid #bfdbfe", borderRadius: "10px", padding: "14px 16px", background: "#eff6ff" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px", color: "#1e40af", fontWeight: 700, fontSize: "13.5px" }}>
-              <span style={{ background: "#1e40af", color: "#ffffff", width: "22px", height: "22px", borderRadius: "4px", display: "grid", placeItems: "center", fontSize: "12px", fontWeight: 800 }}>A</span>
-              <span>Assessment &amp; Veterinary Diagnosis</span>
+              <span style={{ background: "#1e40af", color: "#ffffff", width: "22px", height: "22px", borderRadius: "4px", display: "grid", placeItems: "center", fontSize: "12px", fontWeight: 800 }}>{isSoap ? "A" : "•"}</span>
+              <span>{isSoap ? 'Assessment & Veterinary Diagnosis' : 'Visit assessment'}</span>
             </div>
             <div style={{ fontSize: "15px", fontWeight: 700, color: "#1e3a8a", margin: "2px 0 4px" }}>
               {record.diagnosis || "Not recorded"}
@@ -207,16 +210,16 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
           {/* P - Plan & Treatments */}
           <div style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "14px 16px", background: "#ffffff" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px", color: "#854d0e", fontWeight: 700, fontSize: "13.5px" }}>
-              <span style={{ background: "#fef08a", color: "#854d0e", width: "22px", height: "22px", borderRadius: "4px", display: "grid", placeItems: "center", fontSize: "12px", fontWeight: 800 }}>P</span>
-              <span>Plan (In-Clinic Procedures &amp; Care Rendered)</span>
+              <span style={{ background: "#fef08a", color: "#854d0e", width: "22px", height: "22px", borderRadius: "4px", display: "grid", placeItems: "center", fontSize: "12px", fontWeight: 800 }}>{isSoap ? "P" : "•"}</span>
+              <span>{isSoap ? 'Plan (In-Clinic Procedures & Care Rendered)' : 'Care provided & instructions'}</span>
             </div>
             <p style={{ margin: 0, fontSize: "13.5px", color: "#334155", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
               {record.treatment || "Not recorded"}
             </p>
           </div>
 
-          {/* Rx - Official Prescription Pad */}
-          <div style={{ border: "1.5px solid #86efac", borderRadius: "12px", padding: "16px", background: "#f0fdf4" }}>
+          {/* Retain any legacy prescription without adding an empty Rx section to preventive visits. */}
+          {(isSoap || rxLines.length > 0) && <div style={{ border: "1.5px solid #86efac", borderRadius: "12px", padding: "16px", background: "#f0fdf4" }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", borderBottom: "1px solid #bbf7d0", paddingBottom: "6px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <span style={{ fontFamily: "serif", fontSize: "22px", fontWeight: 800, color: "#166534" }}>Rx</span>
@@ -243,13 +246,13 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
                 No prescription recorded.
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Administered Vaccines During Consult (if any) */}
           {vaccsGiven.length > 0 && (
             <div style={{ border: "1px solid #cbd5e1", borderRadius: "10px", padding: "12px 14px", background: "#f8fafc" }}>
               <b style={{ color: "var(--navy)", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
-                <Syringe size={16} color="#2563eb" /> Certified Vaccines Recorded on This Date
+                <Syringe size={16} color="#2563eb" /> Vaccinations / Deworming Recorded for This Visit
               </b>
               <div style={{ display: "grid", gap: "6px" }}>
                 {vaccsGiven.map(v => (
@@ -283,7 +286,7 @@ export function ConsultationDetailModal({ record, db, setDb, me, onClose, onEdit
                   onEdit(record);
                 }}
               >
-                Edit SOAP Note
+                Edit Visit Record
               </button>
             )}
             <button type="button" className="btn sm ghost" onClick={onClose}>
@@ -359,7 +362,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
             <span>Veterinary Consultations &amp; Medical EMR Records</span>
           </h3>
           <span style={{ fontSize: "12.5px", color: "#64748b" }}>
-            Certified SOAP consultation notes, clinical diagnoses, medical treatments, and veterinary prescriptions.
+            Saved visit records, clinical assessments, care provided, and veterinary prescriptions.
           </span>
         </div>
 
@@ -413,7 +416,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
       <section className="card" style={{ padding: "0", overflow: "hidden" }}>
         <div style={{ padding: "12px 18px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: "12.5px", color: "#475569" }}>
-            <b>Tip:</b> Click any consultation row to open the complete <b>Medical SOAP Chart &amp; Veterinary Rx Pad</b>.
+            <b>Tip:</b> Click any consultation row to open the complete <b>Clinical Visit Record</b>.
           </span>
           <span style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--navy)" }}>
             {filtered.length} record(s) found
@@ -576,7 +579,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
         />
       )}
 
-      {/* Edit SOAP Note Modal if launched by doctor */}
+      {/* Edit Visit Record Modal if launched by doctor */}
       {editingConsult && (
         <SoapConsultationModal
           appt={(db.appts || []).find(a => a.id === editingConsult.apptId) || null}
@@ -587,7 +590,7 @@ export default function ConsultationsPage({ db, setDb, me, go, say }) {
           onClose={() => setEditingConsult(null)}
           onSaved={(newRec) => {
             setEditingConsult(null);
-            say && say(`SOAP Consultation updated for ${newRec.id}!`);
+            say && say(`Visit record updated for ${newRec.id}!`);
           }}
         />
       )}

@@ -2,13 +2,14 @@ import { after, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 
-let vets = [];
+let vets = [], vaccinations = [];
 mock.module('../db.js', { namedExports: {
   query: async sql => {
     if (sql.includes("FROM users WHERE role = 'vet'")) {
       assert.match(sql, /SELECT id, vet_id, first_name, last_name/);
       return { rows: vets };
     }
+    if (sql.includes('FROM vaccinations')) return { rows: vaccinations };
     return { rows: [] };
   },
   withTransaction: async () => { throw new Error('Unexpected write'); },
@@ -39,4 +40,14 @@ test('state returns an empty roster without losing other state collections', asy
   const { data } = await response.json();
   assert.deepEqual(data.vets, []);
   assert.deepEqual(data.pets, []);
+});
+
+test('state preserves vaccination visit provenance without guessing legacy links', async()=>{
+ vaccinations=[{id:'dose',pet_id:'p',vaccine:'Rabies',date:'2026-10-26',done:true,vet_id:'v',appt_id:'a',consultation_id:'c'}, {id:'legacy',pet_id:'p',vaccine:'DHPP',date:'2026-10-25',done:true,vet_id:'v'}];
+ const response=await fetch(`http://127.0.0.1:${server.address().port}/api/state`);
+ const {data}=await response.json();
+ assert.equal(data.vaccs.find(v=>v.id==='dose').apptId,'a');
+ assert.equal(data.vaccs.find(v=>v.id==='dose').consultationId,'c');
+ assert.equal(data.vaccs.find(v=>v.id==='legacy').apptId,'');
+ vaccinations=[];
 });

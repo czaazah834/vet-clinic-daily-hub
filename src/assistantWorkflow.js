@@ -74,3 +74,11 @@ export function registrationsWithoutVisit(db) {
  const booked=new Set((db.appts || []).filter(a=>a.status==='Pending Approval').map(a=>a.petId));
  return (db.petRequests || []).filter(r=>r.status==='Pending' && !booked.has(r.petId));
 }
+
+// Keep an earlier completed visit from hiding today's active arrival.
+export function currentAppointmentsByPet(appointments, date = today()) {
+  const rank = {'In consultation':0,'Checked-in':1,Scheduled:2,'Pending Approval':3,Completed:4};
+  const rows = appointments.filter(a => a.date === date && rank[a.status] !== undefined)
+    .sort((a,b) => rank[a.status]-rank[b.status] || chronologicalAppointments(a,b));
+  return Object.fromEntries([...new Set(rows.map(a=>a.petId))].map(id=>[id,rows.find(a=>a.petId===id)]));
+}

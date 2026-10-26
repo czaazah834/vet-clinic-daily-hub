@@ -5,7 +5,7 @@ import { CheckCircle2 } from "lucide-react";
 import { ICON, I } from "../lib.jsx";
 import PetApprovalModal from "./PetApprovalModal.jsx";
 
-export default function PetRequestsPage({ db, setDb, me, say }) {
+export default function PetRequestsPage({ db, setDb, me, say, go }) {
   const [filter, setFilter] = useState("Pending"); // 'All' | 'Pending' | 'Approved' | 'Declined'
   const [search, setSearch] = useState("");
   const [activeReq, setActiveReq] = useState(null);
@@ -37,6 +37,8 @@ export default function PetRequestsPage({ db, setDb, me, say }) {
           </p>
         </div>
       </div>
+
+      {go && <button type="button" className="btn ghost" style={{marginBottom:16}} onClick={()=>go("home")}>Open Front Desk for booked requests</button>}
 
       {/* Filter and search bar */}
       <div className="card" style={{ padding: "14px", marginBottom: "16px" }}>

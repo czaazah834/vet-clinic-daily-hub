@@ -22,3 +22,8 @@ export function consultationAppointment(appointments, record) {
   const matches = appointments.filter(a => a.petId === record.petId && a.date === record.date);
   return matches.length === 1 ? matches[0] : null;
 }
+
+export function vaccinationsForVisit(vaccinations, record) {
+  return vaccinations.filter(v => v.petId === record.petId && v.done && v.vetId &&
+    (v.consultationId ? v.consultationId === record.id : !!record.apptId && v.apptId === record.apptId));
+}

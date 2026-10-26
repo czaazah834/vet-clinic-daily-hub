@@ -1,6 +1,9 @@
+import {useHistoryComplete} from '../ClinicHistory.jsx';
+import {today,plus} from '../booking.js';
+import {currentVaccinationDue,vaccinationStatus} from '../ownerVaccination.js';
 import { PaginatedTable } from "../components/Pagination.jsx";
 import { useState, useMemo } from "react";
-import { E, scope, petName, VETS, TODAY, Badge } from "../lib.jsx";
+import { E, scope, Badge } from "../lib.jsx";
 import {
   FileText,
   Download,
@@ -19,11 +22,7 @@ import {
 
 const CLINIC = {
   name: "PawCare Veterinary Clinic",
-  subtitle: "Animal Health Care & Digital Immunization Services",
-  address: "128 Rizal Avenue, Caloocan City, Metro Manila",
-  phone: "+63 (02) 8352-8899 / 0917-888-PAWS",
-  email: "care@pawcareclinic.ph",
-  license: "BAI Reg. No. 2024-0891 • PVMA Accredited"
+  subtitle: "Animal Health Care & Digital Immunization Services"
 };
 
 const REPORT_CONFIG = {
@@ -37,7 +36,7 @@ const REPORT_CONFIG = {
     toCsvRow: (x, db) => {
       const p = (db.pets || []).find(p => p.id === x.petId) || {};
       const o = (db.owners || []).find(o => o.id === p.ownerId) || {};
-      const vet = (VETS.find(v => v[0] === x.vetId) || [])[1] || x.vetId || "Unassigned";
+      const vet = (db.vets || []).find(v => v.id === x.vetId)?.name || (x.vetId ? "Veterinarian not recorded" : "Unassigned");
       return [
         x.date || "",
         x.time || "",
@@ -56,7 +55,7 @@ const REPORT_CONFIG = {
     icon: Syringe,
     color: "#d97706",
     bg: "#fffbeb",
-    headers: ["Date Administered", "Patient", "Species", "Owner", "Vaccine Name", "Brand", "Lot / Batch", "Next Booster Due", "Status"],
+    headers: ["Recorded / Planned Date", "Patient", "Species", "Owner", "Vaccine Name", "Brand", "Lot / Batch", "Next Booster Due", "Status"],
     toCsvRow: (x, db) => {
       const p = (db.pets || []).find(p => p.id === x.petId) || {};
       const o = (db.owners || []).find(o => o.id === p.ownerId) || {};
@@ -68,14 +67,14 @@ const REPORT_CONFIG = {
         x.vaccine || "",
         x.brand || "",
         x.batch || "",
-        x.nextDue || "Completed",
-        x.done ? "Completed" : (x.nextDue < TODAY ? "Overdue" : "On Track")
+        x.nextDue || "",
+        vaccinationStatus(x, currentVaccinationDue(db.vacc || []), today())
       ];
     }
   },
   records: {
     title: "Veterinary Consultations & EMR",
-    sub: "Signed clinical examination SOAP records, diagnoses, and treatments.",
+    sub: "Saved clinical visit records, assessments, and treatments.",
     icon: Stethoscope,
     color: "#059669",
     bg: "#ecfdf5",
@@ -83,7 +82,7 @@ const REPORT_CONFIG = {
     toCsvRow: (x, db) => {
       const p = (db.pets || []).find(p => p.id === x.petId) || {};
       const o = (db.owners || []).find(o => o.id === p.ownerId) || {};
-      const vet = (VETS.find(v => v[0] === x.vetId) || [])[1] || x.vetId || "Attending Vet";
+      const vet = (db.vets || []).find(v => v.id === x.vetId)?.name || "Veterinarian not recorded";
       return [
         x.date || "",
         p.name || x.petId || "",
@@ -121,6 +120,7 @@ const REPORT_CONFIG = {
 };
 
 export default function ReportsPage({ db, me }) {
+  const historyComplete = useHistoryComplete();
   const [reportType, setReportType] = useState("appts");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -159,40 +159,26 @@ export default function ReportsPage({ db, me }) {
     return l;
   }, [rawList, isDateFiltered, from, to, search, db]);
 
+  const canExport = historyComplete && !isDateInvalid && filteredList.length > 0;
+
   // Quick Date Range Presets
   const applyPreset = (preset) => {
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-    if (preset === "all") {
-      setFrom("");
-      setTo("");
-    } else if (preset === "today") {
-      const t = fmt(now);
-      setFrom(t);
-      setTo(t);
-    } else if (preset === "week") {
-      const lastWeek = new Date(now.getTime() - 7 * 864e5);
-      setFrom(fmt(lastWeek));
-      setTo(fmt(now));
-    } else if (preset === "month") {
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      setFrom(fmt(startOfMonth));
-      setTo(fmt(now));
-    }
+    const date = today();
+    if (preset === "all") { setFrom(""); setTo(""); }
+    else { setFrom(preset === "week" ? plus(-6) : preset === "month" ? date.slice(0,7)+"-01" : date); setTo(date); }
   };
 
   // CSV Export Generation
   const handleExportCsv = () => {
-    if (!filteredList.length) return;
+    if (!canExport) return;
     const cfg = REPORT_CONFIG[reportType];
     const headers = cfg.headers;
     const rows = filteredList.map(item => cfg.toCsvRow(item, db));
 
     const escapeCsv = (val) => {
-      const str = String(val ?? "");
-      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+      const raw = String(val ?? "");
+      const str = /^[\s]*[=+@-]/.test(raw) ? "'" + raw : raw;
+      if (str.includes(",") || str.includes('"') || /[\r\n]/.test(str)) {
         return `"${str.replace(/"/g, '""')}"`;
       }
       return str;
@@ -206,7 +192,7 @@ export default function ReportsPage({ db, me }) {
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = today();
     link.setAttribute("href", url);
     link.setAttribute("download", `pawcare-${reportType}-report-${todayStr}.csv`);
     document.body.appendChild(link);
@@ -216,7 +202,7 @@ export default function ReportsPage({ db, me }) {
   };
 
   const handlePrint = () => {
-    window.print();
+    if (canExport) window.print();
   };
 
   const IconCmp = currentCfg.icon;
@@ -242,10 +228,10 @@ export default function ReportsPage({ db, me }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "14px", marginBottom: "18px" }}>
           <div>
             <h2 style={{ margin: "0 0 4px", fontSize: "22px", color: "var(--navy, #0f172a)", fontWeight: 800 }}>
-              Reports &amp; Regulatory Audits
+              Clinical Reports
             </h2>
             <p style={{ margin: 0, fontSize: "13.5px", color: "#64748b" }}>
-              Filter, audit clinical records, export CSV spreadsheets, and generate certified printed documents.
+              Filter, audit clinical records, export CSV spreadsheets, and print saved record summaries.
             </p>
           </div>
 
@@ -254,7 +240,7 @@ export default function ReportsPage({ db, me }) {
               type="button"
               className="btn gold"
               onClick={handleExportCsv}
-              disabled={!filteredList.length}
+              disabled={!canExport}
               style={{ display: "inline-flex", alignItems: "center", gap: "7px", fontWeight: 700 }}
               title="Download spreadsheet in CSV format"
             >
@@ -265,9 +251,9 @@ export default function ReportsPage({ db, me }) {
               type="button"
               className="btn ghost"
               onClick={handlePrint}
-              disabled={!filteredList.length}
+              disabled={!canExport}
               style={{ display: "inline-flex", alignItems: "center", gap: "7px", fontWeight: 700 }}
-              title="Print official letterhead document"
+              title="Print report"
             >
               <Printer size={16} />
               <span>Print Document</span>
@@ -389,6 +375,7 @@ export default function ReportsPage({ db, me }) {
         )}
       </div>
 
+      {!historyComplete && <p role="status">Showing loaded records only. Load all history before exporting or printing.</p>}
       {/* Main Report Document Sheet */}
       <section className="card rep-sheet" style={{ padding: "32px", background: "#ffffff" }}>
         
@@ -405,20 +392,15 @@ export default function ReportsPage({ db, me }) {
               <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#475569", fontWeight: 600 }}>
                 {CLINIC.subtitle}
               </p>
-              <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "4px" }}>
-                {CLINIC.address} &bull; {CLINIC.phone} &bull; {CLINIC.email}
-              </div>
-              <div style={{ fontSize: "11px", color: "#0369a1", fontWeight: 700, marginTop: "2px" }}>
-                {CLINIC.license}
-              </div>
+
             </div>
 
             <div style={{ textAlign: "right" }}>
               <div style={{ display: "inline-block", background: currentCfg.bg, color: currentCfg.color, border: `1px solid ${currentCfg.color}`, padding: "4px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: 800, textTransform: "uppercase", marginBottom: "6px" }}>
-                Official Certified Report
+                Saved Records Report
               </div>
               <div style={{ fontSize: "11.5px", color: "#475569" }}>
-                <b>Date Generated:</b> {new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                <b>Date Generated:</b> {new Date().toLocaleDateString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
               </div>
               <div style={{ fontSize: "11px", color: "#64748b" }}>
                 <b>Generated By:</b> {me.name} ({String(me.role).toUpperCase()})
@@ -487,17 +469,17 @@ export default function ReportsPage({ db, me }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "24px" }}>
             <div>
               <div style={{ border: "2px dashed #059669", padding: "6px 14px", borderRadius: "8px", display: "inline-block", color: "#047857", fontSize: "11px", fontWeight: 800, textTransform: "uppercase" }}>
-                Official Document Seal: {CLINIC.name}
+                Report source: {CLINIC.name}
               </div>
               <p style={{ margin: "6px 0 0", fontSize: "11px", color: "#64748b" }}>
-                This clinical record is an authentic summary exported directly from the PawCare Clinic Portal.
+                This clinical record is an summary exported directly from the PawCare Clinic Portal.
               </p>
             </div>
 
             <div style={{ textAlign: "center", minWidth: "220px" }}>
               <div style={{ borderBottom: "1.5px solid #0f172a", width: "220px", marginBottom: "6px", height: "30px" }} />
               <b style={{ fontSize: "12px", color: "#0f172a", display: "block" }}>{me.name}</b>
-              <span style={{ fontSize: "11px", color: "#64748b" }}>Certified Attending Officer &bull; PawCare</span>
+              <span style={{ fontSize: "11px", color: "#64748b" }}>Prepared by &bull; PawCare</span>
             </div>
           </div>
         </div>

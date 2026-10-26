@@ -1,3 +1,4 @@
+import {currentAppointmentsByPet} from '../assistantWorkflow.js';
 import OwnerAccountLinkModal from './OwnerAccountLinkModal.jsx';
 import { ownerForPet, petsForOwner } from "../ownerRelationships.js";
 import { Modal } from "./owner/ui.jsx";
@@ -96,11 +97,7 @@ export default function ClientsAndPatientsPage({ db, setDb, me, go, say }) {
   // Front desk priority: patients who already hold an appointment today. Walk-ins are registered from the Front Desk dashboard instead.
   const canBook = canBookAppointments(me?.role);
   const canCheckIn = me?.role === "assistant";
-  const todayApptByPet = {};
-  (db.appts || [])
-    .filter(a => a.date === bookingToday() && !["Cancelled", "Rejected", "No-show"].includes(a.status))
-    .sort((x, y) => (x.time || "").localeCompare(y.time || ""))
-    .forEach(a => { if (!todayApptByPet[a.petId]) todayApptByPet[a.petId] = a; });
+  const todayApptByPet = currentAppointmentsByPet(db.appts || [], bookingToday());
   const isArrivable = a => !!a && a.status === "Scheduled";
 
   const household = owners.find(o => o.id === householdId);

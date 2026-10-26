@@ -42,3 +42,11 @@ test('summary intake uses explicit visit linkage; ambiguous legacy dates never s
   assert.equal(consultationAppointment([other,exact],{...record,apptId:''}),null);
   assert.equal(consultationAppointment([exact],{...record,apptId:''}),exact);
 });
+
+test('saved visit doses use explicit linkage, never same-day coincidence', async()=>{
+ const {vaccinationsForVisit}=await import('../src/vetQueue.js');
+ const r={id:'r',petId:'p',apptId:'a',date};
+ const dose={petId:'p',date,done:true,vetId:'v'};
+ const rows=[{...dose,id:'exact',consultationId:'r'},{...dose,id:'appt',apptId:'a'},{...dose,id:'other',apptId:'a',consultationId:'other'},{...dose,id:'legacy'},{...dose,id:'wrong-pet',petId:'other',consultationId:'r'}];
+ assert.deepEqual(vaccinationsForVisit(rows,r).map(v=>v.id),['exact','appt']);
+});

@@ -228,6 +228,8 @@ clinicRouter.get(["/state","/state/summary","/state/history"], async (req, res) 
       id: v.id,
       petId: v.pet_id,
       cardId: v.card_id,
+      apptId: v.appt_id || "",
+      consultationId: v.consultation_id || "",
       vaccine: v.vaccine,
       brand: v.brand || "",
       batch: v.batch || "",

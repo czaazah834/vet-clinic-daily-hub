@@ -30,6 +30,7 @@ buildSync({
       export { default as ExistingPatientCheckInModal } from './src/roles/ExistingPatientCheckInModal.jsx';
       export { default as AdmissionForm} from './src/roles/AdmissionForm.jsx';
       export { default as PetApprovalModal } from './src/roles/PetApprovalModal.jsx';
+      export { ConsultationDetailModal } from './src/roles/ConsultationsPage.jsx';
       export { default as Reports } from './src/roles/ReportsPage.jsx';
       export { default as ErrorBoundary } from './src/ErrorBoundary.jsx';
       export { SEED } from './src/lib.jsx';
@@ -326,4 +327,28 @@ test('pending walk-in patient has registration review before intake',()=>{
  db.appts=[{id:'legacy-arrival',petId:db.pets[0].id,date:new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'}),status:'Scheduled'}];
  const html=render(ui.ExistingPatientCheckInModal,{...props('assistant',db),initialPetId:db.pets[0].id,onCheckIn(){}});
  assert.match(html,/Review registration/);assert.match(html,/Registration needs review/);assert.doesNotMatch(html,/>Record vitals for this visit</);
+});
+
+test('preventive saved records retain visit-specific labels and linked doses',()=>{
+ const db=populated(),pet=db.pets[0];
+ const record={id:'record1',petId:pet.id,apptId:'visit1',date:'2026-10-26',diagnosis:'Fit for vaccination',treatment:'Vaccinated'};
+ db.appts=[{id:'visit1',petId:pet.id,service:'vaccination',reason:'Vaccination',date:record.date}];
+ db.vacc=[{id:'dose',petId:pet.id,consultationId:'record1',done:true,vetId:'v1',vaccine:'Linked dose'},{id:'other',petId:pet.id,date:record.date,done:true,vetId:'v1',vaccine:'Unrelated dose'}];
+ const html=render(ui.ConsultationDetailModal,{...props('vet',db),record,onClose:()=>{}});
+ assert.match(html,/Vaccination record/);assert.match(html,/Linked dose/);
+ assert.doesNotMatch(html,/Subjective \(Chief|No prescription recorded|Unrelated dose/);
+});
+test('reports use saved doctors without invented clinic credentials',()=>{
+ const db=populated();db.vets=[{id:'actual',name:'Actual Attending Vet'}];
+ db.appts=[{id:'visit',petId:db.pets[0].id,date:'2026-10-26',vetId:'actual',status:'Scheduled'}];
+ const html=render(ui.Reports,props('admin',db));
+ assert.match(html,/Actual Attending Vet/);assert.doesNotMatch(html,/128 Rizal|Official Document Seal|PVMA Accredited|Official Certified/);
+});
+
+test('owner card directs pending registrations back to their existing request',()=>{
+ const db=populated();db.pets=db.pets.filter(p=>p.ownerId==='o1').map(p=>({...p,registrationStatus:'Pending'}));
+ const page=ui.owner.menu.find(p=>p.k==='vacc');
+ const html=render(page.Page,props('owner',db));
+ assert.match(html,/Registration review needed/);assert.match(html,/correct the existing request/);
+ assert.doesNotMatch(html,/No registered pets yet/);
 });

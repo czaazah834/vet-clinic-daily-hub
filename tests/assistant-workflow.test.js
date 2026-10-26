@@ -88,3 +88,12 @@ test('checkout summary holds admitted pets until discharge approval and preserve
  const rows=[base,{...base,id:'admitted',admissionStatus:'Admitted'},{...base,id:'ready',admissionStatus:'Ready for discharge'}];
  assert.deepEqual(pendingCheckout(rows,date).visits.map(a=>a.id),['outpatient','ready']);
 });
+
+ test('masterlist keeps later active arrival visible after an earlier completed visit', async () => {
+  const {currentAppointmentsByPet}=await import('../src/assistantWorkflow.js');
+  const base={petId:'p',date:'2026-10-26'};
+  const rows=[{...base,id:'done',status:'Completed',time:'08:00'},{...base,id:'arrive',status:'Scheduled',time:'10:00'},{...base,id:'cancel',status:'Cancelled',time:'07:00'}];
+  assert.equal(currentAppointmentsByPet(rows,base.date).p.id,'arrive');
+  assert.equal(currentAppointmentsByPet(rows.slice(0,1),base.date).p.id,'done');
+  assert.deepEqual(currentAppointmentsByPet(rows,'2026-10-27'),{});
+ });
