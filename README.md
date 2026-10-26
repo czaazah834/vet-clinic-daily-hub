@@ -982,7 +982,11 @@ optional diagnosis and treatment entries (one per line). Empty lists are allowed
 Veterinarians load the saved lists when opening SOAP; they can always type their
 own notes, including if choices are unavailable. Entries append text only; billed
 services still require separate confirmation. Retiring an entry does not alter
-existing clinical records.
+existing clinical records. Unsaved choices are protected when reloading the lists,
+leaving the page, logging out, or reloading the browser. A failed list reload keeps
+the current entries. Saving requires confirmation of the exact lists and the next
+revision; a conflicting or incomplete response retains entries and requires
+reloading the saved choices before another save.
 
 Each SOAP list has a search field and an explicit **Add to notes** action.
 Veterinarians can add multiple entries, edit the resulting text, or type their

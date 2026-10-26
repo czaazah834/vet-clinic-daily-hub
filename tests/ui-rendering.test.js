@@ -29,6 +29,7 @@ buildSync({
       export { default as InClinicRegistration } from './src/roles/InClinicRegistration.jsx';
       export { default as ExistingPatientCheckInModal } from './src/roles/ExistingPatientCheckInModal.jsx';
       export { default as AdmissionForm} from './src/roles/AdmissionForm.jsx';
+      export { default as Portal } from './src/Portal.jsx';
       export { default as ReminderStatus } from './src/roles/ReminderStatus.jsx';
       export { default as PetApprovalModal } from './src/roles/PetApprovalModal.jsx';
       export { ConsultationDetailModal } from './src/roles/ConsultationsPage.jsx';
@@ -369,4 +370,10 @@ test('reminder initial render does not claim provider connectivity or owner deli
  assert.match(html,/Checking status/);
  assert.match(html,/Delivery to the owner is not confirmed/);
  assert.doesNotMatch(html,/All Reminders Running Smoothly|Dual Gateway Live|Delivered to pet owners|>Connected</);
+});
+
+
+for(const role of ['owner','assistant','vet','admin'])test(`${role} complete portal renders role navigation with no page edits`,()=>{
+ const html=render(ui.Portal,{...props(role,populated()),cfg:ui[role],onLogout(){}});
+ assert.match(html,/aria-label="Main"/);assert.match(html,/portal-heading/);assert.doesNotMatch(html,/Leave with unsaved changes/);
 });
